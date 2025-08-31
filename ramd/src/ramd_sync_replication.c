@@ -642,10 +642,12 @@ ramd_sync_replication_setup_streaming(const ramd_config_t *config,
             if (is_recovering)
             {
                 /* Check replication status */
-                res = PQexec((PGconn*)conn.connection, 
-                           "SELECT application_name, state, sent_lsn, write_lsn, flush_lsn, replay_lsn "
-                           "FROM pg_stat_replication WHERE application_name = $1", 1, 
-                           (const char*[]){application_name ? application_name : "ramd_node"});
+                char query[512];
+                snprintf(query, sizeof(query),
+                        "SELECT application_name, state, sent_lsn, write_lsn, flush_lsn, replay_lsn "
+                        "FROM pg_stat_replication WHERE application_name = '%s'",
+                        application_name ? application_name : "ramd_node");
+                res = PQexec((PGconn*)conn.connection, query);
                 
                 if (res && PQntuples(res) > 0)
                 {

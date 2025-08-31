@@ -1,0 +1,5 @@
+# pg_ram extension control file
+comment = 'PostgreSQL RAM extension for cluster management'
+default_version = '1.0'
+module_pathname = '$libdir/pg_ram'
+relocatable = false

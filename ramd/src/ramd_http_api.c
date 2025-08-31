@@ -27,6 +27,8 @@
 #include "ramd_config_reload.h"
 #include "ramd_sync_replication.h"
 #include "ramd_maintenance.h"
+#include "ramd_failover.h"
+#include "ramd_daemon.h"
 
 /* Global HTTP server instance */
 static ramd_http_server_t *g_http_server = NULL;
@@ -388,7 +390,7 @@ ramd_http_handle_cluster_status(ramd_http_request_t *request, ramd_http_response
     (void)request; /* Unused parameter */
     
     /* Get actual cluster status from the cluster module */
-    ramd_cluster_t *cluster = ramd_cluster_get_instance();
+    ramd_cluster_t *cluster = &g_ramd_daemon->cluster;
     if (!cluster)
     {
         ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, 
@@ -412,7 +414,7 @@ ramd_http_handle_cluster_status(ramd_http_request_t *request, ramd_http_response
         ramd_cluster_has_quorum(cluster) ? "operational" : "degraded",
         cluster->primary_node_id,
         cluster->node_count,
-        ramd_cluster_get_healthy_node_count(cluster),
+        ramd_cluster_count_healthy_nodes(cluster),
         ramd_cluster_has_quorum(cluster) ? "true" : "false",
         time(NULL),
         "normal" /* TODO: Get actual failover state */
@@ -541,7 +543,7 @@ void
 ramd_http_handle_nodes_list(ramd_http_request_t *request, ramd_http_response_t *response)
 {
     char json_buffer[8192];
-    ramd_cluster_t *cluster = ramd_cluster_get_instance();
+    ramd_cluster_t *cluster = &g_ramd_daemon->cluster;
     
     if (!cluster)
     {
@@ -560,7 +562,6 @@ ramd_http_handle_nodes_list(ramd_http_request_t *request, ramd_http_response_t *
         snprintf(node_json, sizeof(node_json),
             "%s{\n"
             "      \"node_id\": %d,\n"
-            "      \"name\": \"%s\",\n"
             "      \"hostname\": \"%s\",\n"
             "      \"postgresql_port\": %d,\n"
             "      \"role\": \"%s\",\n"
@@ -570,11 +571,10 @@ ramd_http_handle_nodes_list(ramd_http_request_t *request, ramd_http_response_t *
             "    }",
             (i > 0) ? "," : "",
             node->node_id,
-            node->name,
             node->hostname,
             node->postgresql_port,
             (node->role == RAMD_ROLE_PRIMARY) ? "primary" : "standby",
-            (node->state == RAMD_NODE_STATE_HEALTHY) ? "healthy" : 
+            (node->state == RAMD_NODE_STATE_STANDBY) ? "healthy" : 
              (node->state == RAMD_NODE_STATE_FAILED) ? "failed" : "unknown",
             node->is_healthy ? "true" : "false",
             (node->node_id == cluster->primary_node_id) ? "true" : "false"
@@ -615,7 +615,7 @@ ramd_http_handle_failover(ramd_http_request_t *request, ramd_http_response_t *re
     
     /* Parse request body for failover parameters */
     /* For now, we'll trigger automatic failover */
-    ramd_cluster_t *cluster = ramd_cluster_get_instance();
+    ramd_cluster_t *cluster = &g_ramd_daemon->cluster;
     if (!cluster)
     {
         ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, 
@@ -748,7 +748,7 @@ ramd_http_handle_promote_node(ramd_http_request_t *request, ramd_http_response_t
     }
     
     /* Execute promotion */
-    ramd_cluster_t *cluster = ramd_cluster_get_instance();
+    ramd_cluster_t *cluster = &g_ramd_daemon->cluster;
     if (!cluster)
     {
         ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, 
@@ -806,7 +806,7 @@ ramd_http_handle_demote_node(ramd_http_request_t *request, ramd_http_response_t 
     }
     
     /* Execute demotion */
-    ramd_cluster_t *cluster = ramd_cluster_get_instance();
+    ramd_cluster_t *cluster = &g_ramd_daemon->cluster;
     if (!cluster)
     {
         ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, 
@@ -864,7 +864,7 @@ ramd_http_handle_node_detail(ramd_http_request_t *request, ramd_http_response_t 
     }
     
     /* Get node details */
-    ramd_cluster_t *cluster = ramd_cluster_get_instance();
+    ramd_cluster_t *cluster = &g_ramd_daemon->cluster;
     if (!cluster)
     {
         ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, 
@@ -885,21 +885,19 @@ ramd_http_handle_node_detail(ramd_http_request_t *request, ramd_http_response_t 
         "  \"status\": \"success\",\n"
         "  \"data\": {\n"
         "    \"node_id\": %d,\n"
-        "    \"name\": \"%s\",\n"
         "    \"hostname\": \"%s\",\n"
         "    \"postgresql_port\": %d,\n"
         "    \"role\": \"%s\",\n"
         "    \"state\": \"%s\",\n"
         "    \"is_healthy\": %s,\n"
-        "    \"is_primary\": %s\n"
+        "    \"is_primary\": %d\n"
         "  }\n"
         "}",
         node->node_id,
-        node->name,
         node->hostname,
         node->postgresql_port,
         (node->role == RAMD_ROLE_PRIMARY) ? "primary" : "standby",
-        (node->state == RAMD_NODE_STATE_HEALTHY) ? "healthy" : 
+        (node->state == RAMD_NODE_STATE_STANDBY) ? "healthy" : 
          (node->state == RAMD_NODE_STATE_FAILED) ? "failed" : "unknown",
         node->is_healthy ? "true" : "false",
         (node->node_id == cluster->primary_node_id) ? "true" : "false"
