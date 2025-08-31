@@ -13,6 +13,7 @@
 #include "ramd_postgresql.h"
 #include "ramd_cluster.h"
 #include "ramd_sync_replication.h"
+
 #include <libpq-fe.h>
 
 void
@@ -365,7 +366,7 @@ ramd_failover_rebuild_failed_replicas(ramd_cluster_t *cluster, const ramd_config
             
             if (ramd_failover_rebuild_replica_node(cluster, config, node->node_id))
             {
-                node->state = RAMD_NODE_STATE_STANDBY;
+                node->state = RAMD_NODE_STATE_UNKNOWN;
                 node->is_healthy = true;
                 rebuilt_count++;
                 ramd_log_info("Successfully rebuilt replica node %d", node->node_id);

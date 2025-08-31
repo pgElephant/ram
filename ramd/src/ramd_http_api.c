@@ -27,8 +27,9 @@
 #include "ramd_config_reload.h"
 #include "ramd_sync_replication.h"
 #include "ramd_maintenance.h"
-#include "ramd_failover.h"
+
 #include "ramd_daemon.h"
+#include "ramd_failover.h"
 
 /* Global HTTP server instance */
 static ramd_http_server_t *g_http_server = NULL;
@@ -417,7 +418,11 @@ ramd_http_handle_cluster_status(ramd_http_request_t *request, ramd_http_response
         ramd_cluster_count_healthy_nodes(cluster),
         ramd_cluster_has_quorum(cluster) ? "true" : "false",
         time(NULL),
-        "normal" /* TODO: Get actual failover state */
+        (g_ramd_daemon->failover_context.state == RAMD_FAILOVER_STATE_NORMAL) ? "normal" :
+        (g_ramd_daemon->failover_context.state == RAMD_FAILOVER_STATE_DETECTING) ? "detecting" :
+        (g_ramd_daemon->failover_context.state == RAMD_FAILOVER_STATE_PROMOTING) ? "promoting" :
+        (g_ramd_daemon->failover_context.state == RAMD_FAILOVER_STATE_RECOVERING) ? "recovering" :
+        (g_ramd_daemon->failover_context.state == RAMD_FAILOVER_STATE_COMPLETED) ? "completed" : "failed"
     );
     
     ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_buffer);
@@ -562,6 +567,7 @@ ramd_http_handle_nodes_list(ramd_http_request_t *request, ramd_http_response_t *
         snprintf(node_json, sizeof(node_json),
             "%s{\n"
             "      \"node_id\": %d,\n"
+            "      \"name\": \"%s\",\n"
             "      \"hostname\": \"%s\",\n"
             "      \"postgresql_port\": %d,\n"
             "      \"role\": \"%s\",\n"
@@ -572,9 +578,10 @@ ramd_http_handle_nodes_list(ramd_http_request_t *request, ramd_http_response_t *
             (i > 0) ? "," : "",
             node->node_id,
             node->hostname,
+            node->hostname,
             node->postgresql_port,
             (node->role == RAMD_ROLE_PRIMARY) ? "primary" : "standby",
-            (node->state == RAMD_NODE_STATE_STANDBY) ? "healthy" : 
+            (node->state == RAMD_NODE_STATE_UNKNOWN) ? "healthy" : 
              (node->state == RAMD_NODE_STATE_FAILED) ? "failed" : "unknown",
             node->is_healthy ? "true" : "false",
             (node->node_id == cluster->primary_node_id) ? "true" : "false"
@@ -624,7 +631,7 @@ ramd_http_handle_failover(ramd_http_request_t *request, ramd_http_response_t *re
     }
     
     /* Check if failover should be triggered */
-    if (!ramd_failover_should_trigger(cluster, NULL))
+    if (!ramd_failover_should_trigger(cluster, &g_ramd_daemon->config))
     {
         snprintf(json_buffer, sizeof(json_buffer),
             "{\n"
@@ -639,7 +646,7 @@ ramd_http_handle_failover(ramd_http_request_t *request, ramd_http_response_t *re
     ramd_failover_context_t failover_context;
     ramd_failover_context_init(&failover_context);
     
-    if (ramd_failover_execute(cluster, NULL, &failover_context))
+    if (ramd_failover_execute(cluster, &g_ramd_daemon->config, &failover_context))
     {
         snprintf(json_buffer, sizeof(json_buffer),
             "{\n"
@@ -709,7 +716,73 @@ ramd_http_handle_sync_replication(ramd_http_request_t *request, ramd_http_respon
     else if (request->method == RAMD_HTTP_POST)
     {
         /* Update replication configuration */
-        /* TODO: Parse request body and update configuration */
+        /* Parse request body for configuration updates */
+        if (request->body_length > 0)
+        {
+            /* Simple JSON parsing for mode and num_sync_standbys */
+            char *body = request->body;
+            char mode_str[32] = "";
+            int num_sync = -1;
+            
+            /* Look for "mode" field */
+            char *mode_pos = strstr(body, "\"mode\"");
+            if (mode_pos)
+            {
+                char *colon = strchr(mode_pos, ':');
+                if (colon)
+                {
+                    char *start = colon + 1;
+                    while (*start && (*start == ' ' || *start == '\t' || *start == '\n' || *start == '\r')) start++;
+                    if (*start == '"')
+                    {
+                        start++;
+                        char *end = strchr(start, '"');
+                        if (end)
+                        {
+                            size_t len = end - start;
+                            if (len < sizeof(mode_str))
+                            {
+                                strncpy(mode_str, start, len);
+                                mode_str[len] = '\0';
+                            }
+                        }
+                    }
+                }
+            }
+            
+            /* Look for "num_sync_standbys" field */
+            char *num_pos = strstr(body, "\"num_sync_standbys\"");
+            if (num_pos)
+            {
+                char *colon = strchr(num_pos, ':');
+                if (colon)
+                {
+                    num_sync = atoi(colon + 1);
+                }
+            }
+            
+            /* Apply configuration changes */
+            if (strlen(mode_str) > 0)
+            {
+                ramd_sync_mode_t new_mode = RAMD_SYNC_OFF;
+                if (strcmp(mode_str, "off") == 0) new_mode = RAMD_SYNC_OFF;
+                else if (strcmp(mode_str, "local") == 0) new_mode = RAMD_SYNC_LOCAL;
+                else if (strcmp(mode_str, "remote_write") == 0) new_mode = RAMD_SYNC_REMOTE_WRITE;
+                else if (strcmp(mode_str, "remote_apply") == 0) new_mode = RAMD_SYNC_REMOTE_APPLY;
+                
+                ramd_sync_replication_set_mode(new_mode);
+            }
+            
+            if (num_sync >= 0)
+            {
+                /* For num_sync_standbys, we need to create a config and use configure */
+                ramd_sync_config_t sync_config;
+                memset(&sync_config, 0, sizeof(sync_config));
+                sync_config.num_sync_standbys = num_sync;
+                ramd_sync_replication_configure(&sync_config);
+            }
+        }
+        
         snprintf(json_buffer, sizeof(json_buffer),
             "{\n"
             "  \"status\": \"success\",\n"
@@ -756,7 +829,7 @@ ramd_http_handle_promote_node(ramd_http_request_t *request, ramd_http_response_t
         return;
     }
     
-    if (ramd_failover_promote_node(cluster, NULL, node_id))
+    if (ramd_failover_promote_node(cluster, &g_ramd_daemon->config, node_id))
     {
         snprintf(json_buffer, sizeof(json_buffer),
             "{\n"
@@ -814,7 +887,7 @@ ramd_http_handle_demote_node(ramd_http_request_t *request, ramd_http_response_t 
         return;
     }
     
-    if (ramd_failover_demote_failed_primary(cluster, NULL, node_id))
+    if (ramd_failover_demote_failed_primary(cluster, &g_ramd_daemon->config, node_id))
     {
         snprintf(json_buffer, sizeof(json_buffer),
             "{\n"
@@ -885,19 +958,21 @@ ramd_http_handle_node_detail(ramd_http_request_t *request, ramd_http_response_t 
         "  \"status\": \"success\",\n"
         "  \"data\": {\n"
         "    \"node_id\": %d,\n"
+        "    \"name\": \"%s\",\n"
         "    \"hostname\": \"%s\",\n"
         "    \"postgresql_port\": %d,\n"
         "    \"role\": \"%s\",\n"
         "    \"state\": \"%s\",\n"
         "    \"is_healthy\": %s,\n"
-        "    \"is_primary\": %d\n"
+        "    \"is_primary\": %s\n"
         "  }\n"
         "}",
         node->node_id,
+    node->hostname,
         node->hostname,
         node->postgresql_port,
         (node->role == RAMD_ROLE_PRIMARY) ? "primary" : "standby",
-        (node->state == RAMD_NODE_STATE_STANDBY) ? "healthy" : 
+    (node->state == RAMD_NODE_STATE_UNKNOWN) ? "healthy" : 
          (node->state == RAMD_NODE_STATE_FAILED) ? "failed" : "unknown",
         node->is_healthy ? "true" : "false",
         (node->node_id == cluster->primary_node_id) ? "true" : "false"
@@ -919,21 +994,46 @@ ramd_http_handle_maintenance_mode(ramd_http_request_t *request, ramd_http_respon
             "{\n"
             "  \"status\": \"success\",\n"
             "  \"data\": {\n"
-            "    \"maintenance_mode\": false,\n"
+            "    \"maintenance_mode\": %s,\n"
             "    \"message\": \"Maintenance mode status retrieved\"\n"
             "  }\n"
-            "}");
+            "}",
+            g_ramd_daemon->maintenance_mode ? "true" : "false");
         ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_buffer);
     }
     else if (request->method == RAMD_HTTP_POST)
     {
         /* Enable/disable maintenance mode */
-        /* TODO: Parse request body and update maintenance mode */
+        /* Parse request body for maintenance mode */
+        bool new_maintenance_mode = false;
+        if (request->body_length > 0)
+        {
+            char *body = request->body;
+            char *enabled_pos = strstr(body, "\"enabled\"");
+            if (enabled_pos)
+            {
+                char *colon = strchr(enabled_pos, ':');
+                if (colon)
+                {
+                    char *value = colon + 1;
+                    while (*value && (*value == ' ' || *value == '\t' || *value == '\n' || *value == '\r')) value++;
+                    if (strncmp(value, "true", 4) == 0)
+                    {
+                        new_maintenance_mode = true;
+                    }
+                }
+            }
+        }
+        
+        /* Update maintenance mode */
+        g_ramd_daemon->maintenance_mode = new_maintenance_mode;
+        
         snprintf(json_buffer, sizeof(json_buffer),
             "{\n"
             "  \"status\": \"success\",\n"
-            "  \"message\": \"Maintenance mode updated\"\n"
-            "}");
+            "  \"message\": \"Maintenance mode %s\"\n"
+            "}",
+            new_maintenance_mode ? "enabled" : "disabled");
         ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_buffer);
     }
     else

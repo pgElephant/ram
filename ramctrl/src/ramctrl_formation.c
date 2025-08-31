@@ -52,7 +52,7 @@ bool node_exists_in_cluster(const char *cluster_name, const char *node_name)
     /* Search for the node by name */
     for (i = 0; i < node_count; i++)
     {
-        if (strcmp(nodes[i].hostname, node_name) == 0)
+        if (strcmp(nodes[i].node_name, node_name) == 0)
         {
             found = true;
             break;

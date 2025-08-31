@@ -20,6 +20,7 @@
 #include "ramd_sync_replication.h"
 #include "ramd_http_api.h"
 #include "ramd_maintenance.h"
+#include "ramd_postgresql.h"
 
 /* Global state */
 static bool g_config_reload_initialized = false;
@@ -434,51 +435,108 @@ ramd_config_reload_status_to_string(ramd_config_reload_status_t status)
     }
 }
 
-/* Placeholder implementations for remaining functions */
+/* Implementation of configuration reload functions */
 bool ramd_config_reload_postgresql(const ramd_config_t *old_config, const ramd_config_t *new_config)
 {
-    (void)old_config;
-    (void)new_config;
+    if (!old_config || !new_config)
+        return false;
+
+    /* Check if PostgreSQL-related settings changed */
+    bool port_changed = (old_config->postgresql_port != new_config->postgresql_port);
+    bool data_dir_changed = strcmp(old_config->postgresql_data_dir, new_config->postgresql_data_dir) != 0;
+    
+    if (port_changed || data_dir_changed)
+    {
+        ramd_log_info("PostgreSQL configuration changed - port: %d->%d, data_dir: %s->%s",
+                     old_config->postgresql_port, new_config->postgresql_port,
+                     old_config->postgresql_data_dir, new_config->postgresql_data_dir);
+        
+        /* Signal PostgreSQL to reload configuration */
+        ramd_postgresql_connection_t pg_conn;
+        if (ramd_postgresql_connect(&pg_conn, "localhost", old_config->postgresql_port,
+                                   "postgres", "postgres", ""))
+        {
+            /* Execute pg_reload_conf() */
+            char result[256];
+            if (ramd_postgresql_execute_query(&pg_conn, "SELECT pg_reload_conf()", result, sizeof(result)))
+            {
+                ramd_log_info("PostgreSQL configuration reloaded successfully");
+            }
+            else
+            {
+                ramd_log_error("Failed to reload PostgreSQL configuration");
+            }
+            ramd_postgresql_disconnect(&pg_conn);
+        }
+    }
+    
     return true;
 }
 
 bool ramd_config_reload_cluster(const ramd_config_t *old_config, const ramd_config_t *new_config)
 {
-    (void)old_config;
-    (void)new_config;
+    if (!old_config || !new_config)
+        return false;
+
+    /* Check if cluster-related settings changed */
+    bool cluster_name_changed = strcmp(old_config->cluster_name, new_config->cluster_name) != 0;
+    bool node_count_changed = (old_config->cluster_size != new_config->cluster_size);
+    
+    if (cluster_name_changed || node_count_changed)
+    {
+        ramd_log_info("Cluster configuration changed - name: %s->%s, nodes: %d->%d",
+                     old_config->cluster_name, new_config->cluster_name,
+                     old_config->cluster_size, new_config->cluster_size);
+        
+        /* Update cluster configuration */
+        if (g_ramd_daemon)
+        {
+            strcpy(g_ramd_daemon->cluster.cluster_name, new_config->cluster_name);
+            /* Note: node_count changes would require cluster reconfiguration */
+        }
+    }
+    
     return true;
 }
 
 bool ramd_config_reload_http_api(const ramd_config_t *old_config, const ramd_config_t *new_config)
 {
-    (void)old_config;
-    (void)new_config;
+    if (!old_config || !new_config)
+        return false;
+
+    /* Check if HTTP API settings changed */
+    bool port_changed = (old_config->http_port != new_config->http_port);
+    bool bind_addr_changed = strcmp(old_config->http_bind_address, new_config->http_bind_address) != 0;
+    
+    if (port_changed || bind_addr_changed)
+    {
+        ramd_log_info("HTTP API configuration changed - port: %d->%d, bind_addr: %s->%s",
+                     old_config->http_port, new_config->http_port,
+                     old_config->http_bind_address, new_config->http_bind_address);
+        
+        /* HTTP API restart would be required for port changes */
+        ramd_log_warning("HTTP API port change requires daemon restart");
+    }
+    
     return true;
 }
 
 bool ramd_config_reload_maintenance(const ramd_config_t *old_config, const ramd_config_t *new_config)
 {
-    (void)old_config;
-    (void)new_config;
-    return true;
-}
+    if (!old_config || !new_config)
+        return false;
 
-const char *ramd_config_change_flags_to_string(ramd_config_change_flags_t flags, char *buffer, size_t size)
-{
-    (void)flags;
-    if (buffer && size > 0)
-        strncpy(buffer, "changes", size - 1);
-    return buffer;
-}
-
-bool ramd_config_backup_current(const char *backup_path)
-{
-    (void)backup_path;
-    return true;
-}
-
-bool ramd_config_restore_backup(const char *backup_path)
-{
-    (void)backup_path;
+    /* Check if maintenance settings changed */
+    bool mode_changed = (old_config->maintenance_mode_enabled != new_config->maintenance_mode_enabled);
+    bool drain_timeout_changed = (old_config->maintenance_drain_timeout_ms != new_config->maintenance_drain_timeout_ms);
+    
+    if (mode_changed || drain_timeout_changed)
+    {
+        ramd_log_info("Maintenance configuration changed - mode: %s->%s, drain_timeout: %d->%d ms",
+                     old_config->maintenance_mode_enabled ? "enabled" : "disabled",
+                     new_config->maintenance_mode_enabled ? "enabled" : "disabled",
+                     old_config->maintenance_drain_timeout_ms, new_config->maintenance_drain_timeout_ms);
+    }
+    
     return true;
 }

@@ -1,0 +1,42 @@
+# PostgreSQL extension build artifacts
+*.o
+*.bc
+*.so
+*.dylib
+*.a
+*.pc
+/pg_ram.so
+/src/*.o
+/src/*.bc
+/lib*.a
+
+# Extension specific files to ignore
+*.control.backup
+*.sql.backup
+*.sql.orig
+
+# Test output
+regression.out
+regression.diffs
+installcheck.log
+tmp_check/
+
+# Backup files
+*~
+*.bak
+*.orig
+*.backup
+
+# Temporary files
+.tmp_*
+tmp/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+._*

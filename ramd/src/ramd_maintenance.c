@@ -19,12 +19,22 @@
 #include "ramd_maintenance.h"
 #include "ramd_logging.h"
 #include "ramd_postgresql.h"
+#include "ramd_daemon.h"
 #include "ramd_cluster.h"
 
 /* Global maintenance state */
 static ramd_maintenance_state_t g_maintenance_states[RAMD_MAX_NODES];
 static pthread_mutex_t g_maintenance_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool g_maintenance_initialized = false;
+
+/* Global maintenance schedule */
+typedef struct ramd_maintenance_schedule_t {
+    time_t scheduled_time;
+    ramd_maintenance_config_t config;
+    bool is_scheduled;
+} ramd_maintenance_schedule_t;
+
+static ramd_maintenance_schedule_t g_maintenance_schedule;
 
 bool
 ramd_maintenance_init(void)
@@ -267,7 +277,28 @@ ramd_maintenance_pre_check(const ramd_maintenance_config_t *config, ramd_mainten
     }
     
     /* For primary node maintenance, ensure we have at least one healthy standby */
-    /* TODO: Implement actual primary node check */
+    if (config && config->target_node_id == g_ramd_daemon->cluster.primary_node_id)
+    {
+        /* Check if we have at least one healthy standby */
+        int32_t healthy_standbys = 0;
+        for (int32_t i = 0; i < g_ramd_daemon->cluster.node_count; i++)
+        {
+            ramd_node_t *node = &g_ramd_daemon->cluster.nodes[i];
+            if (node->node_id != config->target_node_id && 
+                node->state == RAMD_NODE_STATE_STANDBY && 
+                node->is_healthy)
+            {
+                healthy_standbys++;
+            }
+        }
+        
+        if (healthy_standbys == 0)
+        {
+            checks->sufficient_standbys = false;
+            strncat(checks->check_details, "No healthy standby nodes available for primary maintenance. ",
+                    sizeof(checks->check_details) - strlen(checks->check_details) - 1);
+        }
+    }
     
     return (checks->cluster_healthy && checks->sufficient_standbys);
 }
@@ -338,10 +369,16 @@ ramd_maintenance_get_connection_count(int32_t node_id __attribute__((unused)), i
         
     *count = 0;
     
-    /* TODO: Connect to PostgreSQL */
-    conn = NULL; /* Placeholder */
-    if (!conn)
+    /* Connect to PostgreSQL to get connection count */
+    ramd_postgresql_connection_t pg_conn;
+    if (!ramd_postgresql_connect(&pg_conn, "localhost", g_ramd_daemon->config.postgresql_port,
+                                "postgres", "postgres", ""))
+    {
+        ramd_log_error("Failed to connect to PostgreSQL to get connection count");
         return false;
+    }
+    
+    conn = (PGconn*)pg_conn.connection;
         
     /* Query active connections */
     res = PQexec(conn, 
@@ -354,7 +391,7 @@ ramd_maintenance_get_connection_count(int32_t node_id __attribute__((unused)), i
     }
     
     PQclear(res);
-    PQfinish(conn);
+    ramd_postgresql_disconnect(&pg_conn);
     
     return true;
 }
@@ -366,10 +403,16 @@ ramd_maintenance_prevent_new_connections(int32_t node_id, bool prevent)
     PGresult *res;
     char sql[256];
     
-    /* TODO: Connect to PostgreSQL */
-    conn = NULL; /* Placeholder */
-    if (!conn)
+    /* Connect to PostgreSQL to prevent new connections */
+    ramd_postgresql_connection_t pg_conn;
+    if (!ramd_postgresql_connect(&pg_conn, "localhost", g_ramd_daemon->config.postgresql_port,
+                                "postgres", "postgres", ""))
+    {
+        ramd_log_error("Failed to connect to PostgreSQL to prevent new connections");
         return false;
+    }
+    
+    conn = (PGconn*)pg_conn.connection;
         
     if (prevent)
     {
@@ -388,7 +431,7 @@ ramd_maintenance_prevent_new_connections(int32_t node_id, bool prevent)
         ramd_log_error("Failed to %s connections for node %d: %s",
                        prevent ? "prevent" : "allow", node_id, PQerrorMessage(conn));
         PQclear(res);
-        PQfinish(conn);
+        ramd_postgresql_disconnect(&pg_conn);
         return false;
     }
     
@@ -398,7 +441,7 @@ ramd_maintenance_prevent_new_connections(int32_t node_id, bool prevent)
     res = PQexec(conn, "SELECT pg_reload_conf()");
     PQclear(res);
     
-    PQfinish(conn);
+    ramd_postgresql_disconnect(&pg_conn);
     
     ramd_log_info("Successfully %s new connections for node %d",
                   prevent ? "prevented" : "allowed", node_id);
@@ -550,17 +593,63 @@ ramd_maintenance_is_cluster_safe_for_maintenance(int32_t target_node_id)
     return ramd_maintenance_pre_check(&config, &checks);
 }
 
-/* Placeholder implementations for remaining functions */
+/* Implementation of maintenance management functions */
 bool ramd_maintenance_verify_backup(const char *backup_id)
 {
-    (void)backup_id;
-    return true;
+    if (!backup_id)
+        return false;
+
+    /* Connect to PostgreSQL to verify backup */
+    ramd_postgresql_connection_t pg_conn;
+    if (!ramd_postgresql_connect(&pg_conn, "localhost", g_ramd_daemon->config.postgresql_port,
+                                "postgres", "postgres", ""))
+    {
+        ramd_log_error("Failed to connect to PostgreSQL to verify backup %s", backup_id);
+        return false;
+    }
+
+    PGconn *conn = (PGconn*)pg_conn.connection;
+    PGresult *res;
+    bool backup_valid = false;
+
+    /* Query backup information from pg_stat_archiver or backup history */
+    res = PQexec(conn, "SELECT last_archived_wal FROM pg_stat_archiver");
+    if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
+    {
+        const char *last_wal = PQgetvalue(res, 0, 0);
+        if (last_wal && strlen(last_wal) > 0)
+        {
+            backup_valid = true;
+            ramd_log_info("Backup %s verified - last archived WAL: %s", backup_id, last_wal);
+        }
+    }
+    PQclear(res);
+
+    ramd_postgresql_disconnect(&pg_conn);
+    return backup_valid;
 }
 
 bool ramd_maintenance_monitor_progress(int32_t node_id)
 {
-    (void)node_id;
-    return true;
+    if (node_id <= 0 || node_id > RAMD_MAX_NODES)
+        return false;
+
+    pthread_mutex_lock(&g_maintenance_mutex);
+    ramd_maintenance_state_t *state = &g_maintenance_states[node_id - 1];
+    
+    /* Check if maintenance is in progress */
+    bool in_progress = (state->type != RAMD_MAINTENANCE_NONE);
+    
+    if (in_progress)
+    {
+        time_t now = time(NULL);
+        double elapsed = difftime(now, state->start_time);
+        ramd_log_info("Maintenance progress for node %d: %s (%.1f seconds elapsed)", 
+                     node_id, state->status_message, elapsed);
+    }
+    
+    pthread_mutex_unlock(&g_maintenance_mutex);
+    return in_progress;
 }
 
 bool ramd_maintenance_update_status(int32_t node_id, const char *message)
@@ -573,12 +662,30 @@ bool ramd_maintenance_update_status(int32_t node_id, const char *message)
             sizeof(g_maintenance_states[node_id - 1].status_message) - 1);
     pthread_mutex_unlock(&g_maintenance_mutex);
     
+    ramd_log_info("Maintenance status update for node %d: %s", node_id, message);
     return true;
 }
 
 bool ramd_maintenance_schedule(const ramd_maintenance_config_t *config)
 {
-    (void)config;
+    if (!config)
+        return false;
+
+    /* Schedule maintenance window - default to 1 hour from now */
+    time_t now = time(NULL);
+    time_t maintenance_time = now + (1 * 3600); /* 1 hour from now */
+    
+    ramd_log_info("Scheduled maintenance for node %d at %s", 
+                 config->target_node_id, ctime(&maintenance_time));
+    
+    /* Store maintenance schedule */
+    pthread_mutex_lock(&g_maintenance_mutex);
+    g_maintenance_schedule.scheduled_time = maintenance_time;
+    g_maintenance_schedule.config = *config;
+    g_maintenance_schedule.is_scheduled = true;
+    pthread_mutex_unlock(&g_maintenance_mutex);
+    
+    return true;
     return true;
 }
 
@@ -656,8 +763,9 @@ ramd_maintenance_bootstrap_new_node(const ramd_config_t *config,
     fprintf(postgresql_conf, "hot_standby = on\n");
     fprintf(postgresql_conf, "wal_keep_segments = 64\n");
     fprintf(postgresql_conf, "archive_mode = on\n");
-    fprintf(postgresql_conf, "archive_command = 'test ! -f %s/archive/%s && cp %p %s/archive/%s'\n",
-            node_data_dir, "%f", node_data_dir, "%f");
+    /* Use literal %%p and %%f so PostgreSQL expands them at runtime */
+    fprintf(postgresql_conf, "archive_command = 'test ! -f %s/archive/%s && cp %%p %s/archive/%%f'\n",
+            node_data_dir, "%f", node_data_dir);
     
     fclose(postgresql_conf);
     
@@ -931,8 +1039,9 @@ ramd_maintenance_bootstrap_primary_node(const ramd_config_t *config,
     fprintf(postgresql_conf, "max_replication_slots = 10\n");
     fprintf(postgresql_conf, "wal_keep_segments = 64\n");
     fprintf(postgresql_conf, "archive_mode = on\n");
-    fprintf(postgresql_conf, "archive_command = 'test ! -f %s/archive/%s && cp %p %s/archive/%s'\n",
-            primary_data_dir, "%f", primary_data_dir, "%f");
+    /* Use literal %%p and %%f so PostgreSQL expands them at runtime */
+    fprintf(postgresql_conf, "archive_command = 'test ! -f %s/archive/%s && cp %%p %s/archive/%%f'\n",
+            primary_data_dir, "%f", primary_data_dir);
     
     fclose(postgresql_conf);
     

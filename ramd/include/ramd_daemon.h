@@ -26,6 +26,7 @@ struct ramd_daemon_t
 	/* Runtime state */
 	bool						running;
 	bool						shutdown_requested;
+	bool						maintenance_mode;
 	pthread_mutex_t				mutex;
 
 	/* Configuration */

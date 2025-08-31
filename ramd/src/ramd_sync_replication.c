@@ -18,6 +18,7 @@
 #include "ramd_sync_replication.h"
 #include "ramd_logging.h"
 #include "ramd_postgresql.h"
+#include "ramd_daemon.h"
 
 /* Global synchronous replication state */
 static ramd_sync_config_t g_sync_config;
@@ -286,13 +287,15 @@ ramd_sync_replication_update_postgresql_config(void)
     }
     
     /* Connect to PostgreSQL */
-    /* TODO: Implement primary connection */
-    conn = NULL;
-    if (!conn)
+    ramd_postgresql_connection_t pg_conn;
+    if (!ramd_postgresql_connect(&pg_conn, "localhost", g_ramd_daemon->config.postgresql_port, 
+                                "postgres", "postgres", ""))
     {
         ramd_log_error("Failed to connect to PostgreSQL for sync config update");
         return false;
     }
+    
+    conn = (PGconn*)pg_conn.connection;
     
     /* Update synchronous_commit */
     const char *sync_commit_value = ramd_sync_mode_to_string(g_sync_config.mode);
@@ -304,7 +307,7 @@ ramd_sync_replication_update_postgresql_config(void)
     {
         ramd_log_error("Failed to set synchronous_commit: %s", PQerrorMessage(conn));
         PQclear(res);
-        PQfinish(conn);
+        ramd_postgresql_disconnect(&pg_conn);
         return false;
     }
     PQclear(res);
@@ -318,7 +321,7 @@ ramd_sync_replication_update_postgresql_config(void)
     {
         ramd_log_error("Failed to set synchronous_standby_names: %s", PQerrorMessage(conn));
         PQclear(res);
-        PQfinish(conn);
+        ramd_postgresql_disconnect(&pg_conn);
         return false;
     }
     PQclear(res);
@@ -329,12 +332,12 @@ ramd_sync_replication_update_postgresql_config(void)
     {
         ramd_log_error("Failed to reload PostgreSQL configuration: %s", PQerrorMessage(conn));
         PQclear(res);
-        PQfinish(conn);
+        ramd_postgresql_disconnect(&pg_conn);
         return false;
     }
     PQclear(res);
     
-    PQfinish(conn);
+    ramd_postgresql_disconnect(&pg_conn);
     
     ramd_log_info("Updated PostgreSQL synchronous replication configuration");
     ramd_log_debug("synchronous_commit = %s", sync_commit_value);
@@ -436,35 +439,87 @@ ramd_sync_generate_standby_names(char *output, size_t output_size,
     return true;
 }
 
-/* Placeholder implementations for remaining functions */
+/* Implementation of synchronous replication management functions */
 bool ramd_sync_standby_promote_to_sync(int32_t node_id)
 {
-    (void)node_id;
+    if (!g_ramd_daemon || node_id <= 0 || node_id > g_ramd_daemon->cluster.node_count)
+        return false;
+
+    ramd_node_t *node = &g_ramd_daemon->cluster.nodes[node_id - 1];
+    if (node->state != RAMD_NODE_STATE_STANDBY || !node->is_healthy)
+        return false;
+
+    /* Update synchronous standby configuration */
+    g_sync_config.num_sync_standbys++;
+    
+    /* Update PostgreSQL configuration */
+    if (!ramd_sync_replication_reload_config())
+        return false;
+
+    ramd_log_info("Promoted node %d to synchronous standby", node_id);
     return true;
 }
 
 bool ramd_sync_standby_demote_from_sync(int32_t node_id)
 {
-    (void)node_id;
+    if (!g_ramd_daemon || node_id <= 0 || node_id > g_ramd_daemon->cluster.node_count)
+        return false;
+
+    ramd_node_t *node = &g_ramd_daemon->cluster.nodes[node_id - 1];
+    if (node->state != RAMD_NODE_STATE_STANDBY)
+        return false;
+
+    /* Update synchronous standby configuration */
+    if (g_sync_config.num_sync_standbys > 0)
+        g_sync_config.num_sync_standbys--;
+    
+    /* Update PostgreSQL configuration */
+    if (!ramd_sync_replication_reload_config())
+        return false;
+
+    ramd_log_info("Demoted node %d from synchronous standby", node_id);
     return true;
 }
 
 bool ramd_sync_standby_is_eligible(int32_t node_id)
 {
-    (void)node_id;
-    return true;
+    if (!g_ramd_daemon || node_id <= 0 || node_id > g_ramd_daemon->cluster.node_count)
+        return false;
+
+    ramd_node_t *node = &g_ramd_daemon->cluster.nodes[node_id - 1];
+    
+    /* Check if node is a healthy standby */
+    return (node->state == RAMD_NODE_STATE_STANDBY && node->is_healthy && 
+            node->replication_lag_ms < 10000); /* Less than 10 seconds lag */
 }
 
 bool ramd_sync_replication_check_lag(ramd_sync_standby_t *standby)
 {
-    (void)standby;
-    return true;
+    if (!standby)
+        return false;
+
+    /* Check replication lag against threshold */
+    return (standby->flush_lag_bytes < 10000000); /* Less than 10MB lag */
 }
 
 bool ramd_sync_replication_wait_for_sync(int32_t timeout_ms)
 {
-    (void)timeout_ms;
-    return true;
+    int32_t elapsed = 0;
+    const int32_t check_interval = 1000; /* 1 second */
+
+    while (elapsed < timeout_ms)
+    {
+        if (g_sync_status.current_mode != RAMD_SYNC_OFF && 
+            g_sync_status.num_sync_standbys_connected >= g_sync_config.num_sync_standbys)
+        {
+            return true;
+        }
+
+        usleep(check_interval * 1000);
+        elapsed += check_interval;
+    }
+
+    return false;
 }
 
 /* Enhanced function to take base backup from primary */
@@ -642,12 +697,15 @@ ramd_sync_replication_setup_streaming(const ramd_config_t *config,
             if (is_recovering)
             {
                 /* Check replication status */
-                char query[512];
-                snprintf(query, sizeof(query),
-                        "SELECT application_name, state, sent_lsn, write_lsn, flush_lsn, replay_lsn "
-                        "FROM pg_stat_replication WHERE application_name = '%s'",
-                        application_name ? application_name : "ramd_node");
-                res = PQexec((PGconn*)conn.connection, query);
+                const char *paramValues[1] = { application_name ? application_name : "ramd_node" };
+                res = PQexecParams((PGconn*)conn.connection,
+                    "SELECT application_name, state, sent_lsn, write_lsn, flush_lsn, replay_lsn FROM pg_stat_replication WHERE application_name = $1",
+                    1,       // nParams
+                    NULL,    // paramTypes
+                    paramValues, // paramValues
+                    NULL,    // paramLengths
+                    NULL,    // paramFormats
+                    0);      // resultFormat
                 
                 if (res && PQntuples(res) > 0)
                 {

@@ -760,11 +760,53 @@ ramctrl_cmd_show_nodes(ramctrl_context_t *ctx)
     
     if (ctx->json_output)
     {
-        fprintf(stdout, "  \"nodes\": []\n");
+        fprintf(stdout, "  \"nodes\": [\n");
+        for (int32_t i = 0; i < node_count; i++)
+        {
+            fprintf(stdout, "    {\n");
+            fprintf(stdout, "      \"id\": %d,\n", nodes[i].node_id);
+            fprintf(stdout, "      \"hostname\": \"%s\",\n", nodes[i].hostname);
+            fprintf(stdout, "      \"port\": %d,\n", nodes[i].port);
+            fprintf(stdout, "      \"state\": \"%s\",\n", 
+                   nodes[i].status == RAMCTRL_NODE_STATUS_RUNNING ? "running" :
+                   nodes[i].status == RAMCTRL_NODE_STATUS_STOPPED ? "stopped" :
+                   nodes[i].status == RAMCTRL_NODE_STATUS_FAILED ? "failed" : "unknown");
+            fprintf(stdout, "      \"is_healthy\": %s,\n", nodes[i].is_healthy ? "true" : "false");
+            fprintf(stdout, "      \"health_score\": %.1f\n", nodes[i].health_score);
+            fprintf(stdout, "    }%s\n", (i < node_count - 1) ? "," : "");
+        }
+        fprintf(stdout, "  ]\n");
     }
     else
     {
-        fprintf(stdout, "Node Information: Not implemented yet\n");
+        if (node_count == 0)
+        {
+            fprintf(stdout, "No nodes found in cluster\n");
+        }
+        else
+        {
+            fprintf(stdout, "Cluster Nodes (%d total):\n", node_count);
+            fprintf(stdout, "┌─────┬─────────────────┬──────┬─────────┬─────────┬─────────────┐\n");
+            fprintf(stdout, "│ ID  │ Hostname        │ Port │ State   │ Healthy │ Health Score │\n");
+            fprintf(stdout, "├─────┼─────────────────┼──────┼─────────┼─────────┼─────────────┤\n");
+            
+            for (int32_t i = 0; i < node_count; i++)
+            {
+                const char *state_str = 
+                    nodes[i].status == RAMCTRL_NODE_STATUS_RUNNING ? "RUNNING" :
+                    nodes[i].status == RAMCTRL_NODE_STATUS_STOPPED ? "STOPPED" :
+                    nodes[i].status == RAMCTRL_NODE_STATUS_FAILED ? "FAILED" : "UNKNOWN";
+                
+                fprintf(stdout, "│ %3d │ %-15s │ %4d │ %-7s │ %-7s │ %11.1f │\n",
+                       nodes[i].node_id,
+                       nodes[i].hostname,
+                       nodes[i].port,
+                       state_str,
+                       nodes[i].is_healthy ? "YES" : "NO",
+                       nodes[i].health_score);
+            }
+            fprintf(stdout, "└─────┴─────────────────┴──────┴─────────┴─────────┴─────────────┘\n");
+        }
     }
     
     return RAMCTRL_EXIT_SUCCESS;
