@@ -1,0 +1,105 @@
+# Build artifacts
+build/
+bin/
+lib/
+*.a
+*.o
+*.d
+*.so
+*.so.*
+*.dylib
+*.la
+*.lo
+
+# Executables
+raled/raled
+raled/raled_config
+ralectrl/ralectrl
+
+# Autotools generated files
+config.log
+config.status
+config.cache
+configure
+aclocal.m4
+autom4te.cache/
+Makefile
+Makefile.in
+.deps/
+.libs/
+compile
+depcomp
+install-sh
+ltmain.sh
+missing
+stamp-h1
+libtool
+
+# Pkg-config files
+librale/librale.pc
+
+# Backup files
+*.backup
+*.bak
+*~
+
+# CMake generated files (if used)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.vim
+.project
+.cproject
+.settings/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs and runtime files
+*.log
+log/
+logs/
+*.pid
+*.lock
+
+# Database and data files
+db*/
+data/
+*.db
+*.sqlite
+
+# Core dumps and debug files
+core
+core.*
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Test artifacts
+regression/db*/
+regression/log*/
+regression/*.out
+regression/tmp/
+
+# Documentation build
+docs/build/
+docs/_build/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
