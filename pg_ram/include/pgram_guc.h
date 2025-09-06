@@ -16,11 +16,11 @@
 extern void pgram_guc_init(void);
 
 /* Exposed GUC variables */
-extern int	pgram_node_id;
-extern char *pgram_node_name;
-extern char *pgram_node_ip;
-extern int	pgram_rale_port;
-extern int	pgram_dstore_port;
-extern char *pgram_db_path;
+extern int pgram_node_id;
+extern char* pgram_node_name;
+extern char* pgram_node_ip;
+extern int pgram_rale_port;
+extern int pgram_dstore_port;
+extern char* pgram_db_path;
 
-#endif							/* PGRAM_GUC_H */
+#endif /* PGRAM_GUC_H */

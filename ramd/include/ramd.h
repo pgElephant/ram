@@ -28,25 +28,26 @@
 #include <stdint.h>
 
 /* Version information */
-#define RAMD_VERSION_MAJOR		1
-#define RAMD_VERSION_MINOR		0
-#define RAMD_VERSION_PATCH		0
-#define RAMD_VERSION_STRING		"1.0.0"
+#define RAMD_VERSION_MAJOR 1
+#define RAMD_VERSION_MINOR 0
+#define RAMD_VERSION_PATCH 0
+#define RAMD_VERSION_STRING "1.0.0"
 
 /* Configuration constants */
-#define RAMD_MAX_HOSTNAME_LENGTH	256
-#define RAMD_MAX_PATH_LENGTH		512
-#define RAMD_MAX_COMMAND_LENGTH		1024
-#define RAMD_MAX_LOG_MESSAGE		2048
-#define RAMD_MAX_NODES				16
-#define RAMD_DEFAULT_PORT			5432
-#define RAMD_DEFAULT_RALE_PORT		7400
-#define RAMD_DEFAULT_DSTORE_PORT	7401
+#define RAMD_MAX_HOSTNAME_LENGTH 256
+#define RAMD_MAX_PATH_LENGTH 512
+#define RAMD_MAX_COMMAND_LENGTH 1024
+#define RAMD_MAX_LOG_MESSAGE 2048
+/* Use centralized defaults from ramd_defaults.h */
+#include "ramd_defaults.h"
+#define RAMD_MAX_NODES RAMD_DEFAULT_MAX_NODES
+#define RAMD_DEFAULT_PORT RAMD_DEFAULT_PG_PORT
+#define RAMD_DEFAULT_DSTORE_PORT 7401
 
 /* Daemon constants */
-#define RAMD_MONITOR_INTERVAL_MS	5000	/* 5 seconds */
-#define RAMD_FAILOVER_TIMEOUT_MS	30000	/* 30 seconds */
-#define RAMD_HEALTH_CHECK_TIMEOUT_MS 10000	/* 10 seconds */
+#define RAMD_MONITOR_INTERVAL_MS 5000      /* 5 seconds */
+#define RAMD_FAILOVER_TIMEOUT_MS 30000     /* 30 seconds */
+#define RAMD_HEALTH_CHECK_TIMEOUT_MS 10000 /* 10 seconds */
 
 /* Node states */
 typedef enum ramd_node_state
@@ -75,12 +76,12 @@ typedef struct ramd_cluster_t ramd_cluster_t;
 typedef struct ramd_daemon_t ramd_daemon_t;
 
 /* Global daemon instance */
-extern ramd_daemon_t *g_ramd_daemon;
+extern ramd_daemon_t* g_ramd_daemon;
 
 /* Function prototypes */
 
 /* Core daemon functions */
-extern bool ramd_init(const char *config_file);
+extern bool ramd_init(const char* config_file);
 extern void ramd_cleanup(void);
 extern void ramd_run(void);
 extern void ramd_stop(void);
@@ -92,7 +93,7 @@ extern void ramd_handle_signal(int sig);
 
 /* Process management */
 extern bool ramd_daemonize(void);
-extern bool ramd_write_pidfile(const char *pidfile_path);
-extern void ramd_remove_pidfile(const char *pidfile_path);
+extern bool ramd_write_pidfile(const char* pidfile_path);
+extern void ramd_remove_pidfile(const char* pidfile_path);
 
-#endif							/* RAMD_H */
+#endif /* RAMD_H */

@@ -35,27 +35,24 @@ PG_MODULE_MAGIC;
 static ProcessUtility_hook_type prev_ProcessUtility_hook = NULL;
 
 /* Function prototypes */
-void		_PG_init(void);
-void		_PG_fini(void);
+void _PG_init(void);
+void _PG_fini(void);
 static void StartExtensionNode(void);
-static void pg_ram_ProcessUtility(PlannedStmt *pstmt,
-								  const char *queryString,
-								  bool readOnlyTree,
-								  ProcessUtilityContext context,
-								  ParamListInfo params,
-								  struct QueryEnvironment *queryEnv,
-								  DestReceiver *dest,
-								  QueryCompletion *completionTag);
+static void
+pg_ram_ProcessUtility(PlannedStmt* pstmt, const char* queryString,
+                      bool readOnlyTree, ProcessUtilityContext context,
+                      ParamListInfo params, struct QueryEnvironment* queryEnv,
+                      DestReceiver* dest, QueryCompletion* completionTag);
 
-void
-_PG_init(void)
+void _PG_init(void)
 {
 	if (!process_shared_preload_libraries_in_progress)
 	{
-		ereport(ERROR,
-				(errmsg("pg_ram can only be loaded via shared_preload_libraries"),
-				 errhint("Add pg_ram to shared_preload_libraries "
-						 "configuration variable in postgresql.conf.")));
+		ereport(
+		    ERROR,
+		    (errmsg("pg_ram can only be loaded via shared_preload_libraries"),
+		     errhint("Add pg_ram to shared_preload_libraries "
+		             "configuration variable in postgresql.conf.")));
 	}
 
 	prev_ProcessUtility_hook = ProcessUtility_hook;
@@ -71,8 +68,7 @@ _PG_init(void)
 	ereport(LOG, (errmsg("pg_ram: _PG_init completed successfully.")));
 }
 
-void
-_PG_fini(void)
+void _PG_fini(void)
 {
 	pgram_worker_manager_cleanup();
 	quorum_selection_cleanup();
@@ -86,26 +82,21 @@ _PG_fini(void)
 	ereport(LOG, (errmsg("pg_ram: _PG_fini completed successfully.")));
 }
 
-static void
-StartExtensionNode(void)
+static void StartExtensionNode(void)
 {
 	ereport(LOG, (errmsg("pg_ram: extension node initialized")));
 }
 
 static void
-pg_ram_ProcessUtility(PlannedStmt *pstmt,
-					  const char *queryString,
-					  bool readOnlyTree,
-					  ProcessUtilityContext context,
-					  ParamListInfo params,
-					  struct QueryEnvironment *queryEnv,
-					  DestReceiver *dest,
-					  QueryCompletion *completionTag)
+pg_ram_ProcessUtility(PlannedStmt* pstmt, const char* queryString,
+                      bool readOnlyTree, ProcessUtilityContext context,
+                      ParamListInfo params, struct QueryEnvironment* queryEnv,
+                      DestReceiver* dest, QueryCompletion* completionTag)
 {
 	if (prev_ProcessUtility_hook)
 		prev_ProcessUtility_hook(pstmt, queryString, readOnlyTree, context,
-								  params, queryEnv, dest, completionTag);
+		                         params, queryEnv, dest, completionTag);
 	else
 		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
-								params, queryEnv, dest, completionTag);
+		                        params, queryEnv, dest, completionTag);
 }

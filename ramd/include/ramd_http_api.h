@@ -18,96 +18,121 @@
 #include <arpa/inet.h>
 
 /* HTTP API Configuration */
-#define RAMD_HTTP_DEFAULT_PORT      8008
-#define RAMD_HTTP_MAX_CONNECTIONS   64
-#define RAMD_HTTP_MAX_REQUEST_SIZE  8192
+#include "ramd_defaults.h"
+#define RAMD_HTTP_DEFAULT_PORT RAMD_DEFAULT_HTTP_PORT
+#define RAMD_HTTP_MAX_CONNECTIONS 64
+#define RAMD_HTTP_MAX_REQUEST_SIZE 8192
 #define RAMD_HTTP_MAX_RESPONSE_SIZE 16384
 
 /* HTTP Methods */
-typedef enum {
-    RAMD_HTTP_GET,
-    RAMD_HTTP_POST,
-    RAMD_HTTP_PUT,
-    RAMD_HTTP_DELETE,
-    RAMD_HTTP_PATCH
+typedef enum
+{
+	RAMD_HTTP_GET,
+	RAMD_HTTP_POST,
+	RAMD_HTTP_PUT,
+	RAMD_HTTP_DELETE,
+	RAMD_HTTP_PATCH
 } ramd_http_method_t;
 
 /* HTTP status codes */
-typedef enum {
-    RAMD_HTTP_200_OK = 200,
-    RAMD_HTTP_400_BAD_REQUEST = 400,
-    RAMD_HTTP_401_UNAUTHORIZED = 401,
-    RAMD_HTTP_404_NOT_FOUND = 404,
-    RAMD_HTTP_405_METHOD_NOT_ALLOWED = 405,
-    RAMD_HTTP_500_INTERNAL_ERROR = 500,
-    RAMD_HTTP_501_NOT_IMPLEMENTED = 501,
-    RAMD_HTTP_503_SERVICE_UNAVAILABLE = 503
+typedef enum
+{
+	RAMD_HTTP_200_OK = 200,
+	RAMD_HTTP_400_BAD_REQUEST = 400,
+	RAMD_HTTP_401_UNAUTHORIZED = 401,
+	RAMD_HTTP_404_NOT_FOUND = 404,
+	RAMD_HTTP_405_METHOD_NOT_ALLOWED = 405,
+	RAMD_HTTP_500_INTERNAL_ERROR = 500,
+	RAMD_HTTP_501_NOT_IMPLEMENTED = 501,
+	RAMD_HTTP_503_SERVICE_UNAVAILABLE = 503
 } ramd_http_status_code_t;
 
 /* HTTP Request Structure */
-typedef struct ramd_http_request_t {
-    ramd_http_method_t  method;
-    char                path[256];
-    char                query_string[512];
-    char                body[RAMD_HTTP_MAX_REQUEST_SIZE];
-    size_t              body_length;
-    char                headers[1024];
-    char                authorization[256];
+typedef struct ramd_http_request_t
+{
+	ramd_http_method_t method;
+	char path[256];
+	char query_string[512];
+	char body[RAMD_HTTP_MAX_REQUEST_SIZE];
+	size_t body_length;
+	char headers[1024];
+	char authorization[256];
 } ramd_http_request_t;
 
 /* HTTP Response Structure */
-typedef struct ramd_http_response_t {
-    ramd_http_status_code_t  status;
-    char                     content_type[64];
-    char                     body[RAMD_HTTP_MAX_RESPONSE_SIZE];
-    size_t                   body_length;
-    char                     headers[512];
+typedef struct ramd_http_response_t
+{
+	ramd_http_status_code_t status;
+	char content_type[64];
+	char body[RAMD_HTTP_MAX_RESPONSE_SIZE];
+	size_t body_length;
+	char headers[512];
 } ramd_http_response_t;
 
 /* HTTP Server Context */
-typedef struct ramd_http_server_t {
-    int                 listen_fd;
-    int                 port;
-    bool                running;
-    pthread_t           server_thread;
-    pthread_mutex_t     mutex;
-    char                bind_address[64];
-    bool                auth_enabled;
-    char                auth_token[256];
+typedef struct ramd_http_server_t
+{
+	int listen_fd;
+	int port;
+	bool running;
+	pthread_t server_thread;
+	pthread_mutex_t mutex;
+	char bind_address[64];
+	bool auth_enabled;
+	char auth_token[256];
 } ramd_http_server_t;
 
 /* HTTP Client Connection */
-typedef struct ramd_http_connection_t {
-    int                 client_fd;
-    struct sockaddr_in  client_addr;
-    ramd_http_server_t  *server;
+typedef struct ramd_http_connection_t
+{
+	int client_fd;
+	struct sockaddr_in client_addr;
+	ramd_http_server_t* server;
 } ramd_http_connection_t;
 
 /* Function prototypes */
-bool ramd_http_server_init(ramd_http_server_t *server, const char *bind_address, int port);
-bool ramd_http_server_start(ramd_http_server_t *server);
-void ramd_http_server_stop(ramd_http_server_t *server);
-void ramd_http_server_cleanup(ramd_http_server_t *server);
+bool ramd_http_server_init(ramd_http_server_t* server, const char* bind_address,
+                           int port);
+bool ramd_http_server_start(ramd_http_server_t* server);
+void ramd_http_server_stop(ramd_http_server_t* server);
+void ramd_http_server_cleanup(ramd_http_server_t* server);
 
-bool ramd_http_parse_request(const char *raw_request, ramd_http_request_t *request);
-void ramd_http_handle_request(ramd_http_request_t *request, ramd_http_response_t *response);
-bool ramd_http_send_response(int client_fd, ramd_http_response_t *response);
+bool ramd_http_parse_request(const char* raw_request,
+                             ramd_http_request_t* request);
+void ramd_http_handle_request(ramd_http_request_t* request,
+                              ramd_http_response_t* response);
+bool ramd_http_send_response(int client_fd, ramd_http_response_t* response);
 
 /* API Endpoint Handlers */
-void ramd_http_handle_cluster_status(ramd_http_request_t *request, ramd_http_response_t *response);
-void ramd_http_handle_nodes_list(ramd_http_request_t *request, ramd_http_response_t *response);
-void ramd_http_handle_node_detail(ramd_http_request_t *request, ramd_http_response_t *response);
-void ramd_http_handle_promote_node(ramd_http_request_t *request, ramd_http_response_t *response);
-void ramd_http_handle_demote_node(ramd_http_request_t *request, ramd_http_response_t *response);
-void ramd_http_handle_failover(ramd_http_request_t *request, ramd_http_response_t *response);
-void ramd_http_handle_maintenance_mode(ramd_http_request_t *request, ramd_http_response_t *response);
-void ramd_http_handle_config_reload(ramd_http_request_t *request, ramd_http_response_t *response);
-void ramd_http_handle_sync_replication(ramd_http_request_t *request, ramd_http_response_t *response);
+void ramd_http_handle_cluster_status(ramd_http_request_t* request,
+                                     ramd_http_response_t* response);
+void ramd_http_handle_nodes_list(ramd_http_request_t* request,
+                                 ramd_http_response_t* response);
+void ramd_http_handle_node_detail(ramd_http_request_t* request,
+                                  ramd_http_response_t* response);
+void ramd_http_handle_promote_node(ramd_http_request_t* request,
+                                   ramd_http_response_t* response);
+void ramd_http_handle_demote_node(ramd_http_request_t* request,
+                                  ramd_http_response_t* response);
+void ramd_http_handle_failover(ramd_http_request_t* request,
+                               ramd_http_response_t* response);
+void ramd_http_handle_maintenance_mode(ramd_http_request_t* request,
+                                       ramd_http_response_t* response);
+void ramd_http_handle_config_reload(ramd_http_request_t* request,
+                                    ramd_http_response_t* response);
+void ramd_http_handle_sync_replication(ramd_http_request_t* request,
+                                       ramd_http_response_t* response);
 
 /* Utility functions */
-char *ramd_http_get_query_param(const char *query_string, const char *param_name);
-bool ramd_http_authenticate(const char *authorization, const char *required_token);
-void ramd_http_set_json_response(ramd_http_response_t *response, ramd_http_status_code_t status, const char *json);
-void ramd_http_set_error_response(ramd_http_response_t *response, ramd_http_status_code_t status, const char *message);
+char* ramd_http_get_query_param(const char* query_string,
+                                const char* param_name);
+bool ramd_http_authenticate(const char* authorization,
+                            const char* required_token);
+void ramd_http_set_json_response(ramd_http_response_t* response,
+                                 ramd_http_status_code_t status,
+                                 const char* json);
+void ramd_http_set_error_response(ramd_http_response_t* response,
+                                  ramd_http_status_code_t status,
+                                  const char* message);
 
 #endif /* RAMD_HTTP_API_H */

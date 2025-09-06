@@ -24,25 +24,25 @@
 struct ramd_daemon_t
 {
 	/* Runtime state */
-	bool						running;
-	bool						shutdown_requested;
-	bool						maintenance_mode;
-	pthread_mutex_t				mutex;
+	bool running;
+	bool shutdown_requested;
+	bool maintenance_mode;
+	pthread_mutex_t mutex;
 
 	/* Configuration */
-	ramd_config_t				config;
-	char					   *config_file;
+	ramd_config_t config;
+	char* config_file;
 
 	/* Core components */
-	ramd_cluster_t				cluster;
-	ramd_monitor_t				monitor;
-	ramd_failover_context_t		failover_context;
+	ramd_cluster_t cluster;
+	ramd_monitor_t monitor;
+	ramd_failover_context_t failover_context;
 
 	/* HTTP API server */
-	ramd_http_server_t			http_server;
+	ramd_http_server_t http_server;
 };
 
 /* Global daemon instance */
-extern struct ramd_daemon_t *g_ramd_daemon;
+extern struct ramd_daemon_t* g_ramd_daemon;
 
-#endif							/* RAMD_DAEMON_H */
+#endif /* RAMD_DAEMON_H */

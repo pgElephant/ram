@@ -1,0 +1,67 @@
+# Replica 1 Node Configuration
+# RAM Cluster Management - Replica Node 1
+cluster:
+  name: "ram_cluster"
+  id: 1
+
+node:
+  id: 2
+  name: "replica1"
+  role: "standby"
+
+network:
+  bind_address: "127.0.0.1"
+  postgresql_host: "127.0.0.1"
+  postgresql_port: 5433
+  http_api_port: 8009
+  ramd_port: 8001
+
+postgresql:
+  user: "postgres"
+  database: "postgres"
+  password: ""
+  data_dir: "/tmp/ram_cluster/replica1/pgdata"
+  log_dir: "/tmp/ram_cluster/replica1/logs"
+  bin_dir: "/usr/local/pgsql.17/bin"
+
+replication:
+  streaming_enabled: true
+  synchronous_enabled: false
+  primary_host: "127.0.0.1"
+  primary_port: 5432
+  replication_user: "postgres"
+  replication_slot: "replica1_slot"
+  recovery_target_timeline: "latest"
+
+failover:
+  auto_enabled: true
+  timeout_seconds: 30
+  primary_failure_timeout: 60
+  promotion_timeout: 120
+  candidate_priority: 100
+
+rale:
+  enabled: true
+  port: 7401
+  dstore_port: 7402
+  election_timeout: 5000
+  heartbeat_interval: 1000
+
+logging:
+  level: "info"
+  to_console: true
+  to_file: true
+  file_path: "/tmp/ram_cluster/replica1/logs/ramd.log"
+  rotation: true
+  max_size: "100MB"
+
+monitoring:
+  health_check_interval: 5
+  metrics_enabled: true
+  prometheus_port: 9091
+
+security:
+  auth_enabled: false
+  ssl_enabled: false
+  cert_file: ""
+  key_file: ""

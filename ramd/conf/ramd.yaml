@@ -1,0 +1,85 @@
+# RAM PostgreSQL Auto-Failover Daemon Configuration
+# Copyright (c) 2024-2025, pgElephant, Inc.
+# Format: YAML
+
+metadata:
+  description: "RAM PostgreSQL Auto-Failover Daemon Configuration"
+  copyright: "Copyright (c) 2024-2025, pgElephant, Inc."
+  format: "YAML"
+  version: "1.0"
+
+# Node Configuration
+node:
+  id: 1
+  hostname: "localhost"
+  role: "primary"  # primary, standby, monitor
+
+# Cluster Configuration
+cluster:
+  name: "ram_cluster"
+  size: 3
+  auto_failover_enabled: true
+  synchronous_replication: false
+
+# PostgreSQL Configuration
+postgresql:
+  port: 5432
+  data_dir: "/tmp/postgres_data"
+  bin_dir: "/usr/local/pgsql/bin"
+  log_dir: "/tmp/postgres_logs"
+  database:
+    name: "postgres"
+    user: "postgres"
+    password: ""
+  users:
+    postgresql_user: "postgres"
+    replication_user: "replicator"
+
+# HTTP API Configuration
+http_api:
+  enabled: true
+  bind_address: "127.0.0.1"
+  port: 8008
+  authentication:
+    enabled: false
+    token: ""
+
+# Monitoring Configuration
+monitoring:
+  interval_ms: 5000
+  health_check_timeout_ms: 10000
+  failover_timeout_ms: 30000
+  recovery_timeout_ms: 300000
+
+# Logging Configuration
+logging:
+  level: "info"
+  destinations:
+    console: true
+    syslog: false
+    file: ""
+
+# Network Configuration
+networking:
+  rale_port: 7400
+  dstore_port: 7401
+
+# Maintenance Configuration
+maintenance:
+  mode_enabled: true
+  drain_timeout_ms: 30000
+  backup_before: false
+
+# Daemon Configuration
+daemon:
+  daemonize: false
+  pid_file: "/tmp/ramd.pid"
+  user: ""
+  group: ""
+
+# Synchronous Replication Configuration
+synchronous_replication:
+  standby_names: ""
+  num_sync_standbys: 1
+  timeout_ms: 10000
+  enforce_sync_standbys: true

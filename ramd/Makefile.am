@@ -12,7 +12,9 @@ ramd_SOURCES = src/ramd_main.c \
                src/ramd_http_api.c \
                src/ramd_sync_replication.c \
                src/ramd_config_reload.c \
-               src/ramd_maintenance.c
+               src/ramd_maintenance.c \
+               src/ramd_cascade.c \
+               src/ramd_callbacks.c
 
 # Link with librale, pthread and PostgreSQL
 ramd_LDADD = $(top_srcdir)/../rale/lib/librale.a -lpthread -L/usr/local/pgsql/lib -L/opt/homebrew/lib -lpq

@@ -12,4 +12,10 @@ ramctrl_SOURCES = \
   src/ramctrl_database.c \
   src/ramctrl_daemon.c \
   src/ramctrl_table.c \
-  src/ramctrl_replication.c
+  src/ramctrl_replication.c \
+  src/ramctrl_watch.c \
+  src/ramctrl_http.c \
+  src/ramctrl_common.c \
+  src/ramctrl_help.c \
+  src/ramctrl_show.c \
+  src/ramctrl_formation.c

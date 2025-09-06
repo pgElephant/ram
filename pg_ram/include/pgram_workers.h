@@ -19,4 +19,4 @@ extern void pgram_worker_manager_init(void);
 extern void pgram_worker_manager_cleanup(void);
 extern void pgram_worker_manager_get_status(StringInfo buf);
 
-#endif							/* PGRAM_WORKERS_H */
+#endif /* PGRAM_WORKERS_H */

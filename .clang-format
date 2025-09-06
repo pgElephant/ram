@@ -1,0 +1,71 @@
+---
+# PostgreSQL Coding Standards .clang-format Configuration
+# This configuration follows PostgreSQL C coding conventions exactly
+# Key standards: 4-space tabs, Allman braces, 80-column limit, C-style comments
+
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Core PostgreSQL formatting rules
+IndentWidth: 4
+TabWidth: 4
+UseTab: ForIndentation
+ColumnLimit: 80
+
+# Brace style - Allman (opening brace on new line, PostgreSQL standard)
+BreakBeforeBraces: Allman
+
+# Function and statement formatting (no short forms)
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+
+# Indentation
+IndentCaseLabels: false
+IndentGotoLabels: true
+ContinuationIndentWidth: 4
+
+# Pointer alignment (PostgreSQL uses left alignment: int *ptr)
+PointerAlignment: Left
+
+# Spacing (PostgreSQL conventions)
+SpaceBeforeParens: ControlStatements
+SpaceAfterCStyleCast: true
+SpacesBeforeTrailingComments: 1
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceBeforeAssignmentOperators: true
+
+# Binary operators
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+
+# Function parameters
+BinPackArguments: true
+BinPackParameters: true
+
+# Comments
+ReflowComments: true
+AlignTrailingComments: true
+
+# Include organization - preserve PostgreSQL order, don't sort
+SortIncludes: false
+
+# String handling
+BreakStringLiterals: true
+
+# Empty lines
+MaxEmptyLinesToKeep: 2
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+# Preprocessor
+IndentPPDirectives: None
+
+# Penalties (fine-tuning for PostgreSQL style)
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakComment: 300
+PenaltyBreakString: 1000
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 60
