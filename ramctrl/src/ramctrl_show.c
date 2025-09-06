@@ -109,8 +109,10 @@ int ramctrl_show_status_all(ramctrl_context_t* ctx)
 		ramctrl_table_print_row("Cluster Name", cluster_info.cluster_name);
 		ramctrl_table_print_row_int("Total Nodes", cluster_info.total_nodes);
 		ramctrl_table_print_row_int("Active Nodes", cluster_info.active_nodes);
-		ramctrl_table_print_row_int("Primary Node ID", cluster_info.primary_node_id);
-		ramctrl_table_print_row_int("Leader Node ID", cluster_info.leader_node_id);
+		ramctrl_table_print_row_int("Primary Node ID",
+		                            cluster_info.primary_node_id);
+		ramctrl_table_print_row_int("Leader Node ID",
+		                            cluster_info.leader_node_id);
 	}
 
 	if (ramctrl_get_all_nodes(ctx, &nodes, &node_count))
@@ -173,7 +175,8 @@ int ramctrl_show_health(ramctrl_context_t* ctx)
 		else if (primary_nodes == 0)
 			ramctrl_table_print_row("Primary Status", "No Primary (Critical)");
 		else
-			ramctrl_table_print_row("Primary Status", "Multiple Primaries (Critical)");
+			ramctrl_table_print_row("Primary Status",
+			                        "Multiple Primaries (Critical)");
 
 		free(nodes);
 	}
@@ -245,8 +248,10 @@ int ramctrl_show_configuration(ramctrl_context_t* ctx)
 	ramctrl_table_print_row("User", ctx->user);
 	ramctrl_table_print_row("Config File", ctx->config_file);
 	ramctrl_table_print_row_int("Timeout", ctx->timeout_seconds);
-	ramctrl_table_print_row("Verbose Mode", ctx->verbose ? "Enabled" : "Disabled");
-	ramctrl_table_print_row("JSON Output", ctx->json_output ? "Enabled" : "Disabled");
+	ramctrl_table_print_row("Verbose Mode",
+	                        ctx->verbose ? "Enabled" : "Disabled");
+	ramctrl_table_print_row("JSON Output",
+	                        ctx->json_output ? "Enabled" : "Disabled");
 	ramctrl_table_print_footer();
 
 	return RAMCTRL_EXIT_SUCCESS;
@@ -293,15 +298,13 @@ void ramctrl_show_format_nodes_table(ramctrl_node_info_t* nodes, int count)
 		return;
 
 	ramctrl_table_print_header("Node Information");
-	printf("%-8s %-20s %-8s %-8s %-8s %-8s %-8s\n",
-	       "Node ID", "Hostname", "Port", "Primary", "Standby", "Leader", "Healthy");
+	printf("%-8s %-20s %-8s %-8s %-8s %-8s %-8s\n", "Node ID", "Hostname",
+	       "Port", "Primary", "Standby", "Leader", "Healthy");
 
 	for (i = 0; i < count; i++)
 	{
-		printf("%-8d %-20s %-8d %-8s %-8s %-8s %-8s\n",
-		       nodes[i].node_id,
-		       nodes[i].hostname,
-		       nodes[i].port,
+		printf("%-8d %-20s %-8d %-8s %-8s %-8s %-8s\n", nodes[i].node_id,
+		       nodes[i].hostname, nodes[i].port,
 		       nodes[i].is_primary ? "Yes" : "No",
 		       nodes[i].is_standby ? "Yes" : "No",
 		       nodes[i].is_leader ? "Yes" : "No",
@@ -360,10 +363,14 @@ void ramctrl_show_nodes_json(ramctrl_node_info_t* nodes, int count)
 		printf("      \"node_id\": %d,\n", nodes[i].node_id);
 		printf("      \"hostname\": \"%s\",\n", nodes[i].hostname);
 		printf("      \"port\": %d,\n", nodes[i].port);
-		printf("      \"is_primary\": %s,\n", nodes[i].is_primary ? "true" : "false");
-		printf("      \"is_standby\": %s,\n", nodes[i].is_standby ? "true" : "false");
-		printf("      \"is_leader\": %s,\n", nodes[i].is_leader ? "true" : "false");
-		printf("      \"is_healthy\": %s\n", nodes[i].is_healthy ? "true" : "false");
+		printf("      \"is_primary\": %s,\n",
+		       nodes[i].is_primary ? "true" : "false");
+		printf("      \"is_standby\": %s,\n",
+		       nodes[i].is_standby ? "true" : "false");
+		printf("      \"is_leader\": %s,\n",
+		       nodes[i].is_leader ? "true" : "false");
+		printf("      \"is_healthy\": %s\n",
+		       nodes[i].is_healthy ? "true" : "false");
 		printf("    }%s\n", (i < count - 1) ? "," : "");
 	}
 

@@ -81,8 +81,10 @@ void ramd_config_set_defaults(ramd_config_t* config)
 	/* HTTP API defaults */
 	config->http_api_enabled = true;
 	/* Temporary default for testing - should be configured for security */
-	strncpy(config->http_bind_address, "127.0.0.1", sizeof(config->http_bind_address) - 1);
-	config->http_port = RAMD_DEFAULT_HTTP_PORT; /* Use default port for testing */
+	strncpy(config->http_bind_address, "127.0.0.1",
+	        sizeof(config->http_bind_address) - 1);
+	config->http_port =
+	    RAMD_DEFAULT_HTTP_PORT; /* Use default port for testing */
 	config->http_auth_enabled = false;
 	config->http_auth_token[0] = '\0';
 
@@ -117,7 +119,7 @@ bool ramd_config_load_file(ramd_config_t* config, const char* config_file)
 	fp = fopen(config_file, "r");
 	if (!fp)
 	{
-		fprintf(stderr, "Failed to open configuration file: %s (%s)\n", 
+		fprintf(stderr, "Failed to open configuration file: %s (%s)\n",
 		        config_file, strerror(errno));
 		ramd_log_error("Failed to open configuration file: %s", config_file);
 		return false;

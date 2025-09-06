@@ -1352,26 +1352,25 @@ bool ramd_maintenance_verify_replication_status(const char* host, int32_t port)
 bool ramd_maintenance_setup_replica(const ramd_config_t* config,
                                     const char* cluster_name,
                                     const char* replica_host,
-                                    int32_t replica_port,
-                                    int32_t node_id)
+                                    int32_t replica_port, int32_t node_id)
 {
 	char replica_data_dir[512];
 	char primary_host[256];
 	int32_t primary_port;
-	
+
 	if (!config || !cluster_name || !replica_host || node_id <= 0)
 	{
 		ramd_log_error("Invalid parameters for replica setup");
 		return false;
 	}
-	
-	ramd_log_info("Setting up replica node %d: %s:%d for cluster '%s'",
-	              node_id, replica_host, replica_port, cluster_name);
-	
+
+	ramd_log_info("Setting up replica node %d: %s:%d for cluster '%s'", node_id,
+	              replica_host, replica_port, cluster_name);
+
 	/* Find primary node from existing cluster */
 	ramd_cluster_t* cluster = &g_ramd_daemon->cluster;
 	bool primary_found = false;
-	
+
 	for (int32_t i = 0; i < cluster->node_count; i++)
 	{
 		ramd_node_t* node = &cluster->nodes[i];
@@ -1384,30 +1383,32 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 			break;
 		}
 	}
-	
+
 	if (!primary_found)
 	{
 		ramd_log_error("No primary node found in cluster for replica setup");
 		return false;
 	}
-	
-	ramd_log_info("Using primary %s:%d for replica setup", primary_host, primary_port);
-	
+
+	ramd_log_info("Using primary %s:%d for replica setup", primary_host,
+	              primary_port);
+
 	/* Step 1: Prepare replica data directory */
 	snprintf(replica_data_dir, sizeof(replica_data_dir), "%s/%s_replica_%d",
 	         config->postgresql_data_dir, cluster_name, node_id);
-	
+
 	ramd_log_info("Creating replica data directory: %s", replica_data_dir);
-	
+
 	/* Remove existing directory if it exists */
 	char remove_cmd[1024];
 	snprintf(remove_cmd, sizeof(remove_cmd), "rm -rf %s", replica_data_dir);
 	int result = system(remove_cmd);
 	if (result != 0)
 	{
-		ramd_log_warning("Failed to remove existing replica directory, continuing...");
+		ramd_log_warning(
+		    "Failed to remove existing replica directory, continuing...");
 	}
-	
+
 	/* Create new directory */
 	char mkdir_cmd[512];
 	snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", replica_data_dir);
@@ -1417,30 +1418,33 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 		ramd_log_error("Failed to create replica data directory");
 		return false;
 	}
-	
+
 	/* Step 2: Take base backup from primary */
-	ramd_log_info("Taking base backup from primary %s:%d", primary_host, primary_port);
-	
-	if (!ramd_maintenance_take_basebackup_from_primary(replica_data_dir, primary_host, primary_port))
+	ramd_log_info("Taking base backup from primary %s:%d", primary_host,
+	              primary_port);
+
+	if (!ramd_maintenance_take_basebackup_from_primary(
+	        replica_data_dir, primary_host, primary_port))
 	{
 		ramd_log_error("Failed to take base backup for replica");
 		return false;
 	}
-	
+
 	/* Step 3: Configure replica-specific settings */
 	ramd_log_info("Configuring replica settings");
-	
+
 	char postgresql_conf_path[512];
 	snprintf(postgresql_conf_path, sizeof(postgresql_conf_path),
 	         "%s/postgresql.conf", replica_data_dir);
-	
+
 	FILE* postgresql_conf = fopen(postgresql_conf_path, "a");
 	if (!postgresql_conf)
 	{
-		ramd_log_error("Failed to open postgresql.conf for replica configuration");
+		ramd_log_error(
+		    "Failed to open postgresql.conf for replica configuration");
 		return false;
 	}
-	
+
 	fprintf(postgresql_conf, "\n# Replica-specific configuration\n");
 	fprintf(postgresql_conf, "port = %d\n", replica_port);
 	fprintf(postgresql_conf, "hot_standby = on\n");
@@ -1448,17 +1452,17 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 	fprintf(postgresql_conf, "max_standby_streaming_delay = 30s\n");
 	fprintf(postgresql_conf, "max_standby_archive_delay = 30s\n");
 	fprintf(postgresql_conf, "hot_standby_feedback = on\n");
-	
+
 	fclose(postgresql_conf);
-	
+
 	/* Step 4: Configure replication connection */
 	ramd_log_info("Configuring streaming replication");
-	
+
 	/* For PostgreSQL 12+, use standby.signal and postgresql.auto.conf */
 	char standby_signal_path[512];
 	snprintf(standby_signal_path, sizeof(standby_signal_path),
 	         "%s/standby.signal", replica_data_dir);
-	
+
 	FILE* standby_signal = fopen(standby_signal_path, "w");
 	if (!standby_signal)
 	{
@@ -1466,26 +1470,27 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 		return false;
 	}
 	fclose(standby_signal);
-	
+
 	char auto_conf_path[512];
-	snprintf(auto_conf_path, sizeof(auto_conf_path),
-	         "%s/postgresql.auto.conf", replica_data_dir);
-	
+	snprintf(auto_conf_path, sizeof(auto_conf_path), "%s/postgresql.auto.conf",
+	         replica_data_dir);
+
 	FILE* auto_conf = fopen(auto_conf_path, "a");
 	if (!auto_conf)
 	{
 		ramd_log_error("Failed to open postgresql.auto.conf for replica");
 		return false;
 	}
-	
+
 	fprintf(auto_conf, "\n# Streaming replication configuration\n");
-	fprintf(auto_conf, "primary_conninfo = 'host=%s port=%d user=%s dbname=postgres'\n",
+	fprintf(auto_conf,
+	        "primary_conninfo = 'host=%s port=%d user=%s dbname=postgres'\n",
 	        primary_host, primary_port, config->postgresql_user);
 	fprintf(auto_conf, "recovery_target_timeline = 'latest'\n");
 	fprintf(auto_conf, "primary_slot_name = 'replica_%d_slot'\n", node_id);
-	
+
 	fclose(auto_conf);
-	
+
 	ramd_log_info("Replica setup completed successfully for node %d", node_id);
 	return true;
 }

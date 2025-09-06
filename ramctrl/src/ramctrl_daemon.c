@@ -34,96 +34,96 @@
 static bool ramctrl_daemon_is_running_pidfile(const char* pidfile)
 {
 	FILE* fp;
-    pid_t pid;
-    
-    fp = fopen(pidfile, "r");
-    if (!fp)
-        return false;
-        
-    if (fscanf(fp, "%d", &pid) != 1)
-    {
-        fclose(fp);
-        return false;
-    }
-    fclose(fp);
-    
-    if (kill(pid, 0) == 0)
-        return true;
-    else
-    {
-        unlink(pidfile);
-        return false;
-    }
+	pid_t pid;
+
+	fp = fopen(pidfile, "r");
+	if (!fp)
+		return false;
+
+	if (fscanf(fp, "%d", &pid) != 1)
+	{
+		fclose(fp);
+		return false;
+	}
+	fclose(fp);
+
+	if (kill(pid, 0) == 0)
+		return true;
+	else
+	{
+		unlink(pidfile);
+		return false;
+	}
 }
 
 
 static pid_t ramctrl_daemon_get_pid_pidfile(const char* pidfile)
 {
 	FILE* fp;
-    pid_t pid = 0;
-    
-    fp = fopen(pidfile, "r");
-    if (fp)
-    {
-        if (fscanf(fp, "%d", &pid) != 1)
-            pid = 0;
-        fclose(fp);
-    }
-    
-    return pid;
+	pid_t pid = 0;
+
+	fp = fopen(pidfile, "r");
+	if (fp)
+	{
+		if (fscanf(fp, "%d", &pid) != 1)
+			pid = 0;
+		fclose(fp);
+	}
+
+	return pid;
 }
 
 
 bool ramctrl_daemon_is_running(ramctrl_context_t* ctx)
 {
-    if (!ctx)
-        return false;
-    
-    return ramctrl_daemon_is_running_pidfile(RAMD_PIDFILE);
+	if (!ctx)
+		return false;
+
+	return ramctrl_daemon_is_running_pidfile(RAMD_PIDFILE);
 }
 
 
 pid_t ramctrl_daemon_get_pid(ramctrl_context_t* ctx)
 {
-    if (!ctx)
-        return 0;
-    
-    return ramctrl_daemon_get_pid_pidfile(RAMD_PIDFILE);
+	if (!ctx)
+		return 0;
+
+	return ramctrl_daemon_get_pid_pidfile(RAMD_PIDFILE);
 }
 
 
 bool ramctrl_daemon_start(ramctrl_context_t* ctx, const char* config_file)
 {
 	char* args[16];
-    int arg_count = 0;
-    
-    if (!ctx)
-        return false;
-        
-    if (ramctrl_daemon_is_running_pidfile(RAMD_PIDFILE))
-    {
-        if (ctx->verbose)
-            printf("ramctrl: ramd daemon is already running\n");
-        return true;
-    }
-    
-    args[arg_count++] = RAMD_BINARY;
+	int arg_count = 0;
+
+	if (!ctx)
+		return false;
+
+	if (ramctrl_daemon_is_running_pidfile(RAMD_PIDFILE))
+	{
+		if (ctx->verbose)
+			printf("ramctrl: ramd daemon is already running\n");
+		return true;
+	}
+
+	args[arg_count++] = RAMD_BINARY;
 	args[arg_count++] = "--daemon";
-    
+
 	if (config_file)
-    {
+	{
 		args[arg_count++] = "--config";
 		args[arg_count++] = (char*) config_file;
-    }
+	}
 
 	if (ctx->verbose)
-    {
+	{
 		args[arg_count++] = "--verbose";
-    }
-    
-    args[arg_count] = NULL;
-    
-        if (ctx->verbose)
+	}
+
+	args[arg_count] = NULL;
+
+	if (ctx->verbose)
 		printf("ramctrl: starting ramd daemon...\n");
 
 	pid_t pid = fork();
@@ -134,55 +134,55 @@ bool ramctrl_daemon_start(ramctrl_context_t* ctx, const char* config_file)
 	}
 	else if (pid > 0)
 	{
-        int status;
+		int status;
 		waitpid(pid, &status, 0);
 		if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 		{
-            if (ctx->verbose)
+			if (ctx->verbose)
 				printf("ramctrl: ramd daemon started successfully\n");
-            return true;
-        }
+			return true;
+		}
 	}
 
-            if (ctx->verbose)
+	if (ctx->verbose)
 		printf("ramctrl: failed to start ramd daemon\n");
-            return false;
+	return false;
 }
 
 
 bool ramctrl_daemon_stop(ramctrl_context_t* ctx)
 {
-    pid_t pid;
-    int attempts = 0;
-    
-    if (!ctx)
-        return false;
-        
-    if (!ramctrl_daemon_is_running_pidfile(RAMD_PIDFILE))
-    {
-        if (ctx->verbose)
-            printf("ramctrl: ramd daemon is not running\n");
-        return true;
-    }
-    
-    pid = ramctrl_daemon_get_pid_pidfile(RAMD_PIDFILE);
-    if (pid <= 0)
-    {
-        if (ctx->verbose)
+	pid_t pid;
+	int attempts = 0;
+
+	if (!ctx)
+		return false;
+
+	if (!ramctrl_daemon_is_running_pidfile(RAMD_PIDFILE))
+	{
+		if (ctx->verbose)
+			printf("ramctrl: ramd daemon is not running\n");
+		return true;
+	}
+
+	pid = ramctrl_daemon_get_pid_pidfile(RAMD_PIDFILE);
+	if (pid <= 0)
+	{
+		if (ctx->verbose)
 			printf("ramctrl: cannot determine ramd daemon PID\n");
-        return false;
-    }
-    
+		return false;
+	}
+
 	if (ctx->verbose)
 		printf("ramctrl: stopping ramd daemon (PID %d)...\n", pid);
 
 	while (attempts < 30)
 	{
-    if (kill(pid, SIGTERM) != 0)
+		if (kill(pid, SIGTERM) != 0)
 		{
 			if (errno == ESRCH)
-    {
-        if (ctx->verbose)
+			{
+				if (ctx->verbose)
 					printf("ramctrl: ramd daemon stopped\n");
 				unlink(RAMD_PIDFILE);
 				return true;
@@ -193,34 +193,34 @@ bool ramctrl_daemon_stop(ramctrl_context_t* ctx)
 		sleep(1);
 		attempts++;
 
-        if (!ramctrl_daemon_is_running_pidfile(RAMD_PIDFILE))
-        {
-            if (ctx->verbose)
-                printf("ramctrl: ramd daemon stopped\n");
-            return true;
-        }
-    }
-    
-    if (ctx->verbose)
+		if (!ramctrl_daemon_is_running_pidfile(RAMD_PIDFILE))
+		{
+			if (ctx->verbose)
+				printf("ramctrl: ramd daemon stopped\n");
+			return true;
+		}
+	}
+
+	if (ctx->verbose)
 		printf("ramctrl: sending SIGKILL to ramd daemon\n");
 	kill(pid, SIGKILL);
 	sleep(1);
 	unlink(RAMD_PIDFILE);
-        
-        if (ctx->verbose)
+
+	if (ctx->verbose)
 		printf("ramctrl: ramd daemon forcefully stopped\n");
-        return true;
-    }
-    
+	return true;
+}
+
 
 bool ramctrl_daemon_restart(ramctrl_context_t* ctx, const char* config_file)
 {
-    if (!ramctrl_daemon_stop(ctx))
-        return false;
-        
-    sleep(2);
-    
-    return ramctrl_daemon_start(ctx, config_file);
+	if (!ramctrl_daemon_stop(ctx))
+		return false;
+
+	sleep(2);
+
+	return ramctrl_daemon_start(ctx, config_file);
 }
 
 
@@ -242,9 +242,9 @@ int ramctrl_cmd_status(ramctrl_context_t* ctx)
 	{
 		ramctrl_table_print_row("Daemon Status", "Running");
 		ramctrl_table_print_row_int("PID", daemon_status.pid);
-    }
-    else
-    {
+	}
+	else
+	{
 		ramctrl_table_print_row("Daemon Status", "Stopped");
 	}
 
@@ -259,10 +259,14 @@ int ramctrl_cmd_status(ramctrl_context_t* ctx)
 		{
 			ramctrl_table_print_header("Cluster Information");
 			ramctrl_table_print_row("Cluster Name", cluster_info.cluster_name);
-			ramctrl_table_print_row_int("Total Nodes", cluster_info.total_nodes);
-			ramctrl_table_print_row_int("Active Nodes", cluster_info.active_nodes);
-			ramctrl_table_print_row_int("Primary Node ID", cluster_info.primary_node_id);
-			ramctrl_table_print_row_int("Leader Node ID", cluster_info.leader_node_id);
+			ramctrl_table_print_row_int("Total Nodes",
+			                            cluster_info.total_nodes);
+			ramctrl_table_print_row_int("Active Nodes",
+			                            cluster_info.active_nodes);
+			ramctrl_table_print_row_int("Primary Node ID",
+			                            cluster_info.primary_node_id);
+			ramctrl_table_print_row_int("Leader Node ID",
+			                            cluster_info.leader_node_id);
 		}
 	}
 
@@ -301,10 +305,10 @@ int ramctrl_cmd_restart(ramctrl_context_t* ctx)
 int ramctrl_cmd_promote(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
-	
+
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
@@ -357,7 +361,7 @@ int ramctrl_cmd_demote(ramctrl_context_t* ctx)
 
 	if (ctx->verbose)
 		printf("ramctrl: node demoted successfully\n");
-	
+
 	return RAMCTRL_EXIT_SUCCESS;
 }
 
@@ -366,16 +370,16 @@ int ramctrl_cmd_failover(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
 
-    if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
-        
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
 	if (!daemon_status.is_running)
 	{
 		fprintf(stderr, "ramctrl: ramd daemon is not running\n");
-        return RAMCTRL_EXIT_FAILURE;
+		return RAMCTRL_EXIT_FAILURE;
 	}
 
 	if (ctx->verbose)
@@ -384,13 +388,13 @@ int ramctrl_cmd_failover(ramctrl_context_t* ctx)
 	if (!ramctrl_trigger_failover(ctx, 1))
 	{
 		fprintf(stderr, "ramctrl: failed to trigger failover\n");
-        return RAMCTRL_EXIT_FAILURE;
+		return RAMCTRL_EXIT_FAILURE;
 	}
-        
+
 	if (ctx->verbose)
 		printf("ramctrl: failover triggered successfully\n");
 
-        return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
@@ -399,16 +403,16 @@ int ramctrl_cmd_show_cluster(ramctrl_context_t* ctx)
 	ramctrl_cluster_info_t cluster_info;
 	ramctrl_daemon_status_t daemon_status;
 
-    if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
-        
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
 	if (!daemon_status.is_running)
 	{
 		fprintf(stderr, "ramctrl: ramd daemon is not running\n");
-        return RAMCTRL_EXIT_FAILURE;
+		return RAMCTRL_EXIT_FAILURE;
 	}
 
 	memset(&cluster_info, 0, sizeof(cluster_info));
@@ -439,7 +443,7 @@ int ramctrl_cmd_show_nodes(ramctrl_context_t* ctx)
 	ramctrl_daemon_status_t daemon_status;
 
 	if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
+		return RAMCTRL_EXIT_FAILURE;
 
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
@@ -457,16 +461,13 @@ int ramctrl_cmd_show_nodes(ramctrl_context_t* ctx)
 	}
 
 	ramctrl_table_print_header("Node Information");
-	printf("%-8s %-20s %-8s %-12s %-8s %-8s %-8s %-8s\n",
-	       "Node ID", "Hostname", "Port", "Status", "Primary", "Standby", "Leader", "Healthy");
+	printf("%-8s %-20s %-8s %-12s %-8s %-8s %-8s %-8s\n", "Node ID", "Hostname",
+	       "Port", "Status", "Primary", "Standby", "Leader", "Healthy");
 
 	for (i = 0; i < node_count; i++)
 	{
-		printf("%-8d %-20s %-8d %-12s %-8s %-8s %-8s %-8s\n",
-		       nodes[i].node_id,
-		       nodes[i].hostname,
-		       nodes[i].port,
-		       "Unknown",
+		printf("%-8d %-20s %-8d %-12s %-8s %-8s %-8s %-8s\n", nodes[i].node_id,
+		       nodes[i].hostname, nodes[i].port, "Unknown",
 		       nodes[i].is_primary ? "Yes" : "No",
 		       nodes[i].is_standby ? "Yes" : "No",
 		       nodes[i].is_leader ? "Yes" : "No",
@@ -476,17 +477,17 @@ int ramctrl_cmd_show_nodes(ramctrl_context_t* ctx)
 	ramctrl_table_print_footer();
 	free(nodes);
 
-        return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
 int ramctrl_cmd_add_node(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
-    
-    if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
-    
+
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
@@ -508,17 +509,17 @@ int ramctrl_cmd_add_node(ramctrl_context_t* ctx)
 	if (ctx->verbose)
 		printf("ramctrl: node added successfully\n");
 
-        return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
 int ramctrl_cmd_remove_node(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
-	
+
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
@@ -527,7 +528,7 @@ int ramctrl_cmd_remove_node(ramctrl_context_t* ctx)
 		fprintf(stderr, "ramctrl: ramd daemon is not running\n");
 		return RAMCTRL_EXIT_FAILURE;
 	}
-	
+
 	if (ctx->verbose)
 		printf("ramctrl: removing node from cluster...\n");
 
@@ -571,19 +572,19 @@ int ramctrl_cmd_enable_maintenance(ramctrl_context_t* ctx)
 int ramctrl_cmd_disable_maintenance(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
-    
-    if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
-    
+
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
 	if (!daemon_status.is_running)
-    {
+	{
 		fprintf(stderr, "ramctrl: ramd daemon is not running\n");
-        return RAMCTRL_EXIT_FAILURE;
-    }
-    
+		return RAMCTRL_EXIT_FAILURE;
+	}
+
 	if (ctx->verbose)
 		printf("ramctrl: disabling maintenance mode...\n");
 
@@ -602,16 +603,16 @@ int ramctrl_cmd_logs(ramctrl_context_t* ctx)
 	if (ramctrl_daemon_get_logs(ctx, log_output, sizeof(log_output), 50))
 	{
 		printf("%s", log_output);
-        }
-        else
-        {
+	}
+	else
+	{
 		snprintf(log_output, sizeof(log_output),
 		         "tail -n 50 %s 2>/dev/null || echo 'Log file not accessible'",
 		         RAMD_LOGFILE);
 		system(log_output);
-    }
-    
-    return RAMCTRL_EXIT_SUCCESS;
+	}
+
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
@@ -620,7 +621,7 @@ int ramctrl_cmd_show_replication(ramctrl_context_t* ctx)
 	ramctrl_daemon_status_t daemon_status;
 
 	if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
+		return RAMCTRL_EXIT_FAILURE;
 
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
@@ -637,7 +638,7 @@ int ramctrl_cmd_show_replication(ramctrl_context_t* ctx)
 	ramctrl_table_print_row("Status", "Streaming");
 	ramctrl_table_print_footer();
 
-        return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
@@ -646,7 +647,7 @@ int ramctrl_cmd_set_replication_mode(ramctrl_context_t* ctx)
 	ramctrl_daemon_status_t daemon_status;
 
 	if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
+		return RAMCTRL_EXIT_FAILURE;
 
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
@@ -661,41 +662,41 @@ int ramctrl_cmd_set_replication_mode(ramctrl_context_t* ctx)
 		printf("ramctrl: setting replication mode...\n");
 
 	printf("ramctrl: replication mode updated\n");
-        return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
 int ramctrl_cmd_set_lag_threshold(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
-    
-    if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
-    
+
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
 	if (!daemon_status.is_running)
-    {
+	{
 		fprintf(stderr, "ramctrl: ramd daemon is not running\n");
-        return RAMCTRL_EXIT_FAILURE;
-    }
-    
+		return RAMCTRL_EXIT_FAILURE;
+	}
+
 	if (ctx->verbose)
 		printf("ramctrl: setting lag threshold...\n");
 
 	printf("ramctrl: lag threshold updated\n");
-        return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
 int ramctrl_cmd_wal_e_backup(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
-	
+
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
@@ -712,7 +713,7 @@ int ramctrl_cmd_wal_e_restore(ramctrl_context_t* ctx)
 	ramctrl_daemon_status_t daemon_status;
 
 	if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
+		return RAMCTRL_EXIT_FAILURE;
 
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
@@ -721,17 +722,17 @@ int ramctrl_cmd_wal_e_restore(ramctrl_context_t* ctx)
 		printf("ramctrl: restoring from WAL-E backup...\n");
 
 	printf("ramctrl: restore completed successfully\n");
-		return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
 int ramctrl_cmd_wal_e_list(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
-    
-    if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
-    
+
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
@@ -743,7 +744,7 @@ int ramctrl_cmd_wal_e_list(ramctrl_context_t* ctx)
 	ramctrl_table_print_row("Backup 2", "2024-01-02 12:00:00");
 	ramctrl_table_print_footer();
 
-		return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
@@ -752,8 +753,8 @@ int ramctrl_cmd_wal_e_delete(ramctrl_context_t* ctx)
 	ramctrl_daemon_status_t daemon_status;
 
 	if (!ctx)
-        return RAMCTRL_EXIT_FAILURE;
-	
+		return RAMCTRL_EXIT_FAILURE;
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
@@ -761,7 +762,7 @@ int ramctrl_cmd_wal_e_delete(ramctrl_context_t* ctx)
 		printf("ramctrl: deleting WAL-E backup...\n");
 
 	printf("ramctrl: backup deleted successfully\n");
-    return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
@@ -769,10 +770,10 @@ int ramctrl_cmd_bootstrap_run(ramctrl_context_t* ctx)
 {
 	char response_buffer[4096];
 	ramctrl_daemon_status_t daemon_status;
-	
+
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
@@ -793,17 +794,21 @@ int ramctrl_cmd_bootstrap_run(ramctrl_context_t* ctx)
 	if (!api_url)
 	{
 		printf("ramctrl: RAMCTRL_API_URL environment variable not set\n");
-		printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., http://127.0.0.1:8008)\n");
+		printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., "
+		       "http://127.0.0.1:8008)\n");
 		return RAMCTRL_EXIT_FAILURE;
 	}
-	snprintf(full_url, sizeof(full_url), "%s/api/v1/bootstrap/primary", api_url);
+	snprintf(full_url, sizeof(full_url), "%s/api/v1/bootstrap/primary",
+	         api_url);
 
 	/* Make HTTP POST request to ramd bootstrap API */
-	if (!ramctrl_http_post(full_url, "", response_buffer, sizeof(response_buffer)))
+	if (!ramctrl_http_post(full_url, "", response_buffer,
+	                       sizeof(response_buffer)))
 	{
 		printf("ramctrl: failed to connect to ramd daemon\n");
-		printf("ramctrl: ensure ramd is running and accessible at %s\n", 
-		       getenv("RAMCTRL_API_URL") ? getenv("RAMCTRL_API_URL") : "default URL");
+		printf("ramctrl: ensure ramd is running and accessible at %s\n",
+		       getenv("RAMCTRL_API_URL") ? getenv("RAMCTRL_API_URL")
+		                                 : "default URL");
 		return RAMCTRL_EXIT_FAILURE;
 	}
 
@@ -836,10 +841,10 @@ int ramctrl_cmd_bootstrap_run(ramctrl_context_t* ctx)
 int ramctrl_cmd_bootstrap_validate(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
-	
+
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
@@ -847,12 +852,13 @@ int ramctrl_cmd_bootstrap_validate(ramctrl_context_t* ctx)
 		printf("ramctrl: validating bootstrap...\n");
 
 	printf("ramctrl: bootstrap validation successful\n");
-		return RAMCTRL_EXIT_SUCCESS;
+	return RAMCTRL_EXIT_SUCCESS;
 }
 
 
 bool ramctrl_daemon_get_logs(ramctrl_context_t* ctx, char* output,
-                             size_t output_size, int __attribute__((unused)) num_lines)
+                             size_t output_size,
+                             int __attribute__((unused)) num_lines)
 {
 	FILE* log_file;
 	char line[1024];
@@ -874,9 +880,9 @@ bool ramctrl_daemon_get_logs(ramctrl_context_t* ctx, char* output,
 		{
 			strcat(output, line);
 			written += line_len;
-	}
-	else
-	{
+		}
+		else
+		{
 			break;
 		}
 	}
@@ -890,7 +896,7 @@ int ramctrl_cmd_show(ramctrl_context_t* ctx)
 {
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	switch (ctx->show_command)
 	{
 	case RAMCTRL_SHOW_CLUSTER:
@@ -940,12 +946,12 @@ int ramctrl_cmd_node(ramctrl_context_t* ctx)
 	}
 }
 
-	
+
 int ramctrl_cmd_watch_new(ramctrl_context_t* ctx)
-	{
+{
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	switch (ctx->watch_command)
 	{
 	case RAMCTRL_WATCH_CLUSTER:
@@ -968,7 +974,7 @@ int ramctrl_cmd_replication(ramctrl_context_t* ctx)
 {
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	switch (ctx->replication_command)
 	{
 	case RAMCTRL_REPLICATION_STATUS:
@@ -988,7 +994,7 @@ int ramctrl_cmd_replication(ramctrl_context_t* ctx)
 
 
 int ramctrl_cmd_replica(ramctrl_context_t* ctx)
-	{
+{
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
 
@@ -1015,14 +1021,14 @@ int ramctrl_cmd_add_replica(ramctrl_context_t* ctx)
 	char response_buffer[4096];
 	char json_payload[1024];
 	const char* hostname;
-	int32_t port = 5432;  /* Default PostgreSQL port */
-	
+	int32_t port = 5432; /* Default PostgreSQL port */
+
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	if (ctx->verbose)
 		printf("ramctrl: adding replica to cluster...\n");
-	
+
 	/* Parse arguments: ramctrl replica add <hostname> [port] */
 	if (ctx->command_argc < 1)
 	{
@@ -1030,18 +1036,18 @@ int ramctrl_cmd_add_replica(ramctrl_context_t* ctx)
 		printf("Usage: ramctrl replica add <hostname> [port]\n");
 		return RAMCTRL_EXIT_FAILURE;
 	}
-	
+
 	hostname = ctx->command_args[0];
-	
+
 	if (ctx->command_argc >= 2)
 	{
 		port = atoi(ctx->command_args[1]);
 		if (port <= 0 || port > 65535)
 		{
 			printf("ramctrl: invalid port number: %s\n", ctx->command_args[1]);
-		return RAMCTRL_EXIT_FAILURE;
+			return RAMCTRL_EXIT_FAILURE;
+		}
 	}
-}
 
 	/* Build JSON payload for ramd */
 	snprintf(json_payload, sizeof(json_payload),
@@ -1049,29 +1055,33 @@ int ramctrl_cmd_add_replica(ramctrl_context_t* ctx)
 	         "  \"hostname\": \"%s\",\n"
 	         "  \"port\": %d,\n"
 	         "  \"role\": \"replica\"\n"
-	         "}", hostname, port);
-	
+	         "}",
+	         hostname, port);
+
 	/* Get ramd API URL */
 	const char* api_url = getenv("RAMCTRL_API_URL");
 	if (!api_url)
 	{
 		printf("ramctrl: RAMCTRL_API_URL environment variable not set\n");
-		printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., http://127.0.0.1:8008)\n");
+		printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., "
+		       "http://127.0.0.1:8008)\n");
 		return RAMCTRL_EXIT_FAILURE;
 	}
-	
+
 	/* Build full API endpoint URL */
 	char full_url[512];
 	snprintf(full_url, sizeof(full_url), "%s/api/v1/replica/add", api_url);
-	
+
 	/* Call ramd HTTP API */
-	if (!ramctrl_http_post(full_url, json_payload, response_buffer, sizeof(response_buffer)))
+	if (!ramctrl_http_post(full_url, json_payload, response_buffer,
+	                       sizeof(response_buffer)))
 	{
 		printf("ramctrl: failed to connect to ramd daemon\n");
-		printf("ramctrl: ensure ramd is running and accessible at %s\n", api_url);
+		printf("ramctrl: ensure ramd is running and accessible at %s\n",
+		       api_url);
 		return RAMCTRL_EXIT_FAILURE;
 	}
-	
+
 	/* Parse response */
 	if (strstr(response_buffer, "\"status\": \"success\""))
 	{
@@ -1103,7 +1113,7 @@ int ramctrl_cmd_remove_replica(ramctrl_context_t* ctx)
 {
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	printf("ramctrl: remove replica functionality not yet implemented\n");
 	return RAMCTRL_EXIT_SUCCESS;
 }
@@ -1113,7 +1123,7 @@ int ramctrl_cmd_list_replicas(ramctrl_context_t* ctx)
 {
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	/* Use existing show nodes functionality */
 	return ramctrl_cmd_show_nodes(ctx);
 }
@@ -1123,7 +1133,7 @@ int ramctrl_cmd_replica_status(ramctrl_context_t* ctx)
 {
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	/* Use existing show nodes functionality */
 	return ramctrl_cmd_show_nodes(ctx);
 }
@@ -1156,7 +1166,7 @@ int ramctrl_cmd_bootstrap(ramctrl_context_t* ctx)
 {
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-	
+
 	switch (ctx->bootstrap_command)
 	{
 	case RAMCTRL_BOOTSTRAP_INIT:

@@ -416,25 +416,26 @@ void ramd_http_handle_cluster_status(ramd_http_request_t* request,
 	(void) request; /* Unused parameter */
 
 	/* Get cluster status from pg_ram extension (authoritative source) */
-	if (!ramd_postgresql_query_pgram_cluster_status(&g_ramd_daemon->config,
-	                                                &pgram_node_count,
-	                                                &pgram_is_leader,
-	                                                &pgram_leader_id,
-	                                                &pgram_has_quorum))
+	if (!ramd_postgresql_query_pgram_cluster_status(
+	        &g_ramd_daemon->config, &pgram_node_count, &pgram_is_leader,
+	        &pgram_leader_id, &pgram_has_quorum))
 	{
-		ramd_log_warning("Failed to query pg_ram cluster status, falling back to internal state");
-		
+		ramd_log_warning("Failed to query pg_ram cluster status, falling back "
+		                 "to internal state");
+
 		/* Fallback to internal cluster state */
 		ramd_cluster_t* cluster = &g_ramd_daemon->cluster;
 		if (!cluster)
 		{
-			ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR,
-			                             "Cluster not initialized and pg_ram unavailable");
+			ramd_http_set_error_response(
+			    response, RAMD_HTTP_500_INTERNAL_ERROR,
+			    "Cluster not initialized and pg_ram unavailable");
 			return;
 		}
-		
+
 		pgram_node_count = cluster->node_count;
-		pgram_is_leader = (cluster->primary_node_id == g_ramd_daemon->config.node_id);
+		pgram_is_leader =
+		    (cluster->primary_node_id == g_ramd_daemon->config.node_id);
 		pgram_leader_id = cluster->primary_node_id;
 		pgram_has_quorum = ramd_cluster_has_quorum(cluster);
 	}
@@ -455,11 +456,11 @@ void ramd_http_handle_cluster_status(ramd_http_request_t* request,
 	    "  \"failover_state\": \"%s\"\n"
 	    "}",
 	    g_ramd_daemon->cluster.cluster_name,
-	    pgram_has_quorum ? "operational" : "degraded",
-	    pgram_leader_id, pgram_node_count,
+	    pgram_has_quorum ? "operational" : "degraded", pgram_leader_id,
+	    pgram_node_count,
 	    pgram_node_count, /* For now, assume all nodes are healthy */
-	    pgram_has_quorum ? "true" : "false",
-	    pgram_is_leader ? "true" : "false", time(NULL),
+	    pgram_has_quorum ? "true" : "false", pgram_is_leader ? "true" : "false",
+	    time(NULL),
 	    (g_ramd_daemon->failover_context.state == RAMD_FAILOVER_STATE_NORMAL)
 	        ? "normal"
 	    : (g_ramd_daemon->failover_context.state ==
@@ -1122,11 +1123,13 @@ void ramd_http_handle_bootstrap_primary(ramd_http_request_t* request,
 		snprintf(json_buffer, sizeof(json_buffer),
 		         "{\n"
 		         "  \"status\": \"failed\",\n"
-		         "  \"message\": \"Cluster already has %d nodes. Cannot bootstrap.\",\n"
+		         "  \"message\": \"Cluster already has %d nodes. Cannot "
+		         "bootstrap.\",\n"
 		         "  \"node_count\": %d\n"
 		         "}",
 		         cluster->node_count, cluster->node_count);
-		ramd_http_set_error_response(response, RAMD_HTTP_409_CONFLICT, json_buffer);
+		ramd_http_set_error_response(response, RAMD_HTTP_409_CONFLICT,
+		                             json_buffer);
 		return;
 	}
 
@@ -1135,81 +1138,96 @@ void ramd_http_handle_bootstrap_primary(ramd_http_request_t* request,
 	{
 		/* Now perform the actual PostgreSQL initialization */
 		ramd_log_info("Initializing PostgreSQL database for primary node");
-		
+
 		/* Create cluster-specific data directory path */
 		char cluster_data_dir[512];
 		snprintf(cluster_data_dir, sizeof(cluster_data_dir), "%s/%s",
-		         g_ramd_daemon->config.postgresql_data_dir, cluster->cluster_name);
-		
-		if (ramd_maintenance_bootstrap_primary_node(&g_ramd_daemon->config,
-		                                           cluster->cluster_name,
-		                                           g_ramd_daemon->config.hostname,
-		                                           g_ramd_daemon->config.postgresql_port))
+		         g_ramd_daemon->config.postgresql_data_dir,
+		         cluster->cluster_name);
+
+		if (ramd_maintenance_bootstrap_primary_node(
+		        &g_ramd_daemon->config, cluster->cluster_name,
+		        g_ramd_daemon->config.hostname,
+		        g_ramd_daemon->config.postgresql_port))
 		{
 			/* Temporarily update config to point to cluster data directory */
 			char original_data_dir[512];
-			strncpy(original_data_dir, g_ramd_daemon->config.postgresql_data_dir, 
+			strncpy(original_data_dir,
+			        g_ramd_daemon->config.postgresql_data_dir,
 			        sizeof(original_data_dir) - 1);
 			strncpy(g_ramd_daemon->config.postgresql_data_dir, cluster_data_dir,
 			        sizeof(g_ramd_daemon->config.postgresql_data_dir) - 1);
-			
+
 			/* Start PostgreSQL */
 			if (ramd_postgresql_start(&g_ramd_daemon->config))
 			{
 				/* Create pg_ram extension */
-				ramd_log_info("PostgreSQL started successfully, creating pg_ram extension");
-				
-				if (!ramd_postgresql_create_pg_ram_extension(&g_ramd_daemon->config))
+				ramd_log_info("PostgreSQL started successfully, creating "
+				              "pg_ram extension");
+
+				if (!ramd_postgresql_create_pg_ram_extension(
+				        &g_ramd_daemon->config))
 				{
 					ramd_log_error("Failed to create pg_ram extension");
-					strncpy(g_ramd_daemon->config.postgresql_data_dir, original_data_dir,
-					        sizeof(g_ramd_daemon->config.postgresql_data_dir) - 1);
-					snprintf(json_buffer, sizeof(json_buffer),
-					         "{\n"
-					         "  \"status\": \"error\",\n"
-					         "  \"message\": \"Failed to create pg_ram extension\"\n"
-					         "}");
-					ramd_http_set_json_response(response, RAMD_HTTP_500_INTERNAL_ERROR, json_buffer);
+					strncpy(g_ramd_daemon->config.postgresql_data_dir,
+					        original_data_dir,
+					        sizeof(g_ramd_daemon->config.postgresql_data_dir) -
+					            1);
+					snprintf(
+					    json_buffer, sizeof(json_buffer),
+					    "{\n"
+					    "  \"status\": \"error\",\n"
+					    "  \"message\": \"Failed to create pg_ram extension\"\n"
+					    "}");
+					ramd_http_set_json_response(
+					    response, RAMD_HTTP_500_INTERNAL_ERROR, json_buffer);
 					return;
 				}
-				
+
 				snprintf(json_buffer, sizeof(json_buffer),
 				         "{\n"
 				         "  \"status\": \"success\",\n"
-				         "  \"message\": \"Primary node bootstrapped and PostgreSQL initialized successfully\",\n"
+				         "  \"message\": \"Primary node bootstrapped and "
+				         "PostgreSQL initialized successfully\",\n"
 				         "  \"node_id\": %d,\n"
 				         "  \"hostname\": \"%s\",\n"
 				         "  \"cluster_name\": \"%s\",\n"
 				         "  \"postgresql_status\": \"running\"\n"
 				         "}",
 				         g_ramd_daemon->config.node_id,
-				         g_ramd_daemon->config.hostname,
-				         cluster->cluster_name);
-				ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_buffer);
-				ramd_log_info("Primary node bootstrap completed successfully via HTTP API");
+				         g_ramd_daemon->config.hostname, cluster->cluster_name);
+				ramd_http_set_json_response(response, RAMD_HTTP_200_OK,
+				                            json_buffer);
+				ramd_log_info("Primary node bootstrap completed successfully "
+				              "via HTTP API");
 			}
 			else
 			{
 				snprintf(json_buffer, sizeof(json_buffer),
 				         "{\n"
 				         "  \"status\": \"failed\",\n"
-				         "  \"message\": \"PostgreSQL initialization succeeded but failed to start PostgreSQL\"\n"
+				         "  \"message\": \"PostgreSQL initialization succeeded "
+				         "but failed to start PostgreSQL\"\n"
 				         "}");
-				ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, json_buffer);
+				ramd_http_set_error_response(
+				    response, RAMD_HTTP_500_INTERNAL_ERROR, json_buffer);
 			}
-			
+
 			/* Restore original data directory path */
-			strncpy(g_ramd_daemon->config.postgresql_data_dir, original_data_dir,
+			strncpy(g_ramd_daemon->config.postgresql_data_dir,
+			        original_data_dir,
 			        sizeof(g_ramd_daemon->config.postgresql_data_dir) - 1);
 		}
 		else
 		{
-			snprintf(json_buffer, sizeof(json_buffer),
-			         "{\n"
-			         "  \"status\": \"failed\",\n"
-			         "  \"message\": \"Failed to initialize PostgreSQL database\"\n"
-			         "}");
-			ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, json_buffer);
+			snprintf(
+			    json_buffer, sizeof(json_buffer),
+			    "{\n"
+			    "  \"status\": \"failed\",\n"
+			    "  \"message\": \"Failed to initialize PostgreSQL database\"\n"
+			    "}");
+			ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR,
+			                             json_buffer);
 		}
 	}
 	else
@@ -1251,21 +1269,21 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	char hostname[256] = {0};
 	int32_t port = 5432;
 	int32_t new_node_id;
-	
+
 	if (request->method != RAMD_HTTP_POST)
 	{
 		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED,
 		                             "Method not allowed - use POST");
 		return;
 	}
-	
+
 	/* Parse JSON payload */
 	if (request->body)
 	{
 		/* Simple JSON parsing for hostname and port */
 		char* hostname_start = strstr(request->body, "\"hostname\":");
 		char* port_start = strstr(request->body, "\"port\":");
-		
+
 		if (hostname_start)
 		{
 			hostname_start = strchr(hostname_start + 11, '"');
@@ -1284,57 +1302,62 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 				}
 			}
 		}
-		
+
 		if (port_start)
 		{
 			port_start += 7; /* Skip "port": */
-			while (*port_start == ' ' || *port_start == ':') port_start++;
+			while (*port_start == ' ' || *port_start == ':')
+				port_start++;
 			port = atoi(port_start);
 		}
 	}
-	
+
 	if (strlen(hostname) == 0)
 	{
 		ramd_http_set_error_response(response, RAMD_HTTP_400_BAD_REQUEST,
 		                             "Missing required parameter: hostname");
 		return;
 	}
-	
+
 	if (port <= 0 || port > 65535)
 	{
 		ramd_http_set_error_response(response, RAMD_HTTP_400_BAD_REQUEST,
 		                             "Invalid port number");
 		return;
 	}
-	
+
 	ramd_log_info("Adding replica: %s:%d", hostname, port);
-	
+
 	/* Generate new node ID */
 	ramd_cluster_t* cluster = &g_ramd_daemon->cluster;
 	new_node_id = cluster->node_count + 1;
-	
+
 	/* Step 1: Add node to internal cluster state */
-	if (!ramd_cluster_add_node(cluster, new_node_id, hostname, port, 
+	if (!ramd_cluster_add_node(cluster, new_node_id, hostname, port,
 	                           8001, /* Default rale port */
-	                           8002  /* Default dstore port */))
+	                           8002 /* Default dstore port */))
 	{
-		ramd_log_error("Failed to add node %d (%s:%d) to cluster", new_node_id, hostname, port);
+		ramd_log_error("Failed to add node %d (%s:%d) to cluster", new_node_id,
+		               hostname, port);
 		snprintf(json_buffer, sizeof(json_buffer),
 		         "{\n"
 		         "  \"status\": \"error\",\n"
 		         "  \"message\": \"Failed to add node to cluster\"\n"
 		         "}");
-		ramd_http_set_json_response(response, RAMD_HTTP_500_INTERNAL_ERROR, json_buffer);
+		ramd_http_set_json_response(response, RAMD_HTTP_500_INTERNAL_ERROR,
+		                            json_buffer);
 		return;
 	}
-	
+
 	/* Step 2: Setup PostgreSQL replica with pg_basebackup */
 	ramd_log_info("Setting up PostgreSQL replica for node %d", new_node_id);
-	
-	if (!ramd_maintenance_setup_replica(&g_ramd_daemon->config, cluster->cluster_name,
-	                                    hostname, port, new_node_id))
+
+	if (!ramd_maintenance_setup_replica(&g_ramd_daemon->config,
+	                                    cluster->cluster_name, hostname, port,
+	                                    new_node_id))
 	{
-		ramd_log_error("Failed to setup PostgreSQL replica for node %d", new_node_id);
+		ramd_log_error("Failed to setup PostgreSQL replica for node %d",
+		               new_node_id);
 		/* Remove from cluster on failure */
 		ramd_cluster_remove_node(cluster, new_node_id);
 		snprintf(json_buffer, sizeof(json_buffer),
@@ -1342,16 +1365,18 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 		         "  \"status\": \"error\",\n"
 		         "  \"message\": \"Failed to setup PostgreSQL replica\"\n"
 		         "}");
-		ramd_http_set_json_response(response, RAMD_HTTP_500_INTERNAL_ERROR, json_buffer);
+		ramd_http_set_json_response(response, RAMD_HTTP_500_INTERNAL_ERROR,
+		                            json_buffer);
 		return;
 	}
-	
+
 	/* Step 3: Install pg_ram extension on replica (TODO: implement) */
-	ramd_log_info("Installing pg_ram extension on replica node %d", new_node_id);
-	
+	ramd_log_info("Installing pg_ram extension on replica node %d",
+	              new_node_id);
+
 	/* Step 4: Add node to pg_ram/librale consensus (TODO: implement) */
 	ramd_log_info("Adding node %d to pg_ram consensus", new_node_id);
-	
+
 	/* Return success response */
 	snprintf(json_buffer, sizeof(json_buffer),
 	         "{\n"
@@ -1361,8 +1386,10 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	         "  \"hostname\": \"%s\",\n"
 	         "  \"port\": %d,\n"
 	         "  \"role\": \"replica\"\n"
-	         "}", new_node_id, hostname, port);
-	
+	         "}",
+	         new_node_id, hostname, port);
+
 	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_buffer);
-	ramd_log_info("Replica node %d (%s:%d) added successfully", new_node_id, hostname, port);
+	ramd_log_info("Replica node %d (%s:%d) added successfully", new_node_id,
+	              hostname, port);
 }

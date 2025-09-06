@@ -50,7 +50,8 @@ typedef struct ramd_cluster_t
 
 /* Cluster management functions */
 bool ramd_cluster_init(ramd_cluster_t* cluster, const ramd_config_t* config);
-bool ramd_cluster_bootstrap_primary(ramd_cluster_t* cluster, const ramd_config_t* config);
+bool ramd_cluster_bootstrap_primary(ramd_cluster_t* cluster,
+                                    const ramd_config_t* config);
 void ramd_cluster_cleanup(ramd_cluster_t* cluster);
 
 /* Node management */

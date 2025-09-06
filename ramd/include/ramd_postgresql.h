@@ -108,10 +108,10 @@ bool ramd_postgresql_create_pg_ram_extension(const ramd_config_t* config);
 
 /* pg_ram integration functions */
 bool ramd_postgresql_query_pgram_cluster_status(const ramd_config_t* config,
-                                               int32_t* node_count,
-                                               bool* is_leader,
-                                               int32_t* leader_id,
-                                               bool* has_quorum);
+                                                int32_t* node_count,
+                                                bool* is_leader,
+                                                int32_t* leader_id,
+                                                bool* has_quorum);
 bool ramd_postgresql_query_pgram_is_leader(const ramd_config_t* config);
 int32_t ramd_postgresql_query_pgram_node_count(const ramd_config_t* config);
 bool ramd_postgresql_query_pgram_has_quorum(const ramd_config_t* config);

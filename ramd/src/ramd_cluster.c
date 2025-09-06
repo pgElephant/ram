@@ -26,14 +26,16 @@ bool ramd_cluster_init(ramd_cluster_t* cluster, const ramd_config_t* config)
 	cluster->leader_node_id = -1;
 	cluster->last_topology_change = time(NULL);
 
-	ramd_log_info("Cluster initialized: %s (local_node_id=%d) - cluster is empty and ready for bootstrap",
+	ramd_log_info("Cluster initialized: %s (local_node_id=%d) - cluster is "
+	              "empty and ready for bootstrap",
 	              cluster->cluster_name, cluster->local_node_id);
 
 	return true;
 }
 
 
-bool ramd_cluster_bootstrap_primary(ramd_cluster_t* cluster, const ramd_config_t* config)
+bool ramd_cluster_bootstrap_primary(ramd_cluster_t* cluster,
+                                    const ramd_config_t* config)
 {
 	if (!cluster || !config)
 		return false;
@@ -41,11 +43,13 @@ bool ramd_cluster_bootstrap_primary(ramd_cluster_t* cluster, const ramd_config_t
 	/* Ensure cluster is empty */
 	if (cluster->node_count > 0)
 	{
-		ramd_log_error("Cannot bootstrap primary: cluster already has %d nodes", cluster->node_count);
+		ramd_log_error("Cannot bootstrap primary: cluster already has %d nodes",
+		               cluster->node_count);
 		return false;
 	}
 
-	ramd_log_info("Bootstrapping primary node for cluster '%s'", cluster->cluster_name);
+	ramd_log_info("Bootstrapping primary node for cluster '%s'",
+	              cluster->cluster_name);
 
 	/* Add the local node as primary */
 	if (!ramd_cluster_add_node(cluster, config->node_id, config->hostname,

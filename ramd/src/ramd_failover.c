@@ -28,7 +28,6 @@ void ramd_failover_context_init(ramd_failover_context_t* context)
 }
 
 
-
 void ramd_failover_context_cleanup(ramd_failover_context_t* context)
 {
 	if (!context)
@@ -36,7 +35,6 @@ void ramd_failover_context_cleanup(ramd_failover_context_t* context)
 
 	memset(context, 0, sizeof(ramd_failover_context_t));
 }
-
 
 
 void ramd_failover_context_set_reason(ramd_failover_context_t* context,
@@ -47,7 +45,6 @@ void ramd_failover_context_set_reason(ramd_failover_context_t* context,
 
 	strncpy(context->reason, reason, sizeof(context->reason) - 1);
 }
-
 
 
 bool ramd_failover_should_trigger(const ramd_cluster_t* cluster,
@@ -71,7 +68,6 @@ bool ramd_failover_should_trigger(const ramd_cluster_t* cluster,
 	return ramd_failover_detect_primary_failure((ramd_cluster_t*) cluster) &&
 	       ramd_cluster_has_quorum(cluster);
 }
-
 
 
 bool ramd_failover_execute(ramd_cluster_t* cluster, const ramd_config_t* config,
@@ -121,7 +117,6 @@ bool ramd_failover_execute(ramd_cluster_t* cluster, const ramd_config_t* config,
 }
 
 
-
 bool ramd_failover_detect_primary_failure(ramd_cluster_t* cluster)
 {
 	if (!cluster)
@@ -130,7 +125,8 @@ bool ramd_failover_detect_primary_failure(ramd_cluster_t* cluster)
 	ramd_node_t* primary = ramd_cluster_get_primary_node(cluster);
 	if (!primary)
 	{
-		ramd_log_debug("Cluster status: No primary node currently active in cluster");
+		ramd_log_debug(
+		    "Cluster status: No primary node currently active in cluster");
 		return true;
 	}
 
@@ -161,7 +157,6 @@ bool ramd_failover_detect_primary_failure(ramd_cluster_t* cluster)
 
 	return false;
 }
-
 
 
 bool ramd_failover_select_new_primary(const ramd_cluster_t* cluster,
@@ -215,7 +210,6 @@ bool ramd_failover_select_new_primary(const ramd_cluster_t* cluster,
 	               "nodes available for promotion to primary role");
 	return false;
 }
-
 
 
 bool ramd_failover_promote_node(ramd_cluster_t* cluster,
@@ -540,7 +534,6 @@ bool ramd_failover_rebuild_replica_node(ramd_cluster_t* cluster,
 }
 
 
-
 bool ramd_failover_demote_failed_primary(ramd_cluster_t* cluster,
                                          const ramd_config_t* config,
                                          int32_t failed_node_id)
@@ -567,7 +560,6 @@ bool ramd_failover_demote_failed_primary(ramd_cluster_t* cluster,
 
 	return true;
 }
-
 
 
 bool ramd_failover_update_standby_nodes(ramd_cluster_t* cluster,
@@ -611,7 +603,6 @@ bool ramd_failover_update_standby_nodes(ramd_cluster_t* cluster,
 
 	return true;
 }
-
 
 
 bool ramd_failover_validate_promotion(const ramd_cluster_t* cluster,
@@ -662,7 +653,6 @@ bool ramd_failover_validate_promotion(const ramd_cluster_t* cluster,
 }
 
 
-
 bool ramd_failover_validate_cluster_state(const ramd_cluster_t* cluster)
 {
 	if (!cluster)
@@ -699,7 +689,6 @@ bool ramd_failover_validate_cluster_state(const ramd_cluster_t* cluster)
 	    healthy_standby_count);
 	return true;
 }
-
 
 
 bool ramd_failover_recover_failed_node(ramd_cluster_t* cluster,
@@ -749,7 +738,6 @@ bool ramd_failover_recover_failed_node(ramd_cluster_t* cluster,
 }
 
 
-
 bool ramd_failover_take_basebackup(const ramd_config_t* config,
                                    const char* primary_host,
                                    int32_t primary_port)
@@ -782,7 +770,6 @@ bool ramd_failover_take_basebackup(const ramd_config_t* config,
 		return false;
 	}
 }
-
 
 
 bool ramd_failover_configure_recovery(const ramd_config_t* config,

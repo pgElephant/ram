@@ -37,15 +37,16 @@ bool ramd_postgresql_connect(ramd_postgresql_connection_t* conn,
 	/* Build connection string */
 	if (password && strlen(password) > 0)
 	{
-		snprintf(conninfo, sizeof(conninfo),
-		         "host=%s port=%d dbname=%s user=%s password=%s connect_timeout=10",
-		         host, port, database, user, password);
+		snprintf(
+		    conninfo, sizeof(conninfo),
+		    "host=%s port=%d dbname=%s user=%s password=%s connect_timeout=10",
+		    host, port, database, user, password);
 	}
 	else
 	{
 		snprintf(conninfo, sizeof(conninfo),
-		         "host=%s port=%d dbname=%s user=%s connect_timeout=10",
-		         host, port, database, user);
+		         "host=%s port=%d dbname=%s user=%s connect_timeout=10", host,
+		         port, database, user);
 	}
 
 	ramd_log_debug("PostgreSQL connection string: %s", conninfo);
@@ -271,9 +272,11 @@ bool ramd_postgresql_get_status(ramd_postgresql_connection_t* conn,
 	}
 
 	status->is_in_recovery = (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
-	status->is_running = true;  /* If we can execute queries, PostgreSQL is running */
+	status->is_running =
+	    true; /* If we can execute queries, PostgreSQL is running */
 	status->is_primary = !status->is_in_recovery;
-	status->accepts_connections = true;  /* If we connected and queried, it accepts connections */
+	status->accepts_connections =
+	    true; /* If we connected and queried, it accepts connections */
 	status->last_check = time(NULL);
 
 	PQclear(res);
@@ -724,10 +727,13 @@ bool ramd_postgresql_execute_query(ramd_postgresql_connection_t* conn,
 
 	res = PQexec((PGconn*) conn->connection, query);
 
-	/* Accept both PGRES_TUPLES_OK (for SELECT) and PGRES_COMMAND_OK (for DDL) */
-	if (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK)
+	/* Accept both PGRES_TUPLES_OK (for SELECT) and PGRES_COMMAND_OK (for DDL)
+	 */
+	if (PQresultStatus(res) != PGRES_TUPLES_OK &&
+	    PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
-		strncpy(result, PQerrorMessage((PGconn*) conn->connection), result_size - 1);
+		strncpy(result, PQerrorMessage((PGconn*) conn->connection),
+		        result_size - 1);
 		result[result_size - 1] = '\0';
 		PQclear(res);
 		return false;
@@ -988,24 +994,26 @@ bool ramd_postgresql_create_pg_ram_extension(const ramd_config_t* config)
 {
 	ramd_postgresql_connection_t conn;
 	bool result = false;
-	
+
 	if (!config)
 		return false;
-	
+
 	ramd_log_info("Creating pg_ram extension in PostgreSQL database");
-	
+
 	/* Connect to PostgreSQL */
-	if (!ramd_postgresql_connect(&conn, config->hostname, 
+	if (!ramd_postgresql_connect(&conn, config->hostname,
 	                             config->postgresql_port, "postgres",
 	                             config->postgresql_user, NULL))
 	{
-		ramd_log_error("Failed to connect to PostgreSQL to create pg_ram extension");
+		ramd_log_error(
+		    "Failed to connect to PostgreSQL to create pg_ram extension");
 		return false;
 	}
-	
+
 	/* Create the extension */
 	char query_result[256];
-	if (ramd_postgresql_execute_query(&conn, "CREATE EXTENSION IF NOT EXISTS pg_ram;",
+	if (ramd_postgresql_execute_query(&conn,
+	                                  "CREATE EXTENSION IF NOT EXISTS pg_ram;",
 	                                  query_result, sizeof(query_result)))
 	{
 		ramd_log_info("pg_ram extension created successfully");
@@ -1015,38 +1023,39 @@ bool ramd_postgresql_create_pg_ram_extension(const ramd_config_t* config)
 	{
 		ramd_log_error("Failed to create pg_ram extension: %s", query_result);
 	}
-	
+
 	ramd_postgresql_disconnect(&conn);
 	return result;
 }
 
 
 bool ramd_postgresql_query_pgram_cluster_status(const ramd_config_t* config,
-                                               int32_t* node_count,
-                                               bool* is_leader,
-                                               int32_t* leader_id,
-                                               bool* has_quorum)
+                                                int32_t* node_count,
+                                                bool* is_leader,
+                                                int32_t* leader_id,
+                                                bool* has_quorum)
 {
 	ramd_postgresql_connection_t conn;
 	bool result = false;
 	PGresult* res;
-	
+
 	if (!config || !node_count || !is_leader || !leader_id || !has_quorum)
 		return false;
-	
+
 	/* Connect to PostgreSQL */
-	if (!ramd_postgresql_connect(&conn, config->hostname, 
+	if (!ramd_postgresql_connect(&conn, config->hostname,
 	                             config->postgresql_port, "postgres",
 	                             config->postgresql_user, NULL))
 	{
 		ramd_log_error("Failed to connect to PostgreSQL for pg_ram query");
 		return false;
 	}
-	
+
 	/* Query pg_ram cluster status */
-	res = PQexec((PGconn*) conn.connection, 
-	             "SELECT node_count, is_leader, leader_id, has_quorum FROM pgram.cluster_status;");
-	
+	res = PQexec((PGconn*) conn.connection,
+	             "SELECT node_count, is_leader, leader_id, has_quorum FROM "
+	             "pgram.cluster_status;");
+
 	if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
 	{
 		*node_count = atoi(PQgetvalue(res, 0, 0));
@@ -1054,16 +1063,17 @@ bool ramd_postgresql_query_pgram_cluster_status(const ramd_config_t* config,
 		*leader_id = atoi(PQgetvalue(res, 0, 2));
 		*has_quorum = (PQgetvalue(res, 0, 3)[0] == 't');
 		result = true;
-		ramd_log_debug("pg_ram cluster status: nodes=%d, leader=%s, leader_id=%d, quorum=%s",
-		               *node_count, *is_leader ? "true" : "false", 
-		               *leader_id, *has_quorum ? "true" : "false");
+		ramd_log_debug("pg_ram cluster status: nodes=%d, leader=%s, "
+		               "leader_id=%d, quorum=%s",
+		               *node_count, *is_leader ? "true" : "false", *leader_id,
+		               *has_quorum ? "true" : "false");
 	}
 	else
 	{
-		ramd_log_error("Failed to query pg_ram cluster status: %s", 
+		ramd_log_error("Failed to query pg_ram cluster status: %s",
 		               PQerrorMessage((PGconn*) conn.connection));
 	}
-	
+
 	PQclear(res);
 	ramd_postgresql_disconnect(&conn);
 	return result;
@@ -1074,11 +1084,11 @@ bool ramd_postgresql_query_pgram_is_leader(const ramd_config_t* config)
 {
 	int32_t node_count, leader_id;
 	bool is_leader, has_quorum;
-	
-	if (ramd_postgresql_query_pgram_cluster_status(config, &node_count, 
-	                                               &is_leader, &leader_id, &has_quorum))
+
+	if (ramd_postgresql_query_pgram_cluster_status(
+	        config, &node_count, &is_leader, &leader_id, &has_quorum))
 		return is_leader;
-	
+
 	return false;
 }
 
@@ -1087,11 +1097,11 @@ int32_t ramd_postgresql_query_pgram_node_count(const ramd_config_t* config)
 {
 	int32_t node_count, leader_id;
 	bool is_leader, has_quorum;
-	
-	if (ramd_postgresql_query_pgram_cluster_status(config, &node_count, 
-	                                               &is_leader, &leader_id, &has_quorum))
+
+	if (ramd_postgresql_query_pgram_cluster_status(
+	        config, &node_count, &is_leader, &leader_id, &has_quorum))
 		return node_count;
-	
+
 	return 0;
 }
 
@@ -1100,10 +1110,10 @@ bool ramd_postgresql_query_pgram_has_quorum(const ramd_config_t* config)
 {
 	int32_t node_count, leader_id;
 	bool is_leader, has_quorum;
-	
-	if (ramd_postgresql_query_pgram_cluster_status(config, &node_count, 
-	                                               &is_leader, &leader_id, &has_quorum))
+
+	if (ramd_postgresql_query_pgram_cluster_status(
+	        config, &node_count, &is_leader, &leader_id, &has_quorum))
 		return has_quorum;
-	
+
 	return false;
 }

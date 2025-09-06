@@ -4,7 +4,7 @@ PG_LIBDIR = $(shell $(PG_CONFIG) --libdir)
 
 AM_CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wvla -Wno-strict-prototypes -Wno-missing-field-initializers -DNDEBUG
 AM_CPPFLAGS = -I$(srcdir)/include -I$(PG_INCLUDEDIR) $(PG_CPPFLAGS)
-AM_LDFLAGS = -L$(PG_LIBDIR) -lpq
+AM_LDFLAGS = -L$(PG_LIBDIR) -lpq -lcurl
 
 bin_PROGRAMS = ramctrl
 ramctrl_SOURCES = \

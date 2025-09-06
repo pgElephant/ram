@@ -52,8 +52,7 @@ extern void ramd_log(ramd_log_level_t level, const char* file, int line,
 /* Convenience macros - simplified for production use */
 #define ramd_log_debug(...)                                                    \
 	ramd_log(RAMD_LOG_LEVEL_DEBUG, "", 0, "", __VA_ARGS__)
-#define ramd_log_info(...)                                                     \
-	ramd_log(RAMD_LOG_LEVEL_INFO, "", 0, "", __VA_ARGS__)
+#define ramd_log_info(...) ramd_log(RAMD_LOG_LEVEL_INFO, "", 0, "", __VA_ARGS__)
 #define ramd_log_notice(...)                                                   \
 	ramd_log(RAMD_LOG_LEVEL_NOTICE, "", 0, "", __VA_ARGS__)
 #define ramd_log_warning(...)                                                  \

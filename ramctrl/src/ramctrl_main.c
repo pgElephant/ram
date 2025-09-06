@@ -355,8 +355,8 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 				strncpy(ctx->command_args[ctx->command_argc], argv[optind],
 				        sizeof(ctx->command_args[ctx->command_argc]) - 1);
 				ctx->command_args[ctx->command_argc]
-				                 [sizeof(ctx->command_args[ctx->command_argc]) - 1] =
-				    '\0';
+				                 [sizeof(ctx->command_args[ctx->command_argc]) -
+				                  1] = '\0';
 				ctx->command_argc++;
 				optind++;
 			}
@@ -374,7 +374,8 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 				else if (strcmp(argv[optind], "set-mode") == 0)
 					ctx->replication_command = RAMCTRL_REPLICATION_SET_MODE;
 				else if (strcmp(argv[optind], "set-lag") == 0)
-					ctx->replication_command = RAMCTRL_REPLICATION_SET_LAG_THRESHOLD;
+					ctx->replication_command =
+					    RAMCTRL_REPLICATION_SET_LAG_THRESHOLD;
 				else if (strcmp(argv[optind], "slots") == 0)
 					ctx->replication_command = RAMCTRL_REPLICATION_SHOW_SLOTS;
 				else
@@ -485,7 +486,8 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 					ctx->watch_command = RAMCTRL_WATCH_STATUS;
 				else
 				{
-					ctx->watch_command = RAMCTRL_WATCH_CLUSTER; /* Default to cluster */
+					ctx->watch_command =
+					    RAMCTRL_WATCH_CLUSTER; /* Default to cluster */
 					optind--; /* Don't consume unknown subcommand */
 				}
 				if (ctx->watch_command != RAMCTRL_WATCH_UNKNOWN)
@@ -493,7 +495,8 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 			}
 			else
 			{
-				ctx->watch_command = RAMCTRL_WATCH_CLUSTER; /* Default to cluster */
+				ctx->watch_command =
+				    RAMCTRL_WATCH_CLUSTER; /* Default to cluster */
 			}
 		}
 	}

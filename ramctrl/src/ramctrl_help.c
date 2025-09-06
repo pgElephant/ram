@@ -18,8 +18,10 @@
 void ramctrl_help_show_general(void)
 {
 	printf("Usage: ramctrl [OPTIONS] COMMAND [SUBCOMMAND] [ARGS...]\n\n");
-	printf("PostgreSQL RAM Control Utility for managing RALE-based Auto Manager clusters.\n");
-	printf("Provides comprehensive cluster management, monitoring, and maintenance capabilities.\n\n");
+	printf("PostgreSQL RAM Control Utility for managing RALE-based Auto "
+	       "Manager clusters.\n");
+	printf("Provides comprehensive cluster management, monitoring, and "
+	       "maintenance capabilities.\n\n");
 	printf("Commands:\n");
 }
 
@@ -41,9 +43,11 @@ void ramctrl_help_show_commands(void)
 	printf("  %-20s Show cluster information (try: ramctrl show)\n", "show");
 	printf("  %-20s Node management operations (try: ramctrl node)\n", "node");
 	printf("  %-20s Real-time monitoring (try: ramctrl watch)\n", "watch");
-	printf("  %-20s Replication management (try: ramctrl replication)\n", "replication");
+	printf("  %-20s Replication management (try: ramctrl replication)\n",
+	       "replication");
 	printf("  %-20s Backup operations (try: ramctrl backup)\n", "backup");
-	printf("  %-20s Bootstrap operations (try: ramctrl bootstrap)\n", "bootstrap");
+	printf("  %-20s Bootstrap operations (try: ramctrl bootstrap)\n",
+	       "bootstrap");
 	printf("\nOptions:\n");
 	printf("  -h, --host HOST       PostgreSQL host\n");
 	printf("  -p, --port PORT       PostgreSQL port\n");
@@ -75,9 +79,12 @@ void ramctrl_help_show_command(const char* command)
 
 	if (strcmp(command, "status") == 0)
 		ramctrl_help_show_status();
-	else if (strcmp(command, "start") == 0 || strcmp(command, "stop") == 0 || strcmp(command, "restart") == 0)
+	else if (strcmp(command, "start") == 0 || strcmp(command, "stop") == 0 ||
+	         strcmp(command, "restart") == 0)
 		ramctrl_help_show_start_stop();
-	else if (strcmp(command, "cluster") == 0 || strcmp(command, "promote") == 0 || strcmp(command, "demote") == 0 || strcmp(command, "failover") == 0)
+	else if (strcmp(command, "cluster") == 0 ||
+	         strcmp(command, "promote") == 0 ||
+	         strcmp(command, "demote") == 0 || strcmp(command, "failover") == 0)
 		ramctrl_help_show_cluster_management();
 	else if (strcmp(command, "replication") == 0)
 		ramctrl_help_show_replication();
@@ -87,7 +94,8 @@ void ramctrl_help_show_command(const char* command)
 		ramctrl_help_show_watch();
 	else if (strcmp(command, "examples") == 0)
 		ramctrl_help_show_examples();
-	else if (strcmp(command, "configuration") == 0 || strcmp(command, "config") == 0)
+	else if (strcmp(command, "configuration") == 0 ||
+	         strcmp(command, "config") == 0)
 		ramctrl_help_show_configuration();
 	else if (strcmp(command, "troubleshooting") == 0)
 		ramctrl_help_show_troubleshooting();
@@ -106,7 +114,8 @@ void ramctrl_help_show_status(void)
 	printf("Options:\n");
 	printf("  --json        Output in JSON format\n");
 	printf("  --verbose     Show detailed information\n\n");
-	printf("This displays daemon status (running/stopped), cluster name, node count,\n");
+	printf("This displays daemon status (running/stopped), cluster name, node "
+	       "count,\n");
 	printf("health status, primary and leader node information.\n");
 }
 
@@ -141,7 +150,8 @@ void ramctrl_help_show_cluster_management(void)
 
 void ramctrl_help_show_replication(void)
 {
-	printf("Usage: ramctrl {show replication|set-replication-mode|set-lag-threshold}\n\n");
+	printf("Usage: ramctrl {show "
+	       "replication|set-replication-mode|set-lag-threshold}\n\n");
 	printf("Monitor and configure PostgreSQL replication settings.\n\n");
 	printf("Commands:\n");
 	printf("  show replication       Show replication status and lag\n");
@@ -347,7 +357,8 @@ void ramctrl_replication_help(void)
 void ramctrl_replica_help(void)
 {
 	printf("Usage: ramctrl replica SUBCOMMAND [OPTIONS]\n\n");
-	printf("Manage PostgreSQL replicas with automatic pg_ram consensus integration.\n\n");
+	printf("Manage PostgreSQL replicas with automatic pg_ram consensus "
+	       "integration.\n\n");
 	printf("Subcommands:\n");
 	printf("  %-15s Add new replica to cluster\n", "add HOSTNAME [PORT]");
 	printf("  %-15s Remove replica from cluster\n", "remove NODE_ID");

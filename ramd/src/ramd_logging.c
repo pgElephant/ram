@@ -111,8 +111,8 @@ void ramd_log(ramd_log_level_t level, const char* file, int line,
 	else
 	{
 		/* Production format - clean and meaningful */
-		snprintf(full_message, sizeof(full_message), "%s [%s] %s",
-		         timestamp, ramd_logging_level_to_string(level), message);
+		snprintf(full_message, sizeof(full_message), "%s [%s] %s", timestamp,
+		         ramd_logging_level_to_string(level), message);
 	}
 
 	/* Log to console */

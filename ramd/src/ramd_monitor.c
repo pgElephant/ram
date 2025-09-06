@@ -140,7 +140,8 @@ bool ramd_monitor_check_local_node(ramd_monitor_t* monitor)
 
 	if (!local_healthy)
 	{
-		ramd_log_warning("PostgreSQL health check failed - unable to connect to local database");
+		ramd_log_warning("PostgreSQL health check failed - unable to connect "
+		                 "to local database");
 		return false;
 	}
 
@@ -223,7 +224,8 @@ bool ramd_monitor_check_remote_nodes(ramd_monitor_t* monitor)
 	}
 
 	/* Calculate remote node count (excluding local node) */
-	int32_t remote_node_count = monitor->cluster->node_count > 0 ? monitor->cluster->node_count - 1 : 0;
+	int32_t remote_node_count =
+	    monitor->cluster->node_count > 0 ? monitor->cluster->node_count - 1 : 0;
 	ramd_log_info("Remote nodes health check: %d/%d nodes healthy",
 	              healthy_count, remote_node_count);
 
