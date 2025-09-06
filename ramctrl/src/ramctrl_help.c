@@ -344,6 +344,28 @@ void ramctrl_replication_help(void)
 }
 
 
+void ramctrl_replica_help(void)
+{
+	printf("Usage: ramctrl replica SUBCOMMAND [OPTIONS]\n\n");
+	printf("Manage PostgreSQL replicas with automatic pg_ram consensus integration.\n\n");
+	printf("Subcommands:\n");
+	printf("  %-15s Add new replica to cluster\n", "add HOSTNAME [PORT]");
+	printf("  %-15s Remove replica from cluster\n", "remove NODE_ID");
+	printf("  %-15s List all replicas\n", "list");
+	printf("  %-15s Show replica status\n", "status");
+	printf("\nThe 'add' command will:\n");
+	printf("  - Create PostgreSQL replica with pg_basebackup\n");
+	printf("  - Configure replication settings automatically\n");
+	printf("  - Install and setup pg_ram extension\n");
+	printf("  - Join librale consensus automatically\n");
+	printf("\nExamples:\n");
+	printf("  ramctrl replica add replica1.example.com\n");
+	printf("  ramctrl replica add 192.168.1.100 5433\n");
+	printf("  ramctrl replica list\n");
+	printf("  ramctrl replica status\n");
+}
+
+
 void ramctrl_backup_help(void)
 {
 	printf("Usage: ramctrl backup SUBCOMMAND [OPTIONS]\n\n");

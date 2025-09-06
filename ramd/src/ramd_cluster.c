@@ -26,9 +26,48 @@ bool ramd_cluster_init(ramd_cluster_t* cluster, const ramd_config_t* config)
 	cluster->leader_node_id = -1;
 	cluster->last_topology_change = time(NULL);
 
-	ramd_log_info("Cluster initialized: %s (local_node_id=%d)",
+	ramd_log_info("Cluster initialized: %s (local_node_id=%d) - cluster is empty and ready for bootstrap",
 	              cluster->cluster_name, cluster->local_node_id);
 
+	return true;
+}
+
+
+bool ramd_cluster_bootstrap_primary(ramd_cluster_t* cluster, const ramd_config_t* config)
+{
+	if (!cluster || !config)
+		return false;
+
+	/* Ensure cluster is empty */
+	if (cluster->node_count > 0)
+	{
+		ramd_log_error("Cannot bootstrap primary: cluster already has %d nodes", cluster->node_count);
+		return false;
+	}
+
+	ramd_log_info("Bootstrapping primary node for cluster '%s'", cluster->cluster_name);
+
+	/* Add the local node as primary */
+	if (!ramd_cluster_add_node(cluster, config->node_id, config->hostname,
+	                           config->postgresql_port, config->rale_port,
+	                           config->dstore_port))
+	{
+		ramd_log_error("Failed to add local node to cluster during bootstrap");
+		return false;
+	}
+
+	/* Mark this node as primary */
+	ramd_node_t* local_node = ramd_cluster_find_node(cluster, config->node_id);
+	if (local_node)
+	{
+		local_node->is_healthy = true;
+		local_node->state = RAMD_NODE_STATE_PRIMARY;
+		local_node->role = RAMD_ROLE_PRIMARY;
+		cluster->primary_node_id = config->node_id;
+		cluster->leader_node_id = config->node_id;
+	}
+
+	ramd_log_info("Primary node bootstrap completed successfully");
 	return true;
 }
 

@@ -121,9 +121,24 @@ bool ramd_monitor_check_local_node(ramd_monitor_t* monitor)
 		return false;
 
 	ramd_postgresql_status_t pg_status;
+	ramd_postgresql_connection_t local_conn;
+	bool local_healthy = false;
 
-	/* Check PostgreSQL status */
-	if (!ramd_postgresql_get_status(&monitor->local_connection, &pg_status))
+	/* Try to connect to local PostgreSQL */
+	if (ramd_postgresql_connect(
+	        &local_conn, "localhost", monitor->config->postgresql_port,
+	        monitor->config->database_name, monitor->config->database_user,
+	        monitor->config->database_password))
+	{
+		/* Check PostgreSQL status */
+		if (ramd_postgresql_get_status(&local_conn, &pg_status))
+		{
+			local_healthy = true;
+		}
+		ramd_postgresql_disconnect(&local_conn);
+	}
+
+	if (!local_healthy)
 	{
 		ramd_log_warning("PostgreSQL health check failed - unable to connect to local database");
 		return false;
@@ -135,7 +150,7 @@ bool ramd_monitor_check_local_node(ramd_monitor_t* monitor)
 	/* Check if we're still connected to PostgreSQL */
 	if (!pg_status.is_running)
 	{
-		ramd_log_error("Critical: Local PostgreSQL database service is offline");
+		ramd_log_error("Local PostgreSQL database service is offline");
 		return false;
 	}
 
@@ -207,8 +222,10 @@ bool ramd_monitor_check_remote_nodes(ramd_monitor_t* monitor)
 		}
 	}
 
+	/* Calculate remote node count (excluding local node) */
+	int32_t remote_node_count = monitor->cluster->node_count > 0 ? monitor->cluster->node_count - 1 : 0;
 	ramd_log_info("Remote nodes health check: %d/%d nodes healthy",
-	              healthy_count, monitor->cluster->node_count - 1);
+	              healthy_count, remote_node_count);
 
 	return all_healthy;
 }

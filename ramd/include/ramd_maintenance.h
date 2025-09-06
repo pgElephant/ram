@@ -118,6 +118,11 @@ bool ramd_maintenance_bootstrap_cluster(
     const ramd_config_t* config, const char* cluster_name,
     const char* primary_host, int32_t primary_port, const char** standby_hosts,
     int32_t* standby_ports, int32_t standby_count);
+bool ramd_maintenance_setup_replica(const ramd_config_t* config,
+                                    const char* cluster_name,
+                                    const char* replica_host,
+                                    int32_t replica_port,
+                                    int32_t node_id);
 
 /* Node management functions */
 bool ramd_maintenance_start_postgresql_node(const ramd_config_t* config,

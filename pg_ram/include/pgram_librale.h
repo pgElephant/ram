@@ -15,15 +15,8 @@
 #include "fmgr.h"
 #include "miscadmin.h"
 
-/* Forward declaration - will include librale.h in .c file */
-typedef struct librale_config_t librale_config_t;
-typedef struct librale_node_t librale_node_t;
-
-typedef enum librale_status
-{
-	RALE_SUCCESS = 0,
-	RALE_ERROR_GENERAL = -1
-} librale_status_t;
+/* Include librale types directly */
+#include "librale.h"
 
 typedef struct pg_ram_librale_config
 {

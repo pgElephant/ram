@@ -42,6 +42,7 @@ typedef enum
 	RAMD_HTTP_401_UNAUTHORIZED = 401,
 	RAMD_HTTP_404_NOT_FOUND = 404,
 	RAMD_HTTP_405_METHOD_NOT_ALLOWED = 405,
+	RAMD_HTTP_409_CONFLICT = 409,
 	RAMD_HTTP_500_INTERNAL_ERROR = 500,
 	RAMD_HTTP_501_NOT_IMPLEMENTED = 501,
 	RAMD_HTTP_503_SERVICE_UNAVAILABLE = 503
@@ -122,6 +123,10 @@ void ramd_http_handle_config_reload(ramd_http_request_t* request,
                                     ramd_http_response_t* response);
 void ramd_http_handle_sync_replication(ramd_http_request_t* request,
                                        ramd_http_response_t* response);
+void ramd_http_handle_bootstrap_primary(ramd_http_request_t* request,
+                                        ramd_http_response_t* response);
+void ramd_http_handle_add_replica(ramd_http_request_t* request,
+                                  ramd_http_response_t* response);
 
 /* Utility functions */
 char* ramd_http_get_query_param(const char* query_string,

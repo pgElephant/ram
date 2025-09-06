@@ -63,6 +63,7 @@ typedef enum ramctrl_command
 	RAMCTRL_CMD_NODE,
 	RAMCTRL_CMD_WATCH,
 	RAMCTRL_CMD_REPLICATION,
+	RAMCTRL_CMD_REPLICA,
 	RAMCTRL_CMD_BACKUP,
 	RAMCTRL_CMD_BOOTSTRAP
 } ramctrl_command_t;
@@ -110,6 +111,16 @@ typedef enum ramctrl_replication_command
 	RAMCTRL_REPLICATION_SET_LAG_THRESHOLD,
 	RAMCTRL_REPLICATION_SHOW_SLOTS
 } ramctrl_replication_command_t;
+
+/* Replica subcommands */
+typedef enum ramctrl_replica_command
+{
+	RAMCTRL_REPLICA_UNKNOWN,
+	RAMCTRL_REPLICA_ADD,
+	RAMCTRL_REPLICA_REMOVE,
+	RAMCTRL_REPLICA_LIST,
+	RAMCTRL_REPLICA_STATUS
+} ramctrl_replica_command_t;
 
 /* Backup subcommands */
 typedef enum ramctrl_backup_command
@@ -201,6 +212,7 @@ typedef struct ramctrl_context
 	ramctrl_node_command_t node_command;
 	ramctrl_watch_command_t watch_command;
 	ramctrl_replication_command_t replication_command;
+	ramctrl_replica_command_t replica_command;
 	ramctrl_backup_command_t backup_command;
 	ramctrl_bootstrap_command_t bootstrap_command;
 	char command_args[16][256];
@@ -235,6 +247,11 @@ extern int ramctrl_cmd_show(ramctrl_context_t* ctx);
 extern int ramctrl_cmd_node(ramctrl_context_t* ctx);
 extern int ramctrl_cmd_watch_new(ramctrl_context_t* ctx);
 extern int ramctrl_cmd_replication(ramctrl_context_t* ctx);
+extern int ramctrl_cmd_replica(ramctrl_context_t* ctx);
+extern int ramctrl_cmd_add_replica(ramctrl_context_t* ctx);
+extern int ramctrl_cmd_remove_replica(ramctrl_context_t* ctx);
+extern int ramctrl_cmd_list_replicas(ramctrl_context_t* ctx);
+extern int ramctrl_cmd_replica_status(ramctrl_context_t* ctx);
 extern int ramctrl_cmd_backup(ramctrl_context_t* ctx);
 extern int ramctrl_cmd_bootstrap(ramctrl_context_t* ctx);
 
@@ -242,6 +259,7 @@ extern int ramctrl_cmd_bootstrap(ramctrl_context_t* ctx);
 extern void ramctrl_show_help(void);
 extern void ramctrl_node_help(void);
 extern void ramctrl_watch_help(void);
+extern void ramctrl_replica_help(void);
 extern void ramctrl_replication_help(void);
 extern void ramctrl_backup_help(void);
 extern void ramctrl_bootstrap_help(void);

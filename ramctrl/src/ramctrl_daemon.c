@@ -27,6 +27,7 @@
 #include "ramctrl_replication.h"
 #include "ramctrl_defaults.h"
 #include "ramctrl_help.h"
+#include "ramctrl_http.h"
 #include "ramctrl_watch.h"
 
 
@@ -684,7 +685,7 @@ int ramctrl_cmd_set_lag_threshold(ramctrl_context_t* ctx)
 		printf("ramctrl: setting lag threshold...\n");
 
 	printf("ramctrl: lag threshold updated\n");
-    return RAMCTRL_EXIT_SUCCESS;
+        return RAMCTRL_EXIT_SUCCESS;
 }
 
 
@@ -711,7 +712,7 @@ int ramctrl_cmd_wal_e_restore(ramctrl_context_t* ctx)
 	ramctrl_daemon_status_t daemon_status;
 
 	if (!ctx)
-		return RAMCTRL_EXIT_FAILURE;
+        return RAMCTRL_EXIT_FAILURE;
 
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
@@ -727,10 +728,10 @@ int ramctrl_cmd_wal_e_restore(ramctrl_context_t* ctx)
 int ramctrl_cmd_wal_e_list(ramctrl_context_t* ctx)
 {
 	ramctrl_daemon_status_t daemon_status;
-
-	if (!ctx)
-		return RAMCTRL_EXIT_FAILURE;
-
+    
+    if (!ctx)
+        return RAMCTRL_EXIT_FAILURE;
+    
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
@@ -751,7 +752,7 @@ int ramctrl_cmd_wal_e_delete(ramctrl_context_t* ctx)
 	ramctrl_daemon_status_t daemon_status;
 
 	if (!ctx)
-		return RAMCTRL_EXIT_FAILURE;
+        return RAMCTRL_EXIT_FAILURE;
 	
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
@@ -760,25 +761,75 @@ int ramctrl_cmd_wal_e_delete(ramctrl_context_t* ctx)
 		printf("ramctrl: deleting WAL-E backup...\n");
 
 	printf("ramctrl: backup deleted successfully\n");
-		return RAMCTRL_EXIT_SUCCESS;
-	}
+    return RAMCTRL_EXIT_SUCCESS;
+}
 
 
 int ramctrl_cmd_bootstrap_run(ramctrl_context_t* ctx)
-	{
+{
+	char response_buffer[4096];
 	ramctrl_daemon_status_t daemon_status;
-
+	
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-
+	
 	memset(&daemon_status, 0, sizeof(daemon_status));
 	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
 
 	if (ctx->verbose)
 		printf("ramctrl: running bootstrap...\n");
 
-	printf("ramctrl: bootstrap completed successfully\n");
+	/* Check if we have the "primary" argument */
+	if (ctx->command_argc == 0 || strcmp(ctx->command_args[0], "primary") != 0)
+	{
+		printf("ramctrl: bootstrap requires node type (primary|standby)\n");
+		printf("Usage: ramctrl bootstrap run primary\n");
+		return RAMCTRL_EXIT_FAILURE;
+	}
+
+	/* Build full URL */
+	char full_url[512];
+	const char* api_url = getenv("RAMCTRL_API_URL");
+	if (!api_url)
+	{
+		printf("ramctrl: RAMCTRL_API_URL environment variable not set\n");
+		printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., http://127.0.0.1:8008)\n");
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	snprintf(full_url, sizeof(full_url), "%s/api/v1/bootstrap/primary", api_url);
+
+	/* Make HTTP POST request to ramd bootstrap API */
+	if (!ramctrl_http_post(full_url, "", response_buffer, sizeof(response_buffer)))
+	{
+		printf("ramctrl: failed to connect to ramd daemon\n");
+		printf("ramctrl: ensure ramd is running and accessible at %s\n", 
+		       getenv("RAMCTRL_API_URL") ? getenv("RAMCTRL_API_URL") : "default URL");
+		return RAMCTRL_EXIT_FAILURE;
+	}
+
+	/* Parse and display response */
+	if (strstr(response_buffer, "\"status\": \"success\""))
+	{
+		printf("ramctrl: primary node bootstrap completed successfully\n");
+		if (ctx->verbose || ctx->json_output)
+		{
+			printf("Response: %s\n", response_buffer);
+		}
 		return RAMCTRL_EXIT_SUCCESS;
+	}
+	else
+	{
+		printf("ramctrl: bootstrap failed\n");
+		if (ctx->verbose || ctx->json_output)
+		{
+			printf("Response: %s\n", response_buffer);
+		}
+		else
+		{
+			printf("Use --verbose for detailed error information\n");
+		}
+		return RAMCTRL_EXIT_FAILURE;
+	}
 }
 
 
@@ -796,7 +847,7 @@ int ramctrl_cmd_bootstrap_validate(ramctrl_context_t* ctx)
 		printf("ramctrl: validating bootstrap...\n");
 
 	printf("ramctrl: bootstrap validation successful\n");
-	return RAMCTRL_EXIT_SUCCESS;
+		return RAMCTRL_EXIT_SUCCESS;
 }
 
 
@@ -823,9 +874,9 @@ bool ramctrl_daemon_get_logs(ramctrl_context_t* ctx, char* output,
 		{
 			strcat(output, line);
 			written += line_len;
-		}
-		else
-		{
+	}
+	else
+	{
 			break;
 		}
 	}
@@ -839,7 +890,7 @@ int ramctrl_cmd_show(ramctrl_context_t* ctx)
 {
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-
+	
 	switch (ctx->show_command)
 	{
 	case RAMCTRL_SHOW_CLUSTER:
@@ -889,12 +940,12 @@ int ramctrl_cmd_node(ramctrl_context_t* ctx)
 	}
 }
 
-
+	
 int ramctrl_cmd_watch_new(ramctrl_context_t* ctx)
 	{
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-
+	
 	switch (ctx->watch_command)
 	{
 	case RAMCTRL_WATCH_CLUSTER:
@@ -917,7 +968,7 @@ int ramctrl_cmd_replication(ramctrl_context_t* ctx)
 {
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
-
+	
 	switch (ctx->replication_command)
 	{
 	case RAMCTRL_REPLICATION_STATUS:
@@ -933,6 +984,148 @@ int ramctrl_cmd_replication(ramctrl_context_t* ctx)
 		ramctrl_replication_help();
 		return RAMCTRL_EXIT_SUCCESS;
 	}
+}
+
+
+int ramctrl_cmd_replica(ramctrl_context_t* ctx)
+	{
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+
+	switch (ctx->replica_command)
+	{
+	case RAMCTRL_REPLICA_ADD:
+		return ramctrl_cmd_add_replica(ctx);
+	case RAMCTRL_REPLICA_REMOVE:
+		return ramctrl_cmd_remove_replica(ctx);
+	case RAMCTRL_REPLICA_LIST:
+		return ramctrl_cmd_list_replicas(ctx);
+	case RAMCTRL_REPLICA_STATUS:
+		return ramctrl_cmd_replica_status(ctx);
+	case RAMCTRL_REPLICA_UNKNOWN:
+	default:
+		ramctrl_replica_help();
+		return RAMCTRL_EXIT_SUCCESS;
+	}
+}
+
+
+int ramctrl_cmd_add_replica(ramctrl_context_t* ctx)
+{
+	char response_buffer[4096];
+	char json_payload[1024];
+	const char* hostname;
+	int32_t port = 5432;  /* Default PostgreSQL port */
+	
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+	
+	if (ctx->verbose)
+		printf("ramctrl: adding replica to cluster...\n");
+	
+	/* Parse arguments: ramctrl replica add <hostname> [port] */
+	if (ctx->command_argc < 1)
+	{
+		printf("ramctrl: replica add requires hostname\n");
+		printf("Usage: ramctrl replica add <hostname> [port]\n");
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	
+	hostname = ctx->command_args[0];
+	
+	if (ctx->command_argc >= 2)
+	{
+		port = atoi(ctx->command_args[1]);
+		if (port <= 0 || port > 65535)
+		{
+			printf("ramctrl: invalid port number: %s\n", ctx->command_args[1]);
+		return RAMCTRL_EXIT_FAILURE;
+	}
+}
+
+	/* Build JSON payload for ramd */
+	snprintf(json_payload, sizeof(json_payload),
+	         "{\n"
+	         "  \"hostname\": \"%s\",\n"
+	         "  \"port\": %d,\n"
+	         "  \"role\": \"replica\"\n"
+	         "}", hostname, port);
+	
+	/* Get ramd API URL */
+	const char* api_url = getenv("RAMCTRL_API_URL");
+	if (!api_url)
+	{
+		printf("ramctrl: RAMCTRL_API_URL environment variable not set\n");
+		printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., http://127.0.0.1:8008)\n");
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	
+	/* Build full API endpoint URL */
+	char full_url[512];
+	snprintf(full_url, sizeof(full_url), "%s/api/v1/replica/add", api_url);
+	
+	/* Call ramd HTTP API */
+	if (!ramctrl_http_post(full_url, json_payload, response_buffer, sizeof(response_buffer)))
+	{
+		printf("ramctrl: failed to connect to ramd daemon\n");
+		printf("ramctrl: ensure ramd is running and accessible at %s\n", api_url);
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	
+	/* Parse response */
+	if (strstr(response_buffer, "\"status\": \"success\""))
+	{
+		printf("ramctrl: replica added successfully\n");
+		printf("ramctrl: replica %s:%d is being initialized\n", hostname, port);
+		if (ctx->verbose || ctx->json_output)
+		{
+			printf("Response: %s\n", response_buffer);
+		}
+		return RAMCTRL_EXIT_SUCCESS;
+	}
+	else
+	{
+		printf("ramctrl: failed to add replica\n");
+		if (ctx->verbose || ctx->json_output)
+		{
+			printf("Response: %s\n", response_buffer);
+		}
+		else
+		{
+			printf("Use --verbose for detailed error information\n");
+		}
+		return RAMCTRL_EXIT_FAILURE;
+	}
+}
+
+
+int ramctrl_cmd_remove_replica(ramctrl_context_t* ctx)
+{
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+	
+	printf("ramctrl: remove replica functionality not yet implemented\n");
+	return RAMCTRL_EXIT_SUCCESS;
+}
+
+
+int ramctrl_cmd_list_replicas(ramctrl_context_t* ctx)
+{
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+	
+	/* Use existing show nodes functionality */
+	return ramctrl_cmd_show_nodes(ctx);
+}
+
+
+int ramctrl_cmd_replica_status(ramctrl_context_t* ctx)
+{
+	if (!ctx)
+		return RAMCTRL_EXIT_FAILURE;
+	
+	/* Use existing show nodes functionality */
+	return ramctrl_cmd_show_nodes(ctx);
 }
 
 

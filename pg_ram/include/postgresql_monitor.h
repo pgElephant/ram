@@ -17,6 +17,8 @@
 #include "pgstat.h"
 #include "storage/lwlock.h"
 #include "utils/timestamp.h"
+#include "datatype/timestamp.h"
+#include "utils/pg_lsn.h"
 
 /* PostgreSQL monitoring configuration */
 typedef struct
@@ -40,17 +42,17 @@ typedef struct
 	int32_t active_connections;
 	int32_t max_connections;
 	float connection_usage_percentage;
-	pg_lsn current_wal_lsn;
-	pg_lsn received_lsn;
-	pg_lsn replayed_lsn;
+	XLogRecPtr current_wal_lsn;
+	XLogRecPtr received_lsn;
+	XLogRecPtr replayed_lsn;
 	int32_t wal_lag_seconds;
 	int64_t shared_buffers_used;
 	int64_t shared_buffers_total;
 	float buffer_hit_ratio;
 	int32_t checkpoint_segments_ready;
 	int32_t background_writer_activity;
-	timestamptz last_checkpoint_time;
-	timestamptz last_health_check;
+	TimestampTz last_checkpoint_time;
+	TimestampTz last_health_check;
 	float overall_health_score;
 	char status_message[512];
 } postgresql_health_t;

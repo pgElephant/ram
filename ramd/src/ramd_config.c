@@ -11,6 +11,7 @@
 #include "ramd_config.h"
 #include "ramd_logging.h"
 #include "ramd_defaults.h"
+#include <errno.h>
 
 bool ramd_config_init(ramd_config_t* config)
 {
@@ -55,6 +56,8 @@ void ramd_config_set_defaults(ramd_config_t* config)
 	        sizeof(config->database_name) - 1);
 	strncpy(config->database_user, pguser ? pguser : RAMD_DEFAULT_PG_USER,
 	        sizeof(config->database_user) - 1);
+	strncpy(config->postgresql_user, pguser ? pguser : RAMD_DEFAULT_PG_USER,
+	        sizeof(config->postgresql_user) - 1);
 
 	/* Cluster defaults */
 	strncpy(config->cluster_name, RAMD_DEFAULT_CLUSTER_NAME,
@@ -114,6 +117,8 @@ bool ramd_config_load_file(ramd_config_t* config, const char* config_file)
 	fp = fopen(config_file, "r");
 	if (!fp)
 	{
+		fprintf(stderr, "Failed to open configuration file: %s (%s)\n", 
+		        config_file, strerror(errno));
 		ramd_log_error("Failed to open configuration file: %s", config_file);
 		return false;
 	}
@@ -171,10 +176,27 @@ bool ramd_config_parse_line(ramd_config_t* config, const char* line)
 	*equals_pos = '\0';
 	key = line_copy;
 	value = equals_pos + 1;
+	/* Trim leading spaces from key and value */
 	while (*key == ' ' || *key == '\t')
 		key++;
 	while (*value == ' ' || *value == '\t')
 		value++;
+
+	/* Trim trailing spaces from key */
+	char* key_end = key + strlen(key) - 1;
+	while (key_end > key && (*key_end == ' ' || *key_end == '\t'))
+	{
+		*key_end = '\0';
+		key_end--;
+	}
+
+	/* Trim trailing spaces from value */
+	char* value_end = value + strlen(value) - 1;
+	while (value_end > value && (*value_end == ' ' || *value_end == '\t'))
+	{
+		*value_end = '\0';
+		value_end--;
+	}
 
 	bool result = ramd_config_parse_key_value(config, key, value);
 
@@ -192,7 +214,10 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 	if (strcmp(key, "node_id") == 0)
 		config->node_id = atoi(value);
 	else if (strcmp(key, "hostname") == 0)
+	{
 		strncpy(config->hostname, value, sizeof(config->hostname) - 1);
+		config->hostname[sizeof(config->hostname) - 1] = '\0';
+	}
 	else if (strcmp(key, "postgresql_port") == 0)
 		config->postgresql_port = atoi(value);
 	else if (strcmp(key, "rale_port") == 0)
@@ -211,6 +236,9 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 	else if (strcmp(key, "database_user") == 0)
 		strncpy(config->database_user, value,
 		        sizeof(config->database_user) - 1);
+	else if (strcmp(key, "postgresql_user") == 0)
+		strncpy(config->postgresql_user, value,
+		        sizeof(config->postgresql_user) - 1);
 	else if (strcmp(key, "database_password") == 0)
 		strncpy(config->database_password, value,
 		        sizeof(config->database_password) - 1);

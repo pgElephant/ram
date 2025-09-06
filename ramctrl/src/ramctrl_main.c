@@ -163,6 +163,7 @@ bool ramctrl_init(ramctrl_context_t* ctx)
 	ctx->node_command = RAMCTRL_NODE_UNKNOWN;
 	ctx->watch_command = RAMCTRL_WATCH_UNKNOWN;
 	ctx->replication_command = RAMCTRL_REPLICATION_UNKNOWN;
+	ctx->replica_command = RAMCTRL_REPLICA_UNKNOWN;
 	ctx->backup_command = RAMCTRL_BACKUP_UNKNOWN;
 	ctx->bootstrap_command = RAMCTRL_BOOTSTRAP_UNKNOWN;
 
@@ -389,6 +390,33 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 				ctx->replication_command = RAMCTRL_REPLICATION_UNKNOWN;
 			}
 		}
+		else if (strcmp(argv[optind], "replica") == 0)
+		{
+			ctx->command = RAMCTRL_CMD_REPLICA;
+			optind++;
+			if (optind < argc)
+			{
+				if (strcmp(argv[optind], "add") == 0)
+					ctx->replica_command = RAMCTRL_REPLICA_ADD;
+				else if (strcmp(argv[optind], "remove") == 0)
+					ctx->replica_command = RAMCTRL_REPLICA_REMOVE;
+				else if (strcmp(argv[optind], "list") == 0)
+					ctx->replica_command = RAMCTRL_REPLICA_LIST;
+				else if (strcmp(argv[optind], "status") == 0)
+					ctx->replica_command = RAMCTRL_REPLICA_STATUS;
+				else
+				{
+					ctx->replica_command = RAMCTRL_REPLICA_UNKNOWN;
+					optind--; /* Don't consume unknown subcommand */
+				}
+				if (ctx->replica_command != RAMCTRL_REPLICA_UNKNOWN)
+					optind++;
+			}
+			else
+			{
+				ctx->replica_command = RAMCTRL_REPLICA_UNKNOWN;
+			}
+		}
 		else if (strcmp(argv[optind], "backup") == 0)
 		{
 			ctx->command = RAMCTRL_CMD_BACKUP;
@@ -472,7 +500,7 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 
 	/* Store remaining arguments */
 	ctx->command_argc = 0;
-	for (int i = optind + 1; i < argc && ctx->command_argc < 16; i++)
+	for (int i = optind; i < argc && ctx->command_argc < 16; i++)
 	{
 		strncpy(ctx->command_args[ctx->command_argc], argv[i],
 		        sizeof(ctx->command_args[ctx->command_argc]) - 1);
@@ -531,6 +559,8 @@ int ramctrl_execute_command(ramctrl_context_t* ctx)
 		return ramctrl_cmd_watch_new(ctx);
 	case RAMCTRL_CMD_REPLICATION:
 		return ramctrl_cmd_replication(ctx);
+	case RAMCTRL_CMD_REPLICA:
+		return ramctrl_cmd_replica(ctx);
 	case RAMCTRL_CMD_BACKUP:
 		return ramctrl_cmd_backup(ctx);
 	case RAMCTRL_CMD_BOOTSTRAP:

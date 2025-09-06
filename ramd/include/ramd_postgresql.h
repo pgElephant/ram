@@ -103,6 +103,19 @@ bool ramd_postgresql_check_connectivity(const ramd_config_t* config);
 bool ramd_postgresql_check_replication_lag(ramd_postgresql_connection_t* conn,
                                            float* lag_seconds);
 
+/* PostgreSQL extension management */
+bool ramd_postgresql_create_pg_ram_extension(const ramd_config_t* config);
+
+/* pg_ram integration functions */
+bool ramd_postgresql_query_pgram_cluster_status(const ramd_config_t* config,
+                                               int32_t* node_count,
+                                               bool* is_leader,
+                                               int32_t* leader_id,
+                                               bool* has_quorum);
+bool ramd_postgresql_query_pgram_is_leader(const ramd_config_t* config);
+int32_t ramd_postgresql_query_pgram_node_count(const ramd_config_t* config);
+bool ramd_postgresql_query_pgram_has_quorum(const ramd_config_t* config);
+
 /* Utility functions */
 bool ramd_postgresql_execute_query(ramd_postgresql_connection_t* conn,
                                    const char* query, char* result,

@@ -59,6 +59,14 @@ bool ramd_failover_should_trigger(const ramd_cluster_t* cluster,
 	if (!config->auto_failover_enabled)
 		return false;
 
+	/* Don't trigger failover on empty clusters */
+	if (cluster->node_count == 0)
+		return false;
+
+	/* Don't trigger failover if we only have one node (single-node cluster) */
+	if (cluster->node_count == 1)
+		return false;
+
 	/* Check if primary has failed and we have quorum */
 	return ramd_failover_detect_primary_failure((ramd_cluster_t*) cluster) &&
 	       ramd_cluster_has_quorum(cluster);

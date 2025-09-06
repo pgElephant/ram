@@ -15,6 +15,7 @@
 #include "fmgr.h"
 #include "miscadmin.h"
 #include "utils/timestamp.h"
+#include "datatype/timestamp.h"
 
 /* Health check configuration */
 typedef struct postgresql_healthcheck_config
@@ -35,7 +36,7 @@ typedef struct postgresql_healthcheck_result
 	char description[256];
 	float response_time_ms;
 	int32 severity_level; /* 1=INFO, 2=WARNING, 3=ERROR, 4=CRITICAL */
-	timestamptz check_time;
+	TimestampTz check_time;
 	char error_message[512];
 } postgresql_healthcheck_result_t;
 
@@ -48,7 +49,7 @@ typedef struct postgresql_healthcheck_status
 	int32 failed_checks;
 	int32 consecutive_failures;
 	float overall_score;
-	timestamptz last_check_time;
+	TimestampTz last_check_time;
 	postgresql_healthcheck_result_t
 	    checks[16]; /* Support up to 16 different checks */
 } postgresql_healthcheck_status_t;

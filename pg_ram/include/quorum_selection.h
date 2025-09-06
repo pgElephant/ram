@@ -17,6 +17,8 @@
 #include "librale.h"
 #include "dstore.h"
 #include "utils/timestamp.h"
+#include "datatype/timestamp.h"
+#include "utils/pg_lsn.h"
 
 /* Quorum configuration */
 typedef struct
@@ -43,9 +45,9 @@ typedef struct
 	bool is_candidate;
 	bool is_available;
 	float health_score;
-	timestamptz last_seen;
+	TimestampTz last_seen;
 	int32_t term;
-	pg_lsn last_wal_lsn;
+	XLogRecPtr last_wal_lsn;
 } quorum_node_info_t;
 
 /* Quorum decision result */
@@ -63,7 +65,7 @@ typedef struct
 	int32_t current_term;
 	bool split_brain_detected;
 	bool needs_election;
-	timestamptz decision_time;
+	TimestampTz decision_time;
 	char decision_reason[512];
 } quorum_decision_t;
 
@@ -77,7 +79,7 @@ typedef struct
 	int32_t standby_count;
 	int32_t failed_nodes;
 	bool auto_failover_in_progress;
-	timestamptz last_topology_change;
+	TimestampTz last_topology_change;
 	quorum_node_info_t nodes[32]; /* Support up to 32 nodes */
 	int32_t node_count;
 } quorum_cluster_state_t;
