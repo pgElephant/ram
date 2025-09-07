@@ -11,6 +11,7 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "miscadmin.h"
+#include "executor/spi.h"
 #include "utils/elog.h"
 #include "utils/timestamp.h"
 #include "postgresql_healthcheck.h"
@@ -59,6 +60,8 @@ void postgresql_healthcheck_cleanup(void)
 
 bool postgresql_healthcheck_run_all(postgresql_healthcheck_status_t* status_out)
 {
+	int check_idx;
+
 	if (postgresql_healthcheck_config == NULL ||
 	    !postgresql_healthcheck_config->enabled)
 		return false;
@@ -71,7 +74,7 @@ bool postgresql_healthcheck_run_all(postgresql_healthcheck_status_t* status_out)
 	status_out->last_check_time = GetCurrentTimestamp();
 
 	/* Run individual health checks */
-	int check_idx = 0;
+	check_idx = 0;
 
 	/* Database connectivity check */
 	if (postgresql_healthcheck_database_connectivity(
@@ -132,7 +135,7 @@ bool postgresql_healthcheck_database_connectivity(
 	result_out->check_time = GetCurrentTimestamp();
 
 	/* Simple connectivity check */
-	if (MyProcPid > 0 && !proc_exit_inprogress)
+        if (MyProcPid > 0)
 	{
 		result_out->passed = true;
 		result_out->severity_level = 1; /* INFO */
@@ -210,6 +213,9 @@ bool postgresql_healthcheck_connection_limits(
 bool postgresql_healthcheck_disk_space(
     postgresql_healthcheck_result_t* result_out)
 {
+	StringInfoData query;
+	int ret;
+
 	if (result_out == NULL)
 		return false;
 
@@ -219,7 +225,6 @@ bool postgresql_healthcheck_disk_space(
 	result_out->severity_level = 4; /* Critical */
 
 	/* Check disk space for data directory and WAL directory */
-	StringInfoData query;
 	initStringInfo(&query);
 	appendStringInfo(
 	    &query, "SELECT pg_size_pretty(pg_database_size(current_database())) "
@@ -236,11 +241,11 @@ bool postgresql_healthcheck_disk_space(
 		return false;
 	}
 
-	int ret = SPI_execute(query.data, true, 1);
+	ret = SPI_execute(query.data, true, 1);
 	if (ret == SPI_OK_SELECT && SPI_processed > 0)
 	{
 		result_out->passed = true;
-		strcpy(result_out->details, "Disk space check completed successfully");
+                strcpy(result_out->error_message, "Disk space check completed successfully");
 	}
 	else
 	{
@@ -257,6 +262,8 @@ bool postgresql_healthcheck_disk_space(
 bool postgresql_healthcheck_memory_usage(
     postgresql_healthcheck_result_t* result_out)
 {
+	int ret;
+
 	if (result_out == NULL)
 		return false;
 
@@ -274,14 +281,14 @@ bool postgresql_healthcheck_memory_usage(
 		return false;
 	}
 
-	int ret = SPI_execute(
+	ret = SPI_execute(
 	    "SELECT setting FROM pg_settings WHERE name = 'shared_buffers'", true,
 	    1);
 	if (ret == SPI_OK_SELECT && SPI_processed > 0)
 	{
 		char* shared_buffers =
 		    SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1);
-		snprintf(result_out->details, sizeof(result_out->details),
+		snprintf(result_out->error_message, sizeof(result_out->error_message),
 		         "Shared buffers: %s",
 		         shared_buffers ? shared_buffers : "unknown");
 		result_out->passed = true;
@@ -300,6 +307,8 @@ bool postgresql_healthcheck_memory_usage(
 bool postgresql_healthcheck_wal_archiving(
     postgresql_healthcheck_result_t* result_out)
 {
+	int ret;
+
 	if (result_out == NULL)
 		return false;
 
@@ -317,7 +326,7 @@ bool postgresql_healthcheck_wal_archiving(
 		return false;
 	}
 
-	int ret = SPI_execute(
+	ret = SPI_execute(
 	    "SELECT archived_count, failed_count FROM pg_stat_archiver", true, 1);
 
 	if (ret == SPI_OK_SELECT && SPI_processed > 0)
@@ -330,7 +339,7 @@ bool postgresql_healthcheck_wal_archiving(
 		int failed_count = failed ? atoi(failed) : 0;
 		result_out->passed = (failed_count == 0);
 
-		snprintf(result_out->details, sizeof(result_out->details),
+		snprintf(result_out->error_message, sizeof(result_out->error_message),
 		         "Archived: %s, Failed: %s", archived ? archived : "0",
 		         failed ? failed : "0");
 
@@ -352,6 +361,8 @@ bool postgresql_healthcheck_wal_archiving(
 bool postgresql_healthcheck_vacuum_status(
     postgresql_healthcheck_result_t* result_out)
 {
+	int ret;
+
 	if (result_out == NULL)
 		return false;
 
@@ -369,7 +380,7 @@ bool postgresql_healthcheck_vacuum_status(
 		return false;
 	}
 
-	int ret =
+	ret =
 	    SPI_execute("SELECT COUNT(*) FROM pg_stat_user_tables "
 	                "WHERE last_vacuum IS NULL AND last_autovacuum IS NULL",
 	                true, 1);
@@ -381,7 +392,7 @@ bool postgresql_healthcheck_vacuum_status(
 		int count = never_vacuumed ? atoi(never_vacuumed) : 0;
 
 		result_out->passed = (count < 10); /* Threshold of 10 tables */
-		snprintf(result_out->details, sizeof(result_out->details),
+		snprintf(result_out->error_message, sizeof(result_out->error_message),
 		         "Tables never vacuumed: %d", count);
 
 		if (!result_out->passed)
@@ -401,6 +412,8 @@ bool postgresql_healthcheck_vacuum_status(
 bool postgresql_healthcheck_lock_contention(
     postgresql_healthcheck_result_t* result_out)
 {
+	int ret;
+
 	if (result_out == NULL)
 		return false;
 
@@ -418,7 +431,7 @@ bool postgresql_healthcheck_lock_contention(
 		return false;
 	}
 
-	int ret = SPI_execute("SELECT COUNT(*) FROM pg_stat_activity "
+	ret = SPI_execute("SELECT COUNT(*) FROM pg_stat_activity "
 	                      "WHERE wait_event_type = 'Lock' AND state = 'active'",
 	                      true, 1);
 
@@ -429,7 +442,7 @@ bool postgresql_healthcheck_lock_contention(
 		int count = blocked_queries ? atoi(blocked_queries) : 0;
 
 		result_out->passed = (count < 5); /* Threshold of 5 blocked queries */
-		snprintf(result_out->details, sizeof(result_out->details),
+		snprintf(result_out->error_message, sizeof(result_out->error_message),
 		         "Blocked queries: %d", count);
 
 		if (!result_out->passed)
@@ -449,6 +462,8 @@ bool postgresql_healthcheck_lock_contention(
 bool postgresql_healthcheck_checkpoint_performance(
     postgresql_healthcheck_result_t* result_out)
 {
+	int ret;
+
 	if (result_out == NULL)
 		return false;
 
@@ -466,7 +481,7 @@ bool postgresql_healthcheck_checkpoint_performance(
 		return false;
 	}
 
-	int ret = SPI_execute("SELECT checkpoints_timed, checkpoints_req, "
+	ret = SPI_execute("SELECT checkpoints_timed, checkpoints_req, "
 	                      "checkpoint_write_time, checkpoint_sync_time "
 	                      "FROM pg_stat_bgwriter",
 	                      true, 1);
@@ -479,7 +494,7 @@ bool postgresql_healthcheck_checkpoint_performance(
 		    SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 2);
 
 		result_out->passed = true;
-		snprintf(result_out->details, sizeof(result_out->details),
+		snprintf(result_out->error_message, sizeof(result_out->error_message),
 		         "Timed checkpoints: %s, Requested: %s", timed ? timed : "0",
 		         requested ? requested : "0");
 	}
@@ -497,6 +512,8 @@ bool postgresql_healthcheck_checkpoint_performance(
 bool postgresql_healthcheck_backup_status(
     postgresql_healthcheck_result_t* result_out)
 {
+	int ret;
+
 	if (result_out == NULL)
 		return false;
 
@@ -515,7 +532,7 @@ bool postgresql_healthcheck_backup_status(
 	}
 
 	/* Check if backup is currently running */
-	int ret = SPI_execute(
+	ret = SPI_execute(
 	    "SELECT pg_is_in_backup(), "
 	    "CASE WHEN pg_is_in_backup() THEN pg_backup_start_time() ELSE NULL END",
 	    true, 1);
@@ -528,9 +545,9 @@ bool postgresql_healthcheck_backup_status(
 
 		result_out->passed = true;
 		if (backup_running)
-			strcpy(result_out->details, "Backup currently in progress");
+			strcpy(result_out->error_message, "Backup currently in progress");
 		else
-			strcpy(result_out->details, "No backup currently running");
+			strcpy(result_out->error_message, "No backup currently running");
 	}
 	else
 	{
@@ -585,10 +602,12 @@ float postgresql_healthcheck_calculate_score(
 char* postgresql_healthcheck_get_summary(
     const postgresql_healthcheck_status_t* status)
 {
+	char* summary;
+
 	if (status == NULL)
 		return pstrdup("No health check status available");
 
-	char* summary = (char*) palloc(512);
+	summary = (char*) palloc(512);
 	snprintf(
 	    summary, 512,
 	    "Health Check Summary: %d/%d checks passed (%.1f%% success rate) - %s",

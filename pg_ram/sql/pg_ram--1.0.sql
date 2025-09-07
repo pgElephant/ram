@@ -37,6 +37,26 @@ CREATE OR REPLACE FUNCTION pgram.librale_get_current_role()
 RETURNS int LANGUAGE C STABLE
 AS 'MODULE_PATHNAME', $$pgram_librale_get_current_role_sql$$;
 
+CREATE OR REPLACE FUNCTION pgram.librale_add_node(
+    node_id integer,
+    node_name text,
+    node_ip text,
+    rale_port integer,
+    dstore_port integer
+)
+RETURNS boolean LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', $$pgram_librale_add_node_sql$$;
+
+CREATE OR REPLACE FUNCTION pgram.librale_add_node(
+    node_id integer,
+    node_name text,
+    node_ip text,
+    rale_port integer,
+    dstore_port integer
+)
+RETURNS boolean LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', $$pgram_librale_add_node_sql$$;
+
 -- Minimal cluster status view for ramd integration
 CREATE OR REPLACE VIEW pgram.cluster_status AS
 SELECT 

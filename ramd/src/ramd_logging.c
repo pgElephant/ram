@@ -10,6 +10,8 @@
 
 #include <stdarg.h>
 #include <syslog.h>
+#include <pwd.h>
+#include <unistd.h>
 
 #include "ramd_logging.h"
 
@@ -84,8 +86,11 @@ void ramd_log(ramd_log_level_t level, const char* file, int line,
 	char timestamp[64];
 	char message[RAMD_MAX_LOG_MESSAGE];
 	char full_message[RAMD_MAX_LOG_MESSAGE + 256];
+	char username[256];
+	struct passwd *pw;
 	time_t now;
 	struct tm* tm_info;
+	pid_t pid;
 
 	if (!g_ramd_logging.initialized || level < g_ramd_logging.min_level)
 		return;
@@ -100,19 +105,33 @@ void ramd_log(ramd_log_level_t level, const char* file, int line,
 	tm_info = localtime(&now);
 	strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
 
-	/* Create full message with context */
+	/* Get process ID */
+	pid = getpid();
+
+	/* Get username */
+	pw = getpwuid(getuid());
+	if (pw != NULL)
+	{
+		strncpy(username, pw->pw_name, sizeof(username) - 1);
+		username[sizeof(username) - 1] = '\0';
+	}
+	else
+	{
+		strncpy(username, "unknown", sizeof(username) - 1);
+	}
+
+	/* Create full message in the desired format */
 	if (file && strlen(file) > 0 && line > 0)
 	{
 		/* Debug format with file/line/function */
-		snprintf(full_message, sizeof(full_message), "%s [%s] %s:%d %s(): %s",
-		         timestamp, ramd_logging_level_to_string(level), file, line,
-		         function, message);
+		snprintf(full_message, sizeof(full_message), "✓ - %d  %s %s ramd: %s:%d %s(): %s",
+		         (int)pid, username, timestamp, file, line, function, message);
 	}
 	else
 	{
 		/* Production format - clean and meaningful */
-		snprintf(full_message, sizeof(full_message), "%s [%s] %s", timestamp,
-		         ramd_logging_level_to_string(level), message);
+		snprintf(full_message, sizeof(full_message), "✓ - %d  %s %s ramd: %s",
+		         (int)pid, username, timestamp, message);
 	}
 
 	/* Log to console */

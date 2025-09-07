@@ -204,6 +204,9 @@ bool pgram_librale_init(void)
 		return false;
 	}
 
+	/* Set the node ID in librale for cluster formation */
+	librale_set_node_id(pg_ram_librale_config->node_id);
+
 	pg_ram_librale_config->initialized = true;
 
 	elog(

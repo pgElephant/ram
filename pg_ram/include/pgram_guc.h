@@ -22,5 +22,6 @@ extern char* pgram_node_ip;
 extern int pgram_rale_port;
 extern int pgram_dstore_port;
 extern char* pgram_db_path;
+extern bool pgram_is_primary;
 
 #endif /* PGRAM_GUC_H */

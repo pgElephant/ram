@@ -25,6 +25,7 @@ char* pgram_node_ip = NULL;                  /* Node IP for librale */
 int pgram_rale_port = DEFAULT_RALE_PORT;     /* RALE UDP port */
 int pgram_dstore_port = DEFAULT_DSTORE_PORT; /* DStore TCP port */
 char* pgram_db_path = NULL;                  /* Path for librale state/data */
+bool pgram_is_primary = false;               /* Is this node the primary leader? */
 
 void pgram_guc_init(void)
 {
@@ -51,4 +52,9 @@ void pgram_guc_init(void)
 	DefineCustomStringVariable(
 	    "pg_ram.db_path", "Path for librale state/data under PGDATA by default",
 	    NULL, &pgram_db_path, NULL, PGC_POSTMASTER, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("pg_ram.is_primary",
+	                         "Is this node the primary leader?", NULL,
+	                         &pgram_is_primary, false, PGC_POSTMASTER, 0,
+	                         NULL, NULL, NULL);
 }

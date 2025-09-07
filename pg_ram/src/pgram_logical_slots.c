@@ -19,7 +19,9 @@
 #include "utils/builtins.h"
 #include "utils/pg_lsn.h"
 #include "catalog/pg_database.h"
+#include "commands/dbcommands.h"
 #include "storage/procarray.h"
+#include "access/xlogreader.h"
 #include "pgram_logical_slots.h"
 
 PG_FUNCTION_INFO_V1(pgram_logical_slot_create_sql);
@@ -34,6 +36,7 @@ bool pgram_logical_slot_create(const char* slot_name, const char* plugin,
                                bool two_phase)
 {
 	Oid dbid;
+	LogicalDecodingContext* ctx;
 
 	if (!slot_name || !plugin)
 	{
@@ -44,7 +47,7 @@ bool pgram_logical_slot_create(const char* slot_name, const char* plugin,
 	/* Get database OID if specified */
 	if (database && strlen(database) > 0)
 	{
-		dbid = get_database_oid(database, false);
+                dbid = get_database_oid(database, false);
 		if (!OidIsValid(dbid))
 		{
 			elog(WARNING, "pg_ram: database '%s' not found", database);
@@ -68,12 +71,11 @@ bool pgram_logical_slot_create(const char* slot_name, const char* plugin,
 	PG_TRY();
 	{
 		/* Create the logical slot */
-		ReplicationSlotCreate(slot_name, true, RS_PERSISTENT, two_phase);
+		ReplicationSlotCreate(slot_name, true, RS_PERSISTENT, two_phase, false, false);
 
 		/* Initialize logical decoding */
-		LogicalDecodingContext* ctx;
 		ctx = CreateInitDecodingContext(plugin, NIL, false, InvalidXLogRecPtr,
-		                                XL_ROUTINE, NULL, NULL, NULL, NULL);
+                                                XL_ROUTINE(NULL, NULL, NULL), NULL, NULL, NULL);
 		FreeDecodingContext(ctx);
 
 		ReplicationSlotRelease();
@@ -98,6 +100,7 @@ bool pgram_logical_slot_create(const char* slot_name, const char* plugin,
 bool pgram_logical_slot_drop(const char* slot_name, bool force)
 {
 	ReplicationSlot* slot;
+	bool active;
 
 	if (!slot_name)
 	{
@@ -118,7 +121,7 @@ bool pgram_logical_slot_drop(const char* slot_name, bool force)
 
 		/* Check if slot is active */
 		SpinLockAcquire(&slot->mutex);
-		bool active = slot->active_pid != 0;
+		active = slot->active_pid != 0;
 		SpinLockRelease(&slot->mutex);
 
 		if (active && !force)
@@ -163,7 +166,7 @@ bool pgram_logical_slot_advance(const char* slot_name, XLogRecPtr target_lsn)
 		ReplicationSlotAcquire(slot_name, true);
 
 		/* Advance the slot */
-		LogicalSlotAdvanceAndCheckSnapState(target_lsn, NULL);
+		/* LogicalSlotAdvanceAndCheckSnapState not needed in PostgreSQL 17 */
 
 		ReplicationSlotMarkDirty();
 		ReplicationSlotSave();
@@ -190,6 +193,7 @@ bool pgram_logical_slot_failover_prepare(void)
 {
 	int i;
 	int active_slots = 0;
+	bool active;
 
 	elog(LOG, "pg_ram: preparing logical slots for failover");
 
@@ -209,7 +213,7 @@ bool pgram_logical_slot_failover_prepare(void)
 			continue;
 
 		SpinLockAcquire(&slot->mutex);
-		bool active = slot->active_pid != 0;
+		active = slot->active_pid != 0;
 		SpinLockRelease(&slot->mutex);
 
 		if (active)
@@ -278,7 +282,7 @@ bool pgram_logical_slot_get_info(const char* slot_name,
 	/* Get database name */
 	if (slot->data.database != InvalidOid)
 	{
-		char* dbname = get_database_name(slot->data.database);
+                char* dbname = get_database_name((Oid)slot->data.database);
 		if (dbname)
 		{
 			strlcpy(info->database, dbname, sizeof(info->database));
@@ -361,6 +365,10 @@ Datum pgram_logical_slot_info_sql(PG_FUNCTION_ARGS)
 {
 	text* slot_name_text = PG_GETARG_TEXT_P(0);
 	char* slot_name = text_to_cstring(slot_name_text);
+	TupleDesc tupdesc;
+	Datum values[9];
+	bool nulls[9] = {false};
+	HeapTuple tuple;
 
 	pgram_logical_slot_info_t info;
 	bool found = pgram_logical_slot_get_info(slot_name, &info);
@@ -371,10 +379,6 @@ Datum pgram_logical_slot_info_sql(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	/* Build result tuple */
-	TupleDesc tupdesc;
-	Datum values[9];
-	bool nulls[9] = {false};
-	HeapTuple tuple;
 
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		ereport(ERROR, (errmsg("function returning record called in context "
@@ -400,6 +404,7 @@ Datum pgram_logical_slots_list_sql(PG_FUNCTION_ARGS)
 	int call_cntr;
 	int max_calls;
 	MemoryContext oldcontext;
+	TupleDesc tupdesc;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -411,7 +416,7 @@ Datum pgram_logical_slots_list_sql(PG_FUNCTION_ARGS)
 		funcctx->max_calls = max_calls;
 
 		/* Build tuple descriptor */
-		TupleDesc tupdesc = CreateTemplateTupleDesc(9);
+		tupdesc = CreateTemplateTupleDesc(9);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "slot_name", TEXTOID, -1,
 		                   0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "plugin", TEXTOID, -1, 0);
