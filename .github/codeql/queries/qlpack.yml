@@ -1,4 +1,0 @@
-name: postgresql-extension-security
-version: 1.0.0
-dependencies:
-  codeql/cpp-all: "*"

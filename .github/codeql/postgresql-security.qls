@@ -1,9 +1,0 @@
-- description: PostgreSQL Extension Security Analysis
-- queries: .
-- apply: 
-    tags contain: security
-- include:
-    id: 
-      - cpp/postgresql-extension-security
-      - cpp/memory-management-issues
-      - cpp/buffer-overflow
