@@ -1,0 +1,125 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "RAM PostgreSQL Detailed Metrics",
+    "tags": ["postgresql", "ramd", "detailed"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Node States",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "ramd_node_healthy",
+            "legendFormat": "{{hostname}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "WAL LSN Position",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "ramd_node_wal_lsn",
+            "legendFormat": "{{hostname}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 3,
+        "title": "Replication Connections",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "ramd_replication_connections_active",
+            "legendFormat": "Active Connections"
+          },
+          {
+            "expr": "ramd_replication_connections_total",
+            "legendFormat": "Total Connections"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Health Check Success Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(ramd_health_checks_total[5m]) - rate(ramd_health_checks_failed[5m])",
+            "legendFormat": "Success Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "HTTP Response Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "ramd_http_request_duration_ms",
+            "legendFormat": "Response Time"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 6,
+        "title": "Cluster Events Timeline",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "ramd_failovers_total",
+            "legendFormat": "Failovers"
+          },
+          {
+            "expr": "ramd_promotions_total",
+            "legendFormat": "Promotions"
+          },
+          {
+            "expr": "ramd_demotions_total",
+            "legendFormat": "Demotions"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+      }
+    ],
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "refresh": "10s"
+  }
+}

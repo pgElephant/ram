@@ -1,0 +1,31 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # RAM PostgreSQL Cluster monitoring
+  - job_name: 'ramd-cluster'
+    static_configs:
+      - targets: 
+        - 'ramd-node1:8008'
+        - 'ramd-node2:8008'
+        - 'ramd-node3:8008'
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    scrape_timeout: 10s
+
+  # PostgreSQL metrics (if postgres_exporter is available)
+  - job_name: 'postgresql'
+    static_configs:
+      - targets:
+        - 'postgres-exporter:9187'
+    scrape_interval: 15s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

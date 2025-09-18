@@ -1,0 +1,152 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgraft and ramd - Node 1 (Primary)
+  postgres-node1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ramd-node1
+    environment:
+      - POSTGRES_DB=testdb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - RAMD_NODE_ID=1
+      - RAMD_HOSTNAME=ramd-node1
+      - RAMD_HTTP_PORT=8008
+    ports:
+      - "5432:5432"
+      - "8008:8008"
+    volumes:
+      - postgres_data1:/var/lib/postgresql/data
+      - ./ramd.conf:/etc/ramd.conf
+    networks:
+      - ramd-network
+    command: >
+      sh -c "
+        /usr/local/bin/entrypoint.sh &
+        ramd --config /etc/ramd.conf --daemonize=false
+      "
+
+  # PostgreSQL with pgraft and ramd - Node 2 (Replica)
+  postgres-node2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ramd-node2
+    environment:
+      - POSTGRES_DB=testdb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - RAMD_NODE_ID=2
+      - RAMD_HOSTNAME=ramd-node2
+      - RAMD_HTTP_PORT=8008
+    ports:
+      - "5433:5432"
+      - "8009:8008"
+    volumes:
+      - postgres_data2:/var/lib/postgresql/data
+      - ./ramd.conf:/etc/ramd.conf
+    networks:
+      - ramd-network
+    depends_on:
+      - postgres-node1
+    command: >
+      sh -c "
+        /usr/local/bin/entrypoint.sh &
+        ramd --config /etc/ramd.conf --daemonize=false
+      "
+
+  # PostgreSQL with pgraft and ramd - Node 3 (Replica)
+  postgres-node3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ramd-node3
+    environment:
+      - POSTGRES_DB=testdb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - RAMD_NODE_ID=3
+      - RAMD_HOSTNAME=ramd-node3
+      - RAMD_HTTP_PORT=8008
+    ports:
+      - "5434:5432"
+      - "8010:8008"
+    volumes:
+      - postgres_data3:/var/lib/postgresql/data
+      - ./ramd.conf:/etc/ramd.conf
+    networks:
+      - ramd-network
+    depends_on:
+      - postgres-node1
+    command: >
+      sh -c "
+        /usr/local/bin/entrypoint.sh &
+        ramd --config /etc/ramd.conf --daemonize=false
+      "
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - ramd-network
+    depends_on:
+      - postgres-node1
+      - postgres-node2
+      - postgres-node3
+
+  # Grafana - Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - ramd-network
+    depends_on:
+      - prometheus
+
+  # PostgreSQL Exporter (optional)
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://postgres:postgres@postgres-node1:5432/testdb?sslmode=disable
+    ports:
+      - "9187:9187"
+    networks:
+      - ramd-network
+    depends_on:
+      - postgres-node1
+
+volumes:
+  postgres_data1:
+  postgres_data2:
+  postgres_data3:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  ramd-network:
+    driver: bridge

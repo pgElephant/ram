@@ -127,6 +127,8 @@ void ramd_http_handle_bootstrap_primary(ramd_http_request_t* request,
                                         ramd_http_response_t* response);
 void ramd_http_handle_add_replica(ramd_http_request_t* request,
                                   ramd_http_response_t* response);
+void ramd_http_handle_metrics(ramd_http_request_t* request,
+                              ramd_http_response_t* response);
 
 /* Utility functions */
 char* ramd_http_get_query_param(const char* query_string,

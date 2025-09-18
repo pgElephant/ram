@@ -1,0 +1,210 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "RAM PostgreSQL Cluster Overview",
+    "tags": ["postgresql", "ramd", "cluster"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Cluster Health Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "ramd_cluster_has_quorum",
+            "legendFormat": "Has Quorum"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Node Count",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "ramd_cluster_nodes_total",
+            "legendFormat": "Total Nodes"
+          },
+          {
+            "expr": "ramd_cluster_nodes_healthy",
+            "legendFormat": "Healthy Nodes"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Node Health Score",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "ramd_node_health_score",
+            "legendFormat": "{{hostname}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Replication Lag",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "ramd_node_replication_lag_ms",
+            "legendFormat": "{{hostname}}"
+          },
+          {
+            "expr": "ramd_replication_lag_max_ms",
+            "legendFormat": "Max Lag"
+          },
+          {
+            "expr": "ramd_replication_lag_avg_ms",
+            "legendFormat": "Avg Lag"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Health Checks",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(ramd_health_checks_total[5m])",
+            "legendFormat": "Total Checks/sec"
+          },
+          {
+            "expr": "rate(ramd_health_checks_failed[5m])",
+            "legendFormat": "Failed Checks/sec"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 6,
+        "title": "Failover Events",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "ramd_failovers_total",
+            "legendFormat": "Total Failovers"
+          },
+          {
+            "expr": "ramd_promotions_total",
+            "legendFormat": "Total Promotions"
+          },
+          {
+            "expr": "ramd_demotions_total",
+            "legendFormat": "Total Demotions"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+      },
+      {
+        "id": 7,
+        "title": "HTTP API Requests",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(ramd_http_requests_total[5m])",
+            "legendFormat": "Total Requests/sec"
+          },
+          {
+            "expr": "rate(ramd_http_requests_2xx[5m])",
+            "legendFormat": "2xx Responses/sec"
+          },
+          {
+            "expr": "rate(ramd_http_requests_4xx[5m])",
+            "legendFormat": "4xx Responses/sec"
+          },
+          {
+            "expr": "rate(ramd_http_requests_5xx[5m])",
+            "legendFormat": "5xx Responses/sec"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}
+      },
+      {
+        "id": 8,
+        "title": "Resource Usage",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "ramd_memory_usage_bytes",
+            "legendFormat": "Memory Usage"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}
+      },
+      {
+        "id": 9,
+        "title": "Daemon Uptime",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "ramd_daemon_uptime_seconds",
+            "legendFormat": "Uptime"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        },
+        "gridPos": {"h": 4, "w": 24, "x": 0, "y": 40}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}

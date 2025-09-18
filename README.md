@@ -39,7 +39,7 @@ This project provides distributed consensus capabilities for PostgreSQL using cu
                    │       ramctrl CLI         │
                    │    (Control Utility)      │
                    └─────────────┬─────────────┘
-                                 │
+                                 │ REST / SQL
                    ┌─────────────┴─────────────┐
                    │   PostgreSQL + pgraft     │
                    │   + ramd (PRIMARY)        │

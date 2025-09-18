@@ -27,6 +27,7 @@
 #include "ramd_config_reload.h"
 #include "ramd_sync_replication.h"
 #include "ramd_maintenance.h"
+#include "ramd_metrics.h"
 
 #include "ramd_daemon.h"
 #include "ramd_failover.h"
@@ -401,6 +402,8 @@ static void ramd_http_route_request(ramd_http_request_t* request,
 		ramd_http_handle_bootstrap_primary(request, response);
 	else if (strcmp(request->path, "/api/v1/replica/add") == 0)
 		ramd_http_handle_add_replica(request, response);
+	else if (strcmp(request->path, "/metrics") == 0)
+		ramd_http_handle_metrics(request, response);
 	else
 		ramd_http_set_error_response(response, RAMD_HTTP_404_NOT_FOUND,
 		                             "Endpoint not found");
@@ -1392,4 +1395,56 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_buffer);
 	ramd_log_info("Replica node %d (%s:%d) added successfully", new_node_id,
 	              hostname, port);
+}
+
+/* Prometheus metrics endpoint */
+void ramd_http_handle_metrics(ramd_http_request_t* request,
+                              ramd_http_response_t* response)
+{
+	if (request->method != RAMD_HTTP_GET)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED,
+		                             "Method not allowed");
+		return;
+	}
+
+	if (!g_ramd_daemon || !g_ramd_metrics)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_503_SERVICE_UNAVAILABLE,
+		                             "Metrics not available");
+		return;
+	}
+
+	/* Update metrics before generating output */
+	ramd_metrics_collect(g_ramd_metrics, &g_ramd_daemon->cluster);
+
+	/* Generate Prometheus format output */
+	char* prometheus_output = ramd_metrics_to_prometheus(g_ramd_metrics);
+	if (!prometheus_output)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR,
+		                             "Failed to generate metrics");
+		return;
+	}
+
+	/* Set response headers for Prometheus format */
+	strncpy(response->content_type, "text/plain; version=0.0.4; charset=utf-8",
+	        sizeof(response->content_type) - 1);
+	
+	/* Copy metrics data to response body */
+	size_t output_len = strlen(prometheus_output);
+	if (output_len < sizeof(response->body))
+	{
+		strncpy(response->body, prometheus_output, output_len);
+		response->body_length = output_len;
+		response->status = RAMD_HTTP_200_OK;
+	}
+	else
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR,
+		                             "Metrics output too large");
+	}
+
+	/* Clean up */
+	ramd_metrics_free_prometheus_output(prometheus_output);
 }
