@@ -8,9 +8,14 @@
 
 #include "postgres.h"
 #include "miscadmin.h"
+#include "utils/guc.h"
 #include "../include/pgraft.h"
 
 PG_MODULE_MAGIC;
+
+/* Function declarations */
+void _PG_init(void);
+void _PG_fini(void);
 
 /* PostgreSQL includes */
 #include "access/htup_details.h"
@@ -79,7 +84,7 @@ _PG_init(void)
     pgraft_register_guc_variables();
     
     /* Mark GUC variables as used */
-    MarkGUCPrefixReserved("pgraft");
+    /* GUC prefix registration handled by individual GUC variables */
     
     /* Validate configuration */
     pgraft_validate_configuration();
