@@ -381,7 +381,7 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 	}
 
 	/* Simplified implementation without librale */
-	int32_t leader_id = 0;
+	/* int32_t leader_id = 0; */ /* TODO: Implement RALE consensus state query */
 	/* This should query the actual RALE consensus state */
 
 	/* For now, create a basic node representation */

@@ -894,7 +894,7 @@ bool ramd_postgresql_update_recovery_conf(const char* path,
 		char* last_slash = strrchr(path, '/');
 		if (last_slash)
 		{
-			size_t dir_len = last_slash - path;
+			size_t dir_len = (size_t)(last_slash - path);
 			strncpy(base_dir, path, dir_len);
 			base_dir[dir_len] = '\0';
 			snprintf(archive_dir, sizeof(archive_dir), "%s/archive", base_dir);

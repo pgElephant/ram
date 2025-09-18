@@ -598,7 +598,7 @@ void ramd_http_set_error_response(ramd_http_response_t* response,
 }
 
 /* Enhanced nodes list endpoint */
-void ramd_http_handle_nodes_list(ramd_http_request_t* request,
+void ramd_http_handle_nodes_list(ramd_http_request_t* request __attribute__((unused)),
                                  ramd_http_response_t* response)
 {
 	char json_buffer[8192];
@@ -791,7 +791,7 @@ void ramd_http_handle_sync_replication(ramd_http_request_t* request,
 						char* end = strchr(start, '"');
 						if (end)
 						{
-							size_t len = end - start;
+							size_t len = (size_t)(end - start);
 							if (len < sizeof(mode_str))
 							{
 								strncpy(mode_str, start, len);
@@ -1281,7 +1281,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	}
 
 	/* Parse JSON payload */
-	if (request->body)
+	if (request->body[0] != '\0')
 	{
 		/* Simple JSON parsing for hostname and port */
 		char* hostname_start = strstr(request->body, "\"hostname\":");
@@ -1296,7 +1296,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 				char* hostname_end = strchr(hostname_start, '"');
 				if (hostname_end)
 				{
-					size_t len = hostname_end - hostname_start;
+					size_t len = (size_t)(hostname_end - hostname_start);
 					if (len < sizeof(hostname) - 1)
 					{
 						strncpy(hostname, hostname_start, len);

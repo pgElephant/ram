@@ -20,10 +20,10 @@ CFLAGS += -I./include
 # Extension-specific linker flags
 SHLIB_LINK += -lpthread -lm
 
-# Clean target
-clean:
-	rm -f $(OBJS) pgraft.so
-	rm -f *.o *.so
+# Clean target - ensure it exists
+clean: clean-extra
+
+clean-extra:
 	rm -f src/*.o
 
 # Installation directory

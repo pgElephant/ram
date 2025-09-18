@@ -89,7 +89,7 @@ bool ramd_metrics_collect(ramd_metrics_t* metrics, const ramd_cluster_t* cluster
 	struct rusage usage;
 	if (getrusage(RUSAGE_SELF, &usage) == 0)
 	{
-		metrics->memory_usage_bytes = usage.ru_maxrss * 1024; /* Convert to bytes */
+		metrics->memory_usage_bytes = (size_t)(usage.ru_maxrss * 1024); /* Convert to bytes */
 	}
 	
 	/* Update replication metrics */
@@ -190,7 +190,7 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 		metrics->cluster_is_leader ? 1 : 0,
 		metrics->cluster_primary_node_id);
 	
-	remaining -= (ptr - output);
+	remaining -= (size_t)(ptr - output);
 	
 	/* Node metrics */
 	ptr += snprintf(ptr, remaining,
@@ -205,59 +205,59 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 		"ramd_node_replication_lag_ms{node_id=\"%d\",hostname=\"%s\"} %d\n"
 		"# HELP ramd_node_wal_lsn Current WAL LSN position\n"
 		"# TYPE ramd_node_wal_lsn gauge\n"
-		"ramd_node_wal_lsn{node_id=\"%d\",hostname=\"%s\"} %ld\n",
+		"ramd_node_wal_lsn{node_id=\"%d\",hostname=\"%s\"} %lld\n",
 		metrics->node_id, metrics->node_hostname, metrics->node_is_healthy ? 1 : 0,
 		metrics->node_id, metrics->node_hostname, metrics->node_health_score,
 		metrics->node_id, metrics->node_hostname, metrics->node_replication_lag_ms,
 		metrics->node_id, metrics->node_hostname, metrics->node_wal_lsn);
 	
-	remaining -= (ptr - output);
+	remaining -= (size_t)(ptr - output);
 	
 	/* Performance metrics */
 	ptr += snprintf(ptr, remaining,
 		"# HELP ramd_health_checks_total Total number of health checks performed\n"
 		"# TYPE ramd_health_checks_total counter\n"
-		"ramd_health_checks_total %ld\n"
+		"ramd_health_checks_total %lld\n"
 		"# HELP ramd_health_checks_failed Total number of failed health checks\n"
 		"# TYPE ramd_health_checks_failed counter\n"
-		"ramd_health_checks_failed %ld\n"
+		"ramd_health_checks_failed %lld\n"
 		"# HELP ramd_failovers_total Total number of failovers performed\n"
 		"# TYPE ramd_failovers_total counter\n"
-		"ramd_failovers_total %ld\n"
+		"ramd_failovers_total %lld\n"
 		"# HELP ramd_promotions_total Total number of node promotions\n"
 		"# TYPE ramd_promotions_total counter\n"
-		"ramd_promotions_total %ld\n"
+		"ramd_promotions_total %lld\n"
 		"# HELP ramd_demotions_total Total number of node demotions\n"
 		"# TYPE ramd_demotions_total counter\n"
-		"ramd_demotions_total %ld\n",
+		"ramd_demotions_total %lld\n",
 		metrics->total_health_checks,
 		metrics->failed_health_checks,
 		metrics->total_failovers,
 		metrics->total_promotions,
 		metrics->total_demotions);
 	
-	remaining -= (ptr - output);
+	remaining -= (size_t)(ptr - output);
 	
 	/* HTTP API metrics */
 	ptr += snprintf(ptr, remaining,
 		"# HELP ramd_http_requests_total Total number of HTTP requests\n"
 		"# TYPE ramd_http_requests_total counter\n"
-		"ramd_http_requests_total %ld\n"
+		"ramd_http_requests_total %lld\n"
 		"# HELP ramd_http_requests_2xx Total number of 2xx HTTP responses\n"
 		"# TYPE ramd_http_requests_2xx counter\n"
-		"ramd_http_requests_2xx %ld\n"
+		"ramd_http_requests_2xx %lld\n"
 		"# HELP ramd_http_requests_4xx Total number of 4xx HTTP responses\n"
 		"# TYPE ramd_http_requests_4xx counter\n"
-		"ramd_http_requests_4xx %ld\n"
+		"ramd_http_requests_4xx %lld\n"
 		"# HELP ramd_http_requests_5xx Total number of 5xx HTTP responses\n"
 		"# TYPE ramd_http_requests_5xx counter\n"
-		"ramd_http_requests_5xx %ld\n",
+		"ramd_http_requests_5xx %lld\n",
 		metrics->http_requests_total,
 		metrics->http_requests_2xx,
 		metrics->http_requests_4xx,
 		metrics->http_requests_5xx);
 	
-	remaining -= (ptr - output);
+	remaining -= (size_t)(ptr - output);
 	
 	/* Replication metrics */
 	ptr += snprintf(ptr, remaining,
@@ -278,7 +278,7 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 		metrics->replication_connections_active,
 		metrics->replication_connections_total);
 	
-	remaining -= (ptr - output);
+	remaining -= (size_t)(ptr - output);
 	
 	/* Resource metrics */
 	ptr += snprintf(ptr, remaining,
