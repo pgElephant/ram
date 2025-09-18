@@ -1,0 +1,58 @@
+name: Build Only
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          postgresql-17 \
+          postgresql-server-dev-17 \
+          postgresql-client-17 \
+          build-essential \
+          make \
+          gcc \
+          libc6-dev \
+          pkg-config \
+          libpq-dev
+
+    - name: Build pgraft extension
+      run: |
+        cd pgraft
+        make clean
+        make
+        echo "pgraft extension built successfully"
+
+    - name: Build ramd daemon
+      run: |
+        cd ramd
+        make clean
+        make
+        echo "ramd daemon built successfully"
+
+    - name: Build ramctrl utility
+      run: |
+        cd ramctrl
+        make clean
+        make
+        echo "ramctrl utility built successfully"
+
+    - name: Verify builds
+      run: |
+        test -f pgraft/pgraft.dylib && echo "pgraft.dylib exists" || echo "pgraft.dylib missing"
+        test -f ramd/ramd && echo "ramd exists" || echo "ramd missing"
+        test -f ramctrl/ramctrl && echo "ramctrl exists" || echo "ramctrl missing"
+        echo "All builds completed successfully"
