@@ -51,6 +51,7 @@ configure
 aclocal.m4
 autom4te.cache/
 Makefile
+!pgraft/Makefile
 Makefile.in
 .deps/
 .libs/
@@ -71,7 +72,6 @@ pgraft/*.so
 pgraft/*.dylib
 pgraft/src/*.o
 pgraft/src/*.bc
-pgraft/Makefile
 pgraft/Makefile.in
 
 # Backup files
