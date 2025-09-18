@@ -33,6 +33,15 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
+          wget \
+          ca-certificates \
+          gnupg \
+          lsb-release
+        # Add PostgreSQL official repository
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+        sudo apt-get update
+        sudo apt-get install -y \
           postgresql-${{ matrix.postgresql-version }} \
           postgresql-server-dev-${{ matrix.postgresql-version }} \
           postgresql-client-${{ matrix.postgresql-version }} \
