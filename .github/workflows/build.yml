@@ -18,15 +18,20 @@ jobs:
           wget \
           ca-certificates \
           gnupg \
-          lsb-release
-        # Add PostgreSQL official repository
+          lsb-release \
+          software-properties-common
+        # Add PostgreSQL official repository using apt-key
         wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
         echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
         sudo apt-get update
+        # Try PostgreSQL 17 first, fallback to 16 if not available
         sudo apt-get install -y \
-          postgresql-17 \
-          postgresql-server-dev-17 \
-          postgresql-client-17 \
+          postgresql-17 postgresql-server-dev-17 postgresql-client-17 \
+          || sudo apt-get install -y \
+          postgresql-16 postgresql-server-dev-16 postgresql-client-16 \
+          || sudo apt-get install -y \
+          postgresql-15 postgresql-server-dev-15 postgresql-client-15
+        sudo apt-get install -y \
           build-essential \
           make \
           gcc \
