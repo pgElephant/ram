@@ -1,4 +1,6 @@
-# PostgreSQL Distributed Consensus Project
+# RAM: Resilient Adaptive Manager
+A true PostgreSQL clustering solution powered by Raft consensus.
+Providing automated failover and high availability out of the box.
 
 [![CI](https://github.com/pgElephant/ram/workflows/C%2FC%2B%2B%20CI/badge.svg)](https://github.com/pgElephant/ram/actions/workflows/ci.yml)
 [![Build](https://github.com/pgElephant/ram/workflows/Build%20Only/badge.svg)](https://github.com/pgElephant/ram/actions/workflows/build.yml)

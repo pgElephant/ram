@@ -1,4 +1,4 @@
-# pgraft - PostgreSQL Extension for Distributed Consensus
+# pgraft - RAFT-based PostgreSQL Extension for Distributed Consensus.
 
 A PostgreSQL extension that provides distributed consensus capabilities using a custom Raft implementation written in C, designed for high performance and PostgreSQL integration.
 
