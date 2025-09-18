@@ -1,6 +1,28 @@
 # PostgreSQL Distributed Consensus Project
 
+[![CI](https://github.com/pgelephant/pge/ram/workflows/CI/badge.svg)](https://github.com/pgelephant/pge/ram/actions/workflows/ci.yml)
+[![Build](https://github.com/pgelephant/pge/ram/workflows/Build%20Only/badge.svg)](https://github.com/pgelephant/pge/ram/actions/workflows/build.yml)
+[![Test](https://github.com/pgelephant/pge/ram/workflows/Comprehensive%20Testing/badge.svg)](https://github.com/pgelephant/pge/ram/actions/workflows/test.yml)
+[![CodeQL](https://github.com/pgelephant/pge/ram/workflows/CodeQL%20Analysis/badge.svg)](https://github.com/pgelephant/pge/ram/actions/workflows/codeql.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-12%2B-blue.svg)](https://www.postgresql.org/)
+[![C](https://img.shields.io/badge/C-99-orange.svg)](https://en.wikipedia.org/wiki/C99)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](https://github.com/pgelephant/pge/ram)
+
 This project provides distributed consensus capabilities for PostgreSQL using custom Raft implementations. It consists of multiple components working together to provide high availability and consistency across PostgreSQL clusters.
+
+## Status
+
+| Badge | Description |
+|-------|-------------|
+| ![CI](https://github.com/pgelephant/pge/ram/workflows/CI/badge.svg) | Continuous Integration - Tests across PostgreSQL 12-17 |
+| ![Build](https://github.com/pgelephant/pge/ram/workflows/Build%20Only/badge.svg) | Build Status - Compilation verification |
+| ![Test](https://github.com/pgelephant/pge/ram/workflows/Comprehensive%20Testing/badge.svg) | Test Status - Comprehensive testing with memory analysis |
+| ![CodeQL](https://github.com/pgelephant/pge/ram/workflows/CodeQL%20Analysis/badge.svg) | Security Analysis - Automated security scanning |
+| ![License](https://img.shields.io/badge/license-MIT-blue.svg) | MIT License |
+| ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-12%2B-blue.svg) | PostgreSQL 12+ Support |
+| ![C](https://img.shields.io/badge/C-99-orange.svg) | C99 Standard |
+| ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg) | Linux & macOS Support |
 
 ## Project Structure
 
