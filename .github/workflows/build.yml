@@ -52,7 +52,8 @@ jobs:
 
     - name: Verify builds
       run: |
-        test -f pgraft/pgraft.dylib && echo "pgraft.dylib exists" || echo "pgraft.dylib missing"
+        test -f pgraft/pgraft.so && echo "pgraft.so exists" || echo "pgraft.so missing"
         test -f ramd/ramd && echo "ramd exists" || echo "ramd missing"
         test -f ramctrl/ramctrl && echo "ramctrl exists" || echo "ramctrl missing"
         echo "All builds completed successfully"
+

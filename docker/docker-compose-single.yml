@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Single PostgreSQL 17 node with pgraft, ramd, and ramctrl
+  postgres-single:
+    build: .
+    container_name: postgres-single
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PGRAPT_NODE_ID=1
+      - PGRAPT_CLUSTER_ADDRESSES=localhost:5432
+      - RAMD_NODE_ID=1
+    ports:
+      - "5432:5432"
+      - "8080:8080"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/ramd.conf:/etc/ramd/ramd.conf
+      - ./docker/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ./docker/pg_hba.conf:/etc/postgresql/pg_hba.conf
+    networks:
+      - postgres-network
+    command: ["postgres", "-D", "/var/lib/postgresql/data", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+
+volumes:
+  postgres_data:
+
+networks:
+  postgres-network:
+    driver: bridge

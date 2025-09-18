@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # Primary node (Node 1)
+  postgres-primary:
+    build: .
+    container_name: postgres-primary
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PGRAPT_NODE_ID=1
+      - PGRAPT_CLUSTER_ADDRESSES=postgres-primary:5432,postgres-replica1:5432,postgres-replica2:5432
+      - RAMD_NODE_ID=1
+    ports:
+      - "5432:5432"
+      - "8080:8080"
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./docker/ramd.conf:/etc/ramd/ramd.conf
+      - ./docker/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ./docker/pg_hba.conf:/etc/postgresql/pg_hba.conf
+    networks:
+      - postgres-cluster
+    command: ["postgres", "-D", "/var/lib/postgresql/data", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+
+  # Replica node 1 (Node 2)
+  postgres-replica1:
+    build: .
+    container_name: postgres-replica1
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PGRAPT_NODE_ID=2
+      - PGRAPT_CLUSTER_ADDRESSES=postgres-primary:5432,postgres-replica1:5432,postgres-replica2:5432
+      - RAMD_NODE_ID=2
+    ports:
+      - "5433:5432"
+      - "8081:8080"
+    volumes:
+      - postgres_replica1_data:/var/lib/postgresql/data
+      - ./docker/ramd.conf:/etc/ramd/ramd.conf
+      - ./docker/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ./docker/pg_hba.conf:/etc/postgresql/pg_hba.conf
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-primary
+    command: ["postgres", "-D", "/var/lib/postgresql/data", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+
+  # Replica node 2 (Node 3)
+  postgres-replica2:
+    build: .
+    container_name: postgres-replica2
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PGRAPT_NODE_ID=3
+      - PGRAPT_CLUSTER_ADDRESSES=postgres-primary:5432,postgres-replica1:5432,postgres-replica2:5432
+      - RAMD_NODE_ID=3
+    ports:
+      - "5434:5432"
+      - "8082:8080"
+    volumes:
+      - postgres_replica2_data:/var/lib/postgresql/data
+      - ./docker/ramd.conf:/etc/ramd/ramd.conf
+      - ./docker/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ./docker/pg_hba.conf:/etc/postgresql/pg_hba.conf
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-primary
+    command: ["postgres", "-D", "/var/lib/postgresql/data", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+
+  # ramctrl utility container
+  ramctrl:
+    build: .
+    container_name: ramctrl
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-primary
+      - postgres-replica1
+      - postgres-replica2
+    command: ["tail", "-f", "/dev/null"]  # Keep container running
+    volumes:
+      - ./docker/ramctrl-scripts:/scripts
+
+volumes:
+  postgres_primary_data:
+  postgres_replica1_data:
+  postgres_replica2_data:
+
+networks:
+  postgres-cluster:
+    driver: bridge

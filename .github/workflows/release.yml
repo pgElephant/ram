@@ -30,22 +30,26 @@ jobs:
 
     - name: Build all components
       run: |
-        make all
+        cd pgraft && make clean && make
+        cd ../ramd && make clean && make
+        cd ../ramctrl && make clean && make
 
     - name: Create release package
       run: |
         mkdir -p release
-        cp pgraft/pgraft.dylib release/
+        cp pgraft/pgraft.so release/
         cp ramd/ramd release/
         cp ramctrl/ramctrl release/
         cp -r pgraft/sql release/
         cp README.md release/
         cp pgraft/README.md release/pgraft-README.md
-        tar -czf pgraft-release-${GITHUB_REF_NAME}.tar.gz -C release .
-        echo "Release package created: pgraft-release-${GITHUB_REF_NAME}.tar.gz"
+        cp ramd/README.md release/ramd-README.md
+        cp ramctrl/README.md release/ramctrl-README.md
+        tar -czf ram-release-${GITHUB_REF_NAME}.tar.gz -C release .
+        echo "Release package created: ram-release-${GITHUB_REF_NAME}.tar.gz"
 
     - name: Upload release artifacts
       uses: actions/upload-artifact@v4
       with:
         name: release-package
-        path: pgraft-release-*.tar.gz
+        path: ram-release-*.tar.gz

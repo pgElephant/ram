@@ -1,0 +1,64 @@
+# Docker ignore file for RAM project
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+README.md
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.a
+*.bc
+*.gcno
+*.gcda
+*.gcov
+*.prof
+*.gprof
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Node modules (if any)
+node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Test files
+test/
+tests/
+*_test.c
+*_test.h
+
+# Coverage files
+coverage/
+*.coverage
+
+# Docker files
+Dockerfile*
+docker-compose*.yml
+.dockerignore
