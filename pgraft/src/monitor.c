@@ -34,10 +34,10 @@ PG_FUNCTION_INFO_V1(pgraft_get_network_status);
 PG_FUNCTION_INFO_V1(pgraft_get_replication_status);
 PG_FUNCTION_INFO_V1(pgraft_get_alerts);
 PG_FUNCTION_INFO_V1(pgraft_get_detailed_node_info);
+/* Note: These functions are implemented in metrics.c to avoid duplication */
 
 /* Monitoring worker process */
-static bool monitor_worker_registered = false;
-static bool monitor_worker_running = false;
+/* Note: Worker registration variables removed as they are not currently used */
 
 /* Monitoring state */
 typedef struct pgraft_monitor_state
@@ -53,10 +53,9 @@ typedef struct pgraft_monitor_state
 static pgraft_monitor_state_t monitor_state = {0};
 
 /* Forward declarations */
-static void pgraft_monitor_tick(void);
 static bool pgraft_check_cluster_health(void);
 static bool pgraft_check_node_health(uint64 node_id);
-static void pgraft_log_health_event(const char *event, const char *details);
+/* Note: pgraft_log_health_event function removed as it was unused */
 
 /*
  * Initialize monitoring system
@@ -119,28 +118,7 @@ pgraft_monitor_check_health(void)
     pgraft_monitor_update_metrics();
 }
 
-/*
- * Monitor tick function
- */
-static void
-pgraft_monitor_tick(void)
-{
-    if (!monitor_state.enabled)
-        return;
-    
-    /* Update metrics */
-    pgraft_monitor_update_metrics();
-    
-    /* Log health events if needed */
-    if (monitor_state.errors_count > 0)
-    {
-        pgraft_log_health_event("ERROR", "Monitoring detected errors");
-    }
-    else if (monitor_state.warnings_count > 0)
-    {
-        pgraft_log_health_event("WARNING", "Monitoring detected warnings");
-    }
-}
+/* Note: pgraft_monitor_tick function removed as it was unused */
 
 /*
  * Check cluster health
@@ -163,14 +141,7 @@ pgraft_check_node_health(uint64 node_id)
     return true;
 }
 
-/*
- * Log health event
- */
-static void
-pgraft_log_health_event(const char *event, const char *details)
-{
-    elog(LOG, "pgraft: %s - %s", event, details);
-}
+/* Note: pgraft_log_health_event function removed as it was unused */
 
 /*
  * Health check function
@@ -388,3 +359,7 @@ pgraft_get_detailed_node_info(PG_FUNCTION_ARGS)
     info_json = buf.data;
     PG_RETURN_TEXT_P(cstring_to_text(info_json));
 }
+
+/* Note: Functions pgraft_get_cluster_health, pgraft_get_performance_metrics, 
+ * pgraft_is_cluster_healthy, pgraft_get_system_stats, and pgraft_get_quorum_status
+ * are implemented in metrics.c to avoid duplication */

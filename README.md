@@ -1,6 +1,6 @@
 # PostgreSQL Distributed Consensus Project
 
-[![CI](https://github.com/pgelephant/pge/ram/workflows/CI/badge.svg)](https://github.com/pgelephant/pge/ram/actions/workflows/ci.yml)
+[![CI](https://github.com/pgelephant/pge/ram/workflows/C%2FC%2B%2B%20CI/badge.svg)](https://github.com/pgelephant/pge/ram/actions/workflows/ci.yml)
 [![Build](https://github.com/pgelephant/pge/ram/workflows/Build%20Only/badge.svg)](https://github.com/pgelephant/pge/ram/actions/workflows/build.yml)
 [![Test](https://github.com/pgelephant/pge/ram/workflows/Comprehensive%20Testing/badge.svg)](https://github.com/pgelephant/pge/ram/actions/workflows/test.yml)
 [![CodeQL](https://github.com/pgelephant/pge/ram/workflows/CodeQL%20Analysis/badge.svg)](https://github.com/pgelephant/pge/ram/actions/workflows/codeql.yml)
@@ -15,7 +15,7 @@ This project provides distributed consensus capabilities for PostgreSQL using cu
 
 | Badge | Description |
 |-------|-------------|
-| ![CI](https://github.com/pgelephant/pge/ram/workflows/CI/badge.svg) | Continuous Integration - Tests across PostgreSQL 12-17 |
+| ![CI](https://github.com/pgelephant/pge/ram/workflows/C%2FC%2B%2B%20CI/badge.svg) | Continuous Integration - Tests across PostgreSQL 12-17 |
 | ![Build](https://github.com/pgelephant/pge/ram/workflows/Build%20Only/badge.svg) | Build Status - Compilation verification |
 | ![Test](https://github.com/pgelephant/pge/ram/workflows/Comprehensive%20Testing/badge.svg) | Test Status - Comprehensive testing with memory analysis |
 | ![CodeQL](https://github.com/pgelephant/pge/ram/workflows/CodeQL%20Analysis/badge.svg) | Security Analysis - Automated security scanning |

@@ -153,14 +153,37 @@ extern void pgraft_validate_configuration(void);
 /* Communication functions */
 extern int pgraft_comm_init(const char *address, int port);
 extern int pgraft_comm_shutdown(void);
+extern int pgraft_send_message(uint64_t to_node, int msg_type, const char *data, size_t data_size, uint64_t term, uint64_t index);
+extern int pgraft_broadcast_message(int msg_type, const char *data, size_t data_size, uint64_t term, uint64_t index);
+extern int pgraft_add_node_comm(uint64_t node_id, const char *address, int port);
+extern int pgraft_remove_node_comm(uint64_t node_id);
+extern bool pgraft_is_node_connected(uint64_t node_id);
+extern int pgraft_get_connected_nodes_count(void);
 
 /* Monitoring functions */
 extern void pgraft_monitor_init(void);
 extern void pgraft_monitor_shutdown(void);
+extern void pgraft_monitor_update_metrics(void);
+extern void pgraft_monitor_check_health(void);
+
+/* Metrics functions */
+extern void pgraft_metrics_init(void);
+extern void pgraft_metrics_record_request(bool success, int response_time_ms);
+extern void pgraft_metrics_record_connection(bool connected);
+extern void pgraft_metrics_record_heartbeat(void);
+extern void pgraft_metrics_record_election(void);
+extern void pgraft_metrics_record_log_append(void);
+extern void pgraft_metrics_record_log_commit(void);
+extern Datum pgraft_reset_metrics(PG_FUNCTION_ARGS);
 
 /* Utility functions */
 extern const char* pgraft_error_to_string(pgraft_error_code_t error);
 extern void pgraft_log_operation(int level, const char *operation, const char *details);
+extern bool pgraft_validate_node_id(int node_id);
+extern bool pgraft_validate_address(const char *address);
+extern bool pgraft_validate_port(int port);
+extern bool pgraft_validate_term(int term);
+extern bool pgraft_validate_log_index(int index);
 
 /* Constants */
 #define PGRAFT_MAX_NODES 100
