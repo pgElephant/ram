@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          postgresql-17 \
+          postgresql-server-dev-17 \
+          postgresql-client-17 \
+          build-essential \
+          make \
+          gcc \
+          libc6-dev \
+          pkg-config \
+          libpq-dev
+
+    - name: Build all components
+      run: |
+        make all
+
+    - name: Create release package
+      run: |
+        mkdir -p release
+        cp pgraft/pgraft.dylib release/
+        cp ramd/ramd release/
+        cp ramctrl/ramctrl release/
+        cp -r pgraft/sql release/
+        cp README.md release/
+        cp pgraft/README.md release/pgraft-README.md
+        tar -czf pgraft-release-${GITHUB_REF_NAME}.tar.gz -C release .
+        echo "Release package created: pgraft-release-${GITHUB_REF_NAME}.tar.gz"
+
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-package
+        path: pgraft-release-*.tar.gz
