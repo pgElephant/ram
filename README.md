@@ -1,84 +1,253 @@
-# RAM/RALE: PostgreSQL Auto‑Failover (ramd + ramctrl + pg_ram)
+# PostgreSQL Distributed Consensus Project
 
-RAM/RALE is a complete, production‑grade PostgreSQL auto‑failover stack:
+This project provides distributed consensus capabilities for PostgreSQL using custom Raft implementations. It consists of multiple components working together to provide high availability and consistency across PostgreSQL clusters.
 
-- ramd: local node daemon that monitors PostgreSQL, manages replication, and executes failover and recovery.
-- ramctrl: CLI and controller client to operate clusters and the ramd daemon.
-- pg_ram: PostgreSQL extension providing in‑database health, LSN, and metrics workers; integrates with RALE consensus.
-
-See IMPLEMENTATION_SUMMARY.md for a detailed feature matrix and internals.
-
-## Build
-
-Prerequisites: a C toolchain, libpq, pthreads. The pg_ram extension builds when pg_config is available.
+## Project Structure
 
 ```
-./configure [--with-pg-config=/path/to/pg_config]
-make -j
+├── pgraft/                 # PostgreSQL extension for distributed consensus
+│   ├── src/               # C source files
+│   ├── include/           # Header files
+│   ├── sql/               # SQL functions and views
+│   └── README.md          # Extension documentation
+├── ramd/                  # Daemon for cluster management
+├── ramctrl/               # Control utility for cluster operations
+├── rale/                  # Raft consensus library (legacy)
+└── README.md              # This file
 ```
 
-Artifacts:
-- ramd/ramd – daemon
-- ramctrl/ramctrl – CLI
-- pg_ram – extension sources, SQL and control files (builds .so if pg_config is found)
+## Components
 
-## Quickstart (3‑node cluster)
+### pgraft - PostgreSQL Extension
 
-1) Prepare PostgreSQL on each node
-- Ensure PostgreSQL is installed and running once to create a data dir, then stop it.
-- Configure passwordless replication between nodes or provide credentials in ramd.conf.
-- Optional: add pg_ram to shared_preload_libraries if building/using the extension.
+A pure C PostgreSQL extension that provides distributed consensus capabilities using a custom Raft implementation.
 
-2) Configure ramd on each node
-- Copy ramd/conf/ramd.conf per node and adjust:
-  - cluster_name, cluster_id
-  - node_id, node_name, node_role (one primary, others standby)
-  - postgresql_* settings (host, port, credentials, data dir)
-  - replication and failover thresholds per your SLOs
+**Features:**
+- Custom Raft consensus algorithm
+- Background worker process
+- Comprehensive monitoring and metrics
+- GUC configuration management
+- SQL function interface
 
-3) Start the local daemon
+**Documentation:** [pgraft/README.md](pgraft/README.md)
+
+### ramd - Cluster Management Daemon
+
+A daemon that manages PostgreSQL clusters and provides HTTP API for cluster operations.
+
+**Features:**
+- Cluster health monitoring
+- HTTP API for cluster management
+- Integration with pgraft extension
+- Node discovery and management
+
+### ramctrl - Control Utility
+
+A command-line utility for managing PostgreSQL clusters and performing cluster operations.
+
+**Features:**
+- Cluster status monitoring
+- Node management operations
+- Configuration management
+- Health checking
+
+## Quick Start
+
+### 1. Build pgraft Extension
+
+```bash
+cd pgraft
+make
+sudo make install
 ```
-ramd/ramd -c /path/to/ramd.conf -d
+
+### 2. Enable Extension in PostgreSQL
+
+```sql
+-- Add to postgresql.conf
+shared_preload_libraries = 'pgraft'
+
+-- Restart PostgreSQL
+-- Create extension in database
+CREATE EXTENSION pgraft;
 ```
 
-4) Operate with ramctrl
-- Status: `ramctrl status`
-- Show nodes: `ramctrl show nodes`
-- Promote: `ramctrl promote <NODE_ID>`
-- Trigger failover: `ramctrl failover`
-- Start/Stop daemon: `ramctrl start|stop`
+### 3. Initialize Cluster
 
-5) Use the HTTP API (default port 8008)
-- GET /api/v1/cluster/status
-- GET /api/v1/nodes
-- GET /api/v1/nodes/{id}
-- POST /api/v1/promote/{id}
-- POST /api/v1/demote/{id}
-- POST /api/v1/failover
-- GET|POST /api/v1/replication/sync
-- POST /api/v1/config/reload
+```sql
+-- Initialize node
+SELECT pgraft_init(1, '192.168.1.10', 5432);
+SELECT pgraft_start();
 
-6) pg_ram extension (optional)
-- Build with PostgreSQL headers present: `./configure --with-pg-config=... && make`
-- Install the extension artifacts to your PostgreSQL sharedir/libdir.
-- postgresql.conf:
-  - `shared_preload_libraries = 'pg_ram'`
-  - configure pg_ram GUCs as needed (see pg_ram/README.md)
-- Restart PostgreSQL and `CREATE EXTENSION pg_ram;` if SQL is needed.
+-- Add other nodes
+SELECT pgraft_add_node(2, '192.168.1.11', 5432);
+SELECT pgraft_add_node(3, '192.168.1.12', 5432);
+```
 
-## How Failover Works
+### 4. Monitor Cluster
 
-- Health and replication monitored by ramd (and pg_ram if present)
-- Quorum/consensus via RALE; split‑brain protections
-- Candidate selection by most advanced LSN and health
-- Promotion of standby, reconfigure sync replication, rebuild replicas
+```sql
+-- Check cluster health
+SELECT pgraft_get_cluster_health();
 
-## Packaging and Service
+-- Get performance metrics
+SELECT pgraft_get_performance_metrics();
 
-- Run ramd under systemd or a supervisor; it writes a PID to ramd/ramd.pid.
-- Expose the HTTP API behind TLS or a firewall (enable auth in ramd.conf).
+-- Check if healthy
+SELECT pgraft_is_cluster_healthy();
+```
 
-## Notes
+## Development
 
-- If pg_config is absent, pg_ram is skipped at build time; ramd and ramctrl still provide full autofailover.
-- See ramd/conf/ramd.conf for a comprehensive, self‑documented config.
+### Prerequisites
+
+- PostgreSQL 12+ with development headers
+- GCC or compatible C compiler
+- Make
+- pthread library
+
+### Building
+
+```bash
+# Build all components
+make -C pgraft
+make -C ramd
+make -C ramctrl
+
+# Clean all
+make -C pgraft clean
+make -C ramd clean
+make -C ramctrl clean
+```
+
+### Testing
+
+```bash
+# Test pgraft extension
+cd pgraft
+make test
+
+# Test cluster operations
+psql -d testdb -c "SELECT pgraft_version();"
+```
+
+## Architecture
+
+The project uses a modular architecture:
+
+1. **pgraft Extension**: Core consensus logic in PostgreSQL
+2. **ramd Daemon**: Cluster management and HTTP API
+3. **ramctrl Utility**: Command-line interface for operations
+4. **Communication Layer**: Network communication between components
+
+## Configuration
+
+### pgraft Extension
+
+Configure using PostgreSQL GUC parameters:
+
+```sql
+-- Core settings
+ALTER SYSTEM SET pgraft.node_id = 1;
+ALTER SYSTEM SET pgraft.address = '192.168.1.10';
+ALTER SYSTEM SET pgraft.port = 5432;
+
+-- Cluster settings
+ALTER SYSTEM SET pgraft.cluster_name = 'my_cluster';
+ALTER SYSTEM SET pgraft.cluster_size = 3;
+
+-- Performance settings
+ALTER SYSTEM SET pgraft.heartbeat_interval = 1000;
+ALTER SYSTEM SET pgraft.election_timeout = 5000;
+
+-- Reload configuration
+SELECT pg_reload_conf();
+```
+
+### ramd Daemon
+
+Configure using command-line options or configuration file:
+
+```bash
+# Start daemon
+./ramd --node-id=1 --address=192.168.1.10 --port=8080
+
+# Or use configuration file
+./ramd --config=ramd.conf
+```
+
+## Monitoring
+
+### Health Checks
+
+```sql
+-- Extension health
+SELECT pgraft_get_cluster_health();
+
+-- System statistics
+SELECT pgraft_get_system_stats();
+
+-- Performance metrics
+SELECT pgraft_get_performance_metrics();
+```
+
+### HTTP API (ramd)
+
+```bash
+# Get cluster status
+curl http://localhost:8080/api/cluster/status
+
+# Get node health
+curl http://localhost:8080/api/node/health
+
+# Get metrics
+curl http://localhost:8080/api/metrics
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Extension not loading**: Check `shared_preload_libraries` in postgresql.conf
+2. **Node connection issues**: Verify network connectivity and firewall settings
+3. **Build errors**: Ensure PostgreSQL development headers are installed
+4. **Permission errors**: Check PostgreSQL user permissions
+
+### Debugging
+
+```sql
+-- Enable debug logging
+SET log_min_messages = DEBUG1;
+
+-- Check extension status
+SELECT * FROM pg_extension WHERE extname = 'pgraft';
+
+-- Monitor cluster
+SELECT pgraft_get_cluster_health();
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+## License
+
+This project is licensed under the Apache 2.0 License - see the LICENSE file for details.
+
+## Support
+
+For questions and support:
+
+- Check the documentation in each component directory
+- Review the troubleshooting section
+- Open an issue on GitHub
+
+## References
+
+- [PostgreSQL Extension Development](https://www.postgresql.org/docs/current/extend.html)
+- [Raft Consensus Algorithm](https://raft.github.io/raft.pdf)
+- [PostgreSQL Background Workers](https://www.postgresql.org/docs/current/bgworker.html)

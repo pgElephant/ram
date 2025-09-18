@@ -32,7 +32,7 @@
 #define RAMD_DEFAULT_RALE_PORT 7400
 
 /* Cluster Defaults */
-#define RAMD_DEFAULT_CLUSTER_NAME "pg_ram_cluster"
+#define RAMD_DEFAULT_CLUSTER_NAME "pgraft_cluster"
 #define RAMD_DEFAULT_CLUSTER_SIZE 3
 #define RAMD_DEFAULT_MAX_NODES 16
 

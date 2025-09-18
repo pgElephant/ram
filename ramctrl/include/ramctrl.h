@@ -4,7 +4,7 @@
  *		PostgreSQL RAM Control Utility - Main header
  *
  * ramctrl is a command-line utility to control and monitor the
- * PostgreSQL RAM cluster (pg_ram extension + ramd daemon).
+ * PostgreSQL RAM cluster (pgraft extension + ramd daemon).
  *
  * Copyright (c) 2024-2025, pgElephant, Inc.
  *

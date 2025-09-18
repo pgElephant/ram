@@ -39,7 +39,7 @@ extern bool
 ramctrl_database_is_connected(const ramctrl_database_connection_t* conn);
 extern bool ramctrl_database_reconnect(ramctrl_database_connection_t* conn);
 
-/* pg_ram extension queries */
+/* pgraft extension queries */
 extern bool
 ramctrl_database_get_cluster_info(ramctrl_database_connection_t* conn,
                                   ramctrl_cluster_info_t* cluster_info);
@@ -51,7 +51,7 @@ extern bool ramctrl_database_get_all_nodes(ramctrl_database_connection_t* conn,
                                            int32_t* node_count,
                                            int32_t max_nodes);
 
-/* Control operations via pg_ram extension */
+/* Control operations via pgraft extension */
 extern bool ramctrl_database_promote_node(ramctrl_database_connection_t* conn,
                                           int32_t node_id);
 extern bool ramctrl_database_demote_node(ramctrl_database_connection_t* conn,

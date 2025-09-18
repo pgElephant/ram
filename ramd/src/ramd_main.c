@@ -565,3 +565,15 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
+
+/*
+ * Stub implementation for pgraft_get_cluster_state_file_path()
+ * This function is needed by consensus libraries but is only properly implemented
+ * in the PostgreSQL extension context. For the standalone ramd daemon,
+ * we provide a simple stub that returns NULL, which will cause
+ * consensus libraries to fall back to other methods.
+ */
+const char* pgraft_get_cluster_state_file_path(void)
+{
+	return NULL;
+}

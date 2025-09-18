@@ -1164,7 +1164,7 @@ bool pgsql_check_postgresql_settings(PGSQL* pgsql, bool isMonitor,
 
 /*
  * pgsql_check_monitor_settings connects to the given pgsql instance to check
- * that pg_ram is part of shared_preload_libraries.
+ * that pgraft is part of shared_preload_libraries.
  */
 bool pgsql_check_monitor_settings(PGSQL* pgsql, bool* settings_are_ok)
 {
@@ -1174,7 +1174,7 @@ bool pgsql_check_monitor_settings(PGSQL* pgsql, bool* settings_are_ok)
 	    "unnest("
 	    "string_to_array(current_setting('shared_preload_libraries'), ','))"
 	    " as t(name) "
-	    "where trim(name) = 'pg_ram');";
+	    "where trim(name) = 'pgraft');";
 
 	if (!pgsql_execute_with_params(pgsql, sql, 0, NULL, NULL, &context,
 	                               &parseSingleValueResult))
@@ -2511,7 +2511,7 @@ bool pgsql_one_slot_has_reached_target_lsn(PGSQL* pgsql, char* targetLSN,
 	PgReachedTargetLSN context = {0};
 
 	/*
-	 * We pick the most advanced LSN reached by the pg_ram replication
+	 * We pick the most advanced LSN reached by the pgraft replication
 	 * slots, and only consider those that have made it to "sync" or "quorum"
 	 * sync_state already. This function is typically called after sync rep has
 	 * been enabled on the primary.

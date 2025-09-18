@@ -14,7 +14,7 @@
 #include "ramctrl.h"
 #include "ramctrl_database.h"
 
-/* SQL queries for pg_ram extension */
+/* SQL queries for pgraft extension */
 static const char* sql_cluster_status =
     "SELECT cluster_id, cluster_name, total_nodes, active_nodes, "
     "primary_node_id, cluster_state, last_update FROM ram.cluster_status();";
@@ -68,13 +68,13 @@ static PGconn* ramctrl_connect_database(ramctrl_context_t* ctx)
 		return NULL;
 	}
 
-	/* Verify pg_ram extension is available */
+	/* Verify pgraft extension is available */
 	PGresult* res =
-	    PQexec(conn, "SELECT 1 FROM pg_extension WHERE extname = 'pg_ram';");
+	    PQexec(conn, "SELECT 1 FROM pg_extension WHERE extname = 'pgraft';");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
 	{
 		if (ctx->verbose)
-			fprintf(stderr, "ramctrl: pg_ram extension not found\n");
+			fprintf(stderr, "ramctrl: pgraft extension not found\n");
 		PQclear(res);
 		PQfinish(conn);
 		return NULL;
@@ -438,7 +438,7 @@ bool ramctrl_trigger_failover(ramctrl_context_t* ctx, int32_t target_node_id)
 	}
 	else
 	{
-		/* Automatic failover - let pg_ram choose best candidate */
+		/* Automatic failover - let pgraft choose best candidate */
 		params[0] = NULL;
 		res = PQexecParams(conn, sql_trigger_failover, 1, NULL, params, NULL,
 		                   NULL, 0);
@@ -466,7 +466,7 @@ bool ramctrl_trigger_failover(ramctrl_context_t* ctx, int32_t target_node_id)
 	return result;
 }
 
-/* Get node information from pg_ram extension */
+/* Get node information from pgraft extension */
 bool ramctrl_get_node_info(ramctrl_context_t* ctx, ramctrl_node_info_t* nodes,
                            int32_t* node_count)
 {

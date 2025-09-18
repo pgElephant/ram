@@ -410,17 +410,17 @@ void ramd_http_handle_cluster_status(ramd_http_request_t* request,
                                      ramd_http_response_t* response)
 {
 	char json_buffer[4096];
-	int32_t pgram_node_count, pgram_leader_id;
-	bool pgram_is_leader, pgram_has_quorum;
+	int32_t pgraft_node_count, pgraft_leader_id;
+	bool pgraft_is_leader, pgraft_has_quorum;
 
 	(void) request; /* Unused parameter */
 
-	/* Get cluster status from pg_ram extension (authoritative source) */
-	if (!ramd_postgresql_query_pgram_cluster_status(
-	        &g_ramd_daemon->config, &pgram_node_count, &pgram_is_leader,
-	        &pgram_leader_id, &pgram_has_quorum))
+	/* Get cluster status from pgraft extension (authoritative source) */
+	if (!ramd_postgresql_query_pgraft_cluster_status(
+	        &g_ramd_daemon->config, &pgraft_node_count, &pgraft_is_leader,
+	        &pgraft_leader_id, &pgraft_has_quorum))
 	{
-		ramd_log_warning("Failed to query pg_ram cluster status, falling back "
+		ramd_log_warning("Failed to query pgraft cluster status, falling back "
 		                 "to internal state");
 
 		/* Fallback to internal cluster state */
@@ -433,14 +433,14 @@ void ramd_http_handle_cluster_status(ramd_http_request_t* request,
 			return;
 		}
 
-		pgram_node_count = cluster->node_count;
-		pgram_is_leader =
+		pgraft_node_count = cluster->node_count;
+		pgraft_is_leader =
 		    (cluster->primary_node_id == g_ramd_daemon->config.node_id);
-		pgram_leader_id = cluster->primary_node_id;
-		pgram_has_quorum = ramd_cluster_has_quorum(cluster);
+		pgraft_leader_id = cluster->primary_node_id;
+		pgraft_has_quorum = ramd_cluster_has_quorum(cluster);
 	}
 
-	/* Build comprehensive cluster status using pg_ram data */
+	/* Build comprehensive cluster status using pgraft data */
 	snprintf(
 	    json_buffer, sizeof(json_buffer),
 	    "{\n"
@@ -451,15 +451,15 @@ void ramd_http_handle_cluster_status(ramd_http_request_t* request,
 	    "  \"healthy_nodes\": %d,\n"
 	    "  \"has_quorum\": %s,\n"
 	    "  \"is_leader\": %s,\n"
-	    "  \"data_source\": \"pg_ram\",\n"
+	    "  \"data_source\": \"pgraft\",\n"
 	    "  \"timestamp\": %ld,\n"
 	    "  \"failover_state\": \"%s\"\n"
 	    "}",
 	    g_ramd_daemon->cluster.cluster_name,
-	    pgram_has_quorum ? "operational" : "degraded", pgram_leader_id,
-	    pgram_node_count,
-	    pgram_node_count, /* For now, assume all nodes are healthy */
-	    pgram_has_quorum ? "true" : "false", pgram_is_leader ? "true" : "false",
+	    pgraft_has_quorum ? "operational" : "degraded", pgraft_leader_id,
+	    pgraft_node_count,
+	    pgraft_node_count, /* For now, assume all nodes are healthy */
+	    pgraft_has_quorum ? "true" : "false", pgraft_is_leader ? "true" : "false",
 	    time(NULL),
 	    (g_ramd_daemon->failover_context.state == RAMD_FAILOVER_STATE_NORMAL)
 	        ? "normal"
@@ -1161,14 +1161,14 @@ void ramd_http_handle_bootstrap_primary(ramd_http_request_t* request,
 			/* Start PostgreSQL */
 			if (ramd_postgresql_start(&g_ramd_daemon->config))
 			{
-				/* Create pg_ram extension */
+				/* Create pgraft extension */
 				ramd_log_info("PostgreSQL started successfully, creating "
-				              "pg_ram extension");
+				              "pgraft extension");
 
-				if (!ramd_postgresql_create_pg_ram_extension(
+				if (!ramd_postgresql_create_pgraft_extension(
 				        &g_ramd_daemon->config))
 				{
-					ramd_log_error("Failed to create pg_ram extension");
+					ramd_log_error("Failed to create pgraft extension");
 					strncpy(g_ramd_daemon->config.postgresql_data_dir,
 					        original_data_dir,
 					        sizeof(g_ramd_daemon->config.postgresql_data_dir) -
@@ -1177,7 +1177,7 @@ void ramd_http_handle_bootstrap_primary(ramd_http_request_t* request,
 					    json_buffer, sizeof(json_buffer),
 					    "{\n"
 					    "  \"status\": \"error\",\n"
-					    "  \"message\": \"Failed to create pg_ram extension\"\n"
+					    "  \"message\": \"Failed to create pgraft extension\"\n"
 					    "}");
 					ramd_http_set_json_response(
 					    response, RAMD_HTTP_500_INTERNAL_ERROR, json_buffer);
@@ -1370,12 +1370,12 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 		return;
 	}
 
-	/* Step 3: Install pg_ram extension on replica (TODO: implement) */
-	ramd_log_info("Installing pg_ram extension on replica node %d",
+	/* Step 3: Install pgraft extension on replica (TODO: implement) */
+	ramd_log_info("Installing pgraft extension on replica node %d",
 	              new_node_id);
 
-	/* Step 4: Add node to pg_ram/librale consensus (TODO: implement) */
-	ramd_log_info("Adding node %d to pg_ram consensus", new_node_id);
+	/* Step 4: Add node to pgraft consensus (TODO: implement) */
+	ramd_log_info("Adding node %d to pgraft consensus", new_node_id);
 
 	/* Return success response */
 	snprintf(json_buffer, sizeof(json_buffer),

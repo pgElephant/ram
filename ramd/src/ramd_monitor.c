@@ -270,7 +270,7 @@ bool ramd_monitor_check_leadership(ramd_monitor_t* monitor)
 	/* Check if we're the leader according to consensus */
 	bool am_leader = false;
 
-	/* Query librale for current leader status */
+	/* Query pgraft for current leader status (simplified) */
 	/* For now, check if we have the primary role */
 	ramd_node_t* self =
 	    ramd_cluster_find_node(monitor->cluster, monitor->config->node_id);

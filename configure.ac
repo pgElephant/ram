@@ -23,15 +23,15 @@ if test -z "$PG_CONFIG"; then
 fi
 
 if test "x$PG_CONFIG" = "xno" -o ! -x "$PG_CONFIG"; then
-  AC_MSG_WARN([pg_config not found; pg_ram extension may not build. You can pass --with-pg-config=/usr/local/pgsql/bin/pg_config])
+  AC_MSG_WARN([pg_config not found; pgraft extension may not build. You can pass --with-pg-config=/usr/local/pgsql/bin/pg_config])
 fi
 
 AC_SUBST([PG_CONFIG])
 
-# Conditionally include pg_ram in the build when pg_config is available
+# Conditionally include pgraft in the build when pg_config is available
 AM_CONDITIONAL([HAVE_PG_CONFIG], [test "x$PG_CONFIG" != "xno" -a -x "$PG_CONFIG"])
 
-# pg_ram uses its own PostgreSQL extension Makefile, don't generate one
+# pgraft uses its own PostgreSQL extension Makefile, don't generate one
 
 AC_CONFIG_FILES([
   Makefile

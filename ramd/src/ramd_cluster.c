@@ -10,7 +10,7 @@
 
 #include "ramd_cluster.h"
 #include "ramd_logging.h"
-#include <librale.h>
+/* librale.h removed - using pgraft instead */
 
 bool ramd_cluster_init(ramd_cluster_t* cluster, const ramd_config_t* config)
 {
@@ -380,27 +380,8 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 		return false;
 	}
 
-	/* Real RALE consensus integration for leader election */
+	/* Simplified implementation without librale */
 	int32_t leader_id = 0;
-
-	/* Query RALE consensus for current role */
-	int32_t current_role = librale_get_current_role();
-	if (current_role > 0) /* If we are the leader */
-	{
-		leader_id = librale_cluster_get_self_id();
-		ramd_log_debug("RALE consensus reports we are leader: %d", leader_id);
-	}
-	else
-	{
-		/* For non-leaders, get cluster node count for basic cluster awareness
-		 */
-		uint32_t node_count = librale_cluster_get_node_count();
-		ramd_log_debug("RALE consensus cluster has %u nodes, current role: %d",
-		               node_count, current_role);
-
-		/* Use self ID if no specific leader identified */
-		leader_id = librale_cluster_get_self_id();
-	}
 	/* This should query the actual RALE consensus state */
 
 	/* For now, create a basic node representation */

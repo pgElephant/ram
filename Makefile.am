@@ -1,7 +1,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 if HAVE_PG_CONFIG
-SUBDIRS = pg_ram ramctrl ramd
+SUBDIRS = pgraft ramctrl ramd
 else
 SUBDIRS = ramctrl ramd
 endif

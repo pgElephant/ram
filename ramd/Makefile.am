@@ -1,5 +1,5 @@
 AM_CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wvla -Wno-strict-prototypes -Wno-missing-field-initializers -DNDEBUG -pthread
-AM_CPPFLAGS = -I$(srcdir)/include -I$(top_srcdir)/../rale/librale/include -I/usr/local/pgsql/include -I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/include
+AM_CPPFLAGS = -I$(srcdir)/include -I/usr/local/pgsql/include -I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/include
 
 bin_PROGRAMS = ramd
 ramd_SOURCES = src/ramd_main.c \
@@ -16,5 +16,5 @@ ramd_SOURCES = src/ramd_main.c \
                src/ramd_cascade.c \
                src/ramd_callbacks.c
 
-# Link with librale, pthread and PostgreSQL
-ramd_LDADD = $(top_srcdir)/../rale/lib/librale.a -lpthread -L/usr/local/pgsql/lib -L/opt/homebrew/lib -lpq
+# Link with pthread and PostgreSQL
+ramd_LDADD = -lpthread -L/usr/local/pgsql/lib -L/opt/homebrew/lib -lpq
