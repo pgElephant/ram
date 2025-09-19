@@ -9,10 +9,7 @@
  */
 
 -- Create extension schema
-CREATE SCHEMA IF NOT EXISTS pgraft;
-
--- Set search path
-SET search_path = pgraft;
+CREATE SCHEMA pgraft;
 
 -- ============================================================================
 -- Core Raft Functions
@@ -102,6 +99,11 @@ RETURNS text
 LANGUAGE C
 AS 'pgraft', 'pgraft_version';
 
+CREATE OR REPLACE FUNCTION pgraft_test()
+RETURNS integer
+LANGUAGE C
+AS 'pgraft', 'pgraft_test';
+
 -- Check if current node is leader
 CREATE OR REPLACE FUNCTION pgraft_is_leader()
 RETURNS boolean
@@ -147,22 +149,6 @@ CREATE OR REPLACE FUNCTION pgraft_get_quorum_status()
 RETURNS text
 LANGUAGE C
 AS 'pgraft', 'pgraft_get_quorum_status';
-
--- Reset metrics
-CREATE OR REPLACE FUNCTION pgraft_reset_metrics()
-RETURNS boolean
-LANGUAGE C
-AS 'pgraft', 'pgraft_reset_metrics';
-
--- ============================================================================
--- Cluster Management Functions
--- ============================================================================
-
--- Include cluster management functions
-\i sql/pgraft_cluster.sql
-
--- Include cluster monitoring views
-\i sql/pgraft_views.sql
 
 -- Reset search path
 SET search_path = public;

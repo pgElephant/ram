@@ -23,6 +23,13 @@
 #include <string.h>
 #include <time.h>
 
+/* Function declarations */
+PG_FUNCTION_INFO_V1(pgraft_get_cluster_health);
+PG_FUNCTION_INFO_V1(pgraft_get_performance_metrics);
+PG_FUNCTION_INFO_V1(pgraft_is_cluster_healthy);
+PG_FUNCTION_INFO_V1(pgraft_get_system_stats);
+PG_FUNCTION_INFO_V1(pgraft_get_quorum_status);
+
 /* Metrics storage structure */
 typedef struct
 {

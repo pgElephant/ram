@@ -21,12 +21,11 @@ extern const char *_GoStringPtr(_GoString_ s);
 /* Start of preamble from import "C" comments.  */
 
 
-#line 14 "pgraft_go.go"
+#line 3 "test_go.go"
 
 
 
 #include <stdlib.h>
-#include <string.h>
 
 #line 1 "cgo-generated-wrapper"
 
@@ -90,32 +89,7 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
-extern int pgraft_go_init(int nodeID, char* address, int port);
-extern int pgraft_go_start(void);
-extern char* pgraft_go_version(void);
-extern int pgraft_go_test(void);
-extern int pgraft_go_stop(void);
-extern int pgraft_go_add_peer(int nodeID, char* address, int port);
-extern int pgraft_go_remove_peer(int nodeID);
-extern char* pgraft_go_get_state(void);
-extern int pgraft_go_get_leader(void);
-extern long pgraft_go_get_term(void);
-extern int pgraft_go_is_leader(void);
-extern int pgraft_go_append_log(char* data, int length);
-extern char* pgraft_go_get_stats(void);
-extern char* pgraft_go_get_nodes(void);
-extern char* pgraft_go_get_logs(void);
-extern int pgraft_go_commit_log(long index);
-extern int pgraft_go_step_message(char* data, int length);
-extern char* pgraft_go_get_network_status(void);
-extern void pgraft_go_free_string(char* str);
-extern int pgraft_go_replicate_log_entry(char* data, int dataLen);
-extern char* pgraft_go_get_replication_status(void);
-extern char* pgraft_go_create_snapshot(void);
-extern int pgraft_go_apply_snapshot(char* snapshotData);
-extern int pgraft_go_replicate_to_node(uint64_t nodeID, char* data, int dataLen);
-extern double pgraft_go_get_replication_lag(void);
-extern int pgraft_go_sync_replication(void);
+extern int test_go_function(void);
 
 #ifdef __cplusplus
 }

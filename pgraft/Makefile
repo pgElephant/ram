@@ -8,8 +8,8 @@ EXTENSION = pgraft
 DATA = pgraft--1.0.sql
 PGFILEDESC = "pgraft - PostgreSQL extension with etcd-io/raft integration"
 
-# PostgreSQL configuration
-PG_CONFIG = pg_config
+# PostgreSQL configuration - use PostgreSQL 17
+PG_CONFIG = /usr/local/pgsql.17/bin/pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
