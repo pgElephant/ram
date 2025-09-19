@@ -76,7 +76,7 @@ typedef struct ramd_config
 	bool daemonize;
 	char user[64];
 	char group[64];
-	char backup_dir[256];  // Directory for backups
+	char backup_dir[256];
 } ramd_config_t;
 
 /* Configuration functions */

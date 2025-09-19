@@ -90,33 +90,48 @@ bool
 pgraft_health_worker_check(void)
 {
     bool is_healthy = true;
+    pgraft_raft_state_t *raft_state;
+    int healthy_nodes;
     
     if (!g_health_status.is_running)
     {
         return false;
     }
     
-    if (g_health_status.is_running)
+    /* Check Raft system health */
+    raft_state = pgraft_raft_get_state();
+    if (!raft_state || !raft_state->is_initialized)
     {
-        g_health_status.last_health_status = PGRAFT_HEALTH_OK;
-    }
-    else
-    {
-        g_health_status.last_health_status = PGRAFT_HEALTH_ERROR;
         is_healthy = false;
     }
     
-    g_health_status.last_activity = GetCurrentTimestamp();
-    g_health_status.health_checks_performed++;
+    /* Check communication system health */
+    if (!pgraft_comm_initialized())
+    {
+        is_healthy = false;
+    }
     
+    /* Check number of healthy nodes */
+    healthy_nodes = pgraft_get_healthy_nodes_count();
+    if (healthy_nodes < 1)
+    {
+        is_healthy = false;
+    }
+    
+    /* Update health status */
     if (is_healthy)
     {
+        g_health_status.last_health_status = PGRAFT_HEALTH_OK;
         g_health_status.errors_count = 0;
     }
     else
     {
+        g_health_status.last_health_status = PGRAFT_HEALTH_ERROR;
         g_health_status.errors_count++;
     }
+    
+    g_health_status.last_activity = GetCurrentTimestamp();
+    g_health_status.health_checks_performed++;
     
     elog(DEBUG1, "pgraft_health_worker_check: health check completed, status: %s", 
          is_healthy ? "HEALTHY" : "UNHEALTHY");

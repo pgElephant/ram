@@ -22,7 +22,7 @@ typedef struct ramd_node_t
 	int32_t postgresql_port;
 	int32_t rale_port;
 	int32_t dstore_port;
-	int32_t port;  // Port for the node
+	int32_t port;
 	ramd_node_state_t state;
 	ramd_role_t role;
 	bool is_leader;

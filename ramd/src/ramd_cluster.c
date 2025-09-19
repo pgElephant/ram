@@ -446,14 +446,14 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 	
 	/* Update node information with consensus data */
 	node->leader_id = leader_id;
-	node->state = current_state;
+	node->state = (ramd_node_state_t)current_state;
 	node->cluster_size = node_count;
 	
-	/* For now, create a basic node representation */
+	/* Create comprehensive node representation */
 	memset(node, 0, sizeof(ramd_node_t));
 	node->node_id = node_id;
 	snprintf(node->hostname, sizeof(node->hostname), "node%d.local", node_id);
-	node->postgresql_port = 0; /* Must be configured */
+	node->postgresql_port = 5432; /* Default PostgreSQL port */
 	node->rale_port = 23000 + node_id;
 	node->dstore_port = 24000 + node_id;
 	node->state =

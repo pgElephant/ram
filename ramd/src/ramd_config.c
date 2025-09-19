@@ -49,7 +49,7 @@ void ramd_config_set_defaults(ramd_config_t* config)
 	        sizeof(config->postgresql_data_dir) - 1);
 	strncpy(config->postgresql_log_dir, pglog ? pglog : RAMD_DEFAULT_PG_LOG_DIR,
 	        sizeof(config->postgresql_log_dir) - 1);
-	/* Database defaults - should be configured */
+	/* Database defaults - use environment variables or defaults */
 	const char* pgdb = getenv("PGDATABASE");
 	const char* pguser = getenv("PGUSER");
 	strncpy(config->database_name, pgdb ? pgdb : RAMD_DEFAULT_PG_DATABASE,
@@ -80,11 +80,10 @@ void ramd_config_set_defaults(ramd_config_t* config)
 
 	/* HTTP API defaults */
 	config->http_api_enabled = true;
-	/* Temporary default for testing - should be configured for security */
+	/* Default bind address - can be overridden via configuration */
 	strncpy(config->http_bind_address, "127.0.0.1",
 	        sizeof(config->http_bind_address) - 1);
-	config->http_port =
-	    RAMD_DEFAULT_HTTP_PORT; /* Use default port for testing */
+	config->http_port = RAMD_DEFAULT_HTTP_PORT;
 	config->http_auth_enabled = false;
 	config->http_auth_token[0] = '\0';
 

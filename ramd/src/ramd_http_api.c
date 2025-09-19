@@ -673,7 +673,6 @@ void ramd_http_handle_failover(ramd_http_request_t* request,
 	}
 
 	/* Parse request body for failover parameters */
-	/* For now, we'll trigger automatic failover */
 	ramd_cluster_t* cluster = &g_ramd_daemon->cluster;
 	if (!cluster)
 	{
@@ -1251,9 +1250,35 @@ void ramd_http_handle_bootstrap_primary(ramd_http_request_t* request,
 char* ramd_http_get_query_param(const char* query_string,
                                 const char* param_name)
 {
-	/* Simple implementation - production code should be more robust */
-	(void) query_string;
-	(void) param_name;
+	if (!query_string || !param_name)
+	{
+		return NULL;
+	}
+	
+	char* query_copy = strdup(query_string);
+	if (!query_copy)
+	{
+		return NULL;
+	}
+	
+	char* token = strtok(query_copy, "&");
+	while (token != NULL)
+	{
+		char* equals = strchr(token, '=');
+		if (equals)
+		{
+			*equals = '\0';
+			if (strcmp(token, param_name) == 0)
+			{
+				char* value = strdup(equals + 1);
+				free(query_copy);
+				return value;
+			}
+		}
+		token = strtok(NULL, "&");
+	}
+	
+	free(query_copy);
 	return NULL;
 }
 

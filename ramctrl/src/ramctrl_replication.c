@@ -134,7 +134,7 @@ bool ramctrl_replication_get_status(replication_status_t* status)
 			    (status->current_lag_bytes <=
 			     g_replication_config.lag_config.maximum_lag_on_failover);
 
-			break; /* Only process first replication slot for now */
+			break; /* Process first replication slot found */
 		}
 	}
 

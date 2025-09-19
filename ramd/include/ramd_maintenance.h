@@ -168,10 +168,10 @@ bool ramd_maintenance_is_cluster_safe_for_maintenance(int32_t target_node_id);
 
 /* Internal functions */
 bool check_backup_availability(void);
-static bool check_cluster_health(void);
-static bool check_all_nodes_reachable(void);
-static bool check_sufficient_standbys(void);
-static bool check_replication_current(void);
-static bool check_no_active_transactions(void);
+bool check_cluster_health(void);
+bool check_all_nodes_reachable(void);
+bool check_sufficient_standbys(void);
+bool check_replication_current(void);
+bool check_no_active_transactions(void);
 
 #endif /* RAMD_MAINTENANCE_H */

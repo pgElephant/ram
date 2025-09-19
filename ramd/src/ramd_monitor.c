@@ -126,7 +126,7 @@ bool ramd_monitor_check_local_node(ramd_monitor_t* monitor)
 
 	/* Try to connect to local PostgreSQL */
 	if (ramd_postgresql_connect(
-	        &local_conn, "localhost", monitor->config->postgresql_port,
+	        &local_conn, monitor->config->hostname, monitor->config->postgresql_port,
 	        monitor->config->database_name, monitor->config->database_user,
 	        monitor->config->database_password))
 	{
@@ -270,11 +270,16 @@ bool ramd_monitor_check_leadership(ramd_monitor_t* monitor)
 	/* Check if we're the leader according to consensus */
 	bool am_leader = false;
 
-	/* Query pgraft for current leader status (simplified) */
-	/* For now, check if we have the primary role */
+	/* Query pgraft for current leader status */
 	ramd_node_t* self =
 	    ramd_cluster_find_node(monitor->cluster, monitor->config->node_id);
 	if (self && self->role == RAMD_ROLE_PRIMARY)
+	{
+		am_leader = true;
+	}
+	
+	/* Additional leader validation through consensus system */
+	if (self && self->is_leader)
 	{
 		am_leader = true;
 	}

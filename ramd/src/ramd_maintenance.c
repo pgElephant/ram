@@ -551,11 +551,17 @@ bool ramd_maintenance_create_backup(int32_t node_id, char* backup_id,
 	/* Generate backup ID */
 	snprintf(backup_id, backup_id_size, "maintenance_backup_%d_%ld", node_id, now);
 
-	/* In a real implementation, this would trigger pg_basebackup or similar */
+	/* Execute actual backup using pg_basebackup */
 	ramd_log_info("Creating backup for node %d: %s", node_id, backup_id);
 
-	/* Real backup execution */
-	system("pg_basebackup -D /var/lib/postgresql/backups -Fp -Xs -P -v");  // Actual backup execution
+	/* Real backup execution using configurable backup directory */
+	char backup_cmd[512];
+	const char *backup_dir = g_ramd_daemon->config.backup_dir;
+	if (backup_dir == NULL) {
+		backup_dir = "/var/lib/postgresql/backups";
+	}
+	snprintf(backup_cmd, sizeof(backup_cmd), "pg_basebackup -D %s -Fp -Xs -P -v", backup_dir);
+	system(backup_cmd);
 
 	ramd_log_info("Backup created successfully: %s", backup_id);
 	return true;
@@ -1509,9 +1515,9 @@ bool
 check_backup_availability(void)
 {
 	/* Check if backup directory exists and is accessible */
-	const char *backup_dir = g_ramd_daemon->config.backup_dir;  // Use configurable value from config
+	const char *backup_dir = g_ramd_daemon->config.backup_dir;
 	if (backup_dir == NULL) {
-		backup_dir = "/var/lib/postgresql/backups";  // Fallback to default if not set
+		backup_dir = "/var/lib/postgresql/backups";
 	}
 	
 	if (access(backup_dir, R_OK | W_OK) != 0)
@@ -1553,7 +1559,7 @@ check_backup_availability(void)
 /*
  * Check cluster health
  */
-static bool
+bool
 check_cluster_health(void)
 {
 	/* Check if cluster is in a healthy state */
@@ -1584,7 +1590,7 @@ check_cluster_health(void)
 /*
  * Check if all nodes are reachable
  */
-static bool
+bool
 check_all_nodes_reachable(void)
 {
 	/* Implement real node reachability */
@@ -1595,7 +1601,7 @@ check_all_nodes_reachable(void)
 	for (int i = 0; i < g_ramd_daemon->cluster.node_count; i++)
 	{
 		ramd_node_t *node = &g_ramd_daemon->cluster.nodes[i];
-		if (!ping_node(node->hostname, node->port))  // Assume ping_node is a real function to check reachability
+		if (!ping_node(node->hostname, node->port))
 		{
 			ramd_log_warning("Node %d (%s) is not reachable", node->node_id, node->hostname);
 			return false;
@@ -1608,7 +1614,7 @@ check_all_nodes_reachable(void)
 /*
  * Check if there are sufficient standbys
  */
-static bool
+bool
 check_sufficient_standbys(void)
 {
 	if (!g_ramd_daemon || !g_ramd_daemon->cluster.node_count)
@@ -1641,7 +1647,7 @@ check_sufficient_standbys(void)
 /*
  * Check if replication is current
  */
-static bool
+bool
 check_replication_current(void)
 {
 	/* Implement real replication status */
@@ -1668,7 +1674,7 @@ check_replication_current(void)
 /*
  * Check if there are no active transactions
  */
-static bool
+bool
 check_no_active_transactions(void)
 {
 	/* Implement real active transaction check */
@@ -1710,13 +1716,12 @@ check_no_active_transactions(void)
 }
 
 static bool ping_node(const char* hostname, int32_t port) {
-    // Simple implementation using socket to check reachability
     int sock_fd;
     struct sockaddr_in serv_addr;
     struct hostent* server;
     
     if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) return false;
-    server = gethostbyname(hostname);  // Use hostname directly for configurability
+    server = gethostbyname(hostname);
     if (server == NULL) {
         close(sock_fd);
         return false;
@@ -1736,7 +1741,6 @@ static bool ping_node(const char* hostname, int32_t port) {
 }
 
 static double get_replication_lag(ramd_node_t* node) {
-    // Real implementation using libpq to query replication lag
     char conn_str[512];
     snprintf(conn_str, sizeof(conn_str), "host=%s port=%d user=%s dbname=%s",
              node->hostname, node->port, g_ramd_daemon->config.database_user, g_ramd_daemon->config.database_name);

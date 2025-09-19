@@ -217,11 +217,6 @@ _PG_fini(void)
     elog(INFO, "pgraft extension finalized");
 }
 
-
-
-
-
-
 /*
  * Background worker main function
  */
@@ -490,12 +485,10 @@ pgraft_consensus_worker_main(Datum main_arg __attribute__((unused)))
 void
 pgraft_process_incoming_messages(void)
 {
-    /* Implement message processing */
-    elog(DEBUG1, "pgraft_process_incoming_messages: processing incoming messages");
-    
-    /* Process messages from communication layer */
     pgraft_message_t *msg;
     int processed_count = 0;
+    
+    elog(DEBUG1, "pgraft_process_incoming_messages: processing incoming messages");
     
     /* Process all available messages */
     while ((msg = pgraft_comm_receive_message()) != NULL)
@@ -529,7 +522,8 @@ pgraft_process_incoming_messages(void)
 void
 pgraft_create_snapshot(void)
 {
-    /* Implement snapshot creation */
+    char *snapshot_data;
+    
     elog(DEBUG1, "pgraft_create_snapshot: creating snapshot");
     
     if (!pgraft_initialized)
@@ -538,8 +532,7 @@ pgraft_create_snapshot(void)
         return;
     }
     
-    /* Create snapshot through Raft system */
-    char *snapshot_data = pgraft_create_replication_snapshot();
+    snapshot_data = pgraft_create_replication_snapshot();
     if (snapshot_data)
     {
         elog(INFO, "pgraft_create_snapshot: snapshot created successfully");

@@ -152,11 +152,19 @@ ramctrl_cmd_add_node(ramctrl_context_t *ctx, const char *node_name __attribute__
     
     /* Step 2: Check if node already exists */
     /* Check against existing nodes in cluster */
-    ramctrl_node_info_t existing_node;
-    if (ramctrl_get_node_info(ctx, ctx->user, &existing_node))
+    ramctrl_node_info_t nodes[10];
+    int32_t node_count;
+    if (ramctrl_get_node_info(ctx, nodes, &node_count))
     {
-        printf("ramctrl: node '%s' already exists in cluster\n", ctx->user);
-        return RAMCTRL_EXIT_FAILURE;
+        /* Check if node already exists */
+        for (int i = 0; i < node_count; i++)
+        {
+            if (strcmp(nodes[i].node_name, ctx->user) == 0)
+            {
+                printf("ramctrl: node '%s' already exists in cluster\n", ctx->user);
+                return RAMCTRL_EXIT_FAILURE;
+            }
+        }
     }
     
     /* Step 3: Add node to cluster configuration */
@@ -176,24 +184,24 @@ ramctrl_cmd_add_node(ramctrl_context_t *ctx, const char *node_name __attribute__
     
     /* Step 4: Notify other nodes about new node */
     /* Send cluster update notifications */
-    ramctrl_cluster_info_t cluster_info;
+	ramctrl_cluster_info_t cluster_info;
     if (ramctrl_get_cluster_info(ctx, &cluster_info))
     {
         printf("ramctrl: notifying %d existing nodes about new node\n", cluster_info.node_count);
         
         /* Send HTTP notifications to all active nodes */
-        ramctrl_node_info_t *nodes;
-        int node_count;
+        ramctrl_node_info_t *all_nodes;
+        int all_node_count;
         if (ramctrl_get_all_nodes(ctx, &nodes, &node_count))
         {
-            for (int i = 0; i < node_count; i++)
+            for (int i = 0; i < all_node_count; i++)
             {
                 if (nodes[i].is_active && nodes[i].node_id != new_node.node_id)
                 {
                     char notification_url[512];
                     snprintf(notification_url, sizeof(notification_url),
                              "http://%s:%d/api/v1/cluster/notify",
-                             nodes[i].node_address, nodes[i].port);
+                             all_nodes[i].node_address, all_nodes[i].port);
                     
                     /* Send HTTP POST notification */
                     printf("ramctrl: notifying node %d at %s\n", 
@@ -266,14 +274,32 @@ ramctrl_cmd_remove_node(ramctrl_context_t *ctx, const char *node_name __attribut
     
     /* Step 2: Check if node is currently active */
     /* Check if node is currently participating in consensus */
-    ramctrl_node_info_t node_info;
-    if (!ramctrl_get_node_info(ctx, ctx->user, &node_info))
+    ramctrl_node_info_t nodes[10];
+    int32_t node_count;
+    if (!ramctrl_get_node_info(ctx, nodes, &node_count))
+    {
+        printf("ramctrl: failed to get cluster nodes\n");
+        return RAMCTRL_EXIT_FAILURE;
+    }
+    
+    /* Find the node by name */
+    ramctrl_node_info_t *node_info = NULL;
+    for (int i = 0; i < node_count; i++)
+    {
+        if (strcmp(nodes[i].node_name, ctx->user) == 0)
+        {
+            node_info = &nodes[i];
+			break;
+		}
+	}
+
+    if (!node_info)
     {
         printf("ramctrl: node '%s' not found in cluster\n", ctx->user);
         return RAMCTRL_EXIT_FAILURE;
     }
     
-    if (!node_info.is_active)
+    if (!node_info->is_active)
     {
         printf("ramctrl: node '%s' is not active\n", ctx->user);
         return RAMCTRL_EXIT_FAILURE;
@@ -303,18 +329,18 @@ ramctrl_cmd_remove_node(ramctrl_context_t *ctx, const char *node_name __attribut
         printf("ramctrl: notifying %d remaining nodes about node removal\n", cluster_info.node_count);
         
         /* Send HTTP notifications to all remaining active nodes */
-        ramctrl_node_info_t *nodes;
-        int node_count;
+        ramctrl_node_info_t *all_nodes;
+        int all_node_count;
         if (ramctrl_get_all_nodes(ctx, &nodes, &node_count))
         {
-            for (int i = 0; i < node_count; i++)
+            for (int i = 0; i < all_node_count; i++)
             {
-                if (nodes[i].is_active)
+                if (all_nodes[i].is_active)
                 {
                     char notification_url[512];
                     snprintf(notification_url, sizeof(notification_url),
                              "http://%s:%d/api/v1/cluster/notify",
-                             nodes[i].node_address, nodes[i].port);
+                             all_nodes[i].node_address, all_nodes[i].port);
                     
                     /* Send HTTP POST notification */
                     printf("ramctrl: notifying node %d at %s about removal\n", 
@@ -323,19 +349,19 @@ ramctrl_cmd_remove_node(ramctrl_context_t *ctx, const char *node_name __attribut
                     char notification_data[512];
                     snprintf(notification_data, sizeof(notification_data),
                              "{\"action\":\"node_removed\",\"node_id\":%d,\"node_address\":\"%s\"}",
-                             node_info.node_id, node_info.node_address);
+                              node_info->node_id, node_info->node_address);
                     
                     if (send_http_notification(notification_url, notification_data))
                     {
-                        printf("ramctrl: successfully notified node %d about removal\n", nodes[i].node_id);
+                        printf("ramctrl: successfully notified node %d about removal\n", all_nodes[i].node_id);
                     }
                     else
                     {
-                        printf("ramctrl: failed to notify node %d about removal\n", nodes[i].node_id);
+                        printf("ramctrl: failed to notify node %d about removal\n", all_nodes[i].node_id);
                     }
                 }
             }
-            free(nodes);
+		free(all_nodes);
         }
     }
     
@@ -357,19 +383,19 @@ ramctrl_cmd_remove_node(ramctrl_context_t *ctx, const char *node_name __attribut
         
         /* Remove node from monitoring tables */
         snprintf(query, sizeof(query), 
-                 "DELETE FROM pgraft_node_metrics WHERE node_id = %d", node_info.node_id);
+                  "DELETE FROM pgraft_node_metrics WHERE node_id = %d", node_info->node_id);
         res = PQexec(conn, query);
         PQclear(res);
         
         /* Remove node from health check tables */
         snprintf(query, sizeof(query), 
-                 "DELETE FROM pgraft_health_checks WHERE node_id = %d", node_info.node_id);
+                  "DELETE FROM pgraft_health_checks WHERE node_id = %d", node_info->node_id);
         res = PQexec(conn, query);
         PQclear(res);
         
         /* Remove node from replication status */
         snprintf(query, sizeof(query), 
-                 "DELETE FROM pgraft_replication_status WHERE node_id = %d", node_info.node_id);
+                  "DELETE FROM pgraft_replication_status WHERE node_id = %d", node_info->node_id);
         res = PQexec(conn, query);
         PQclear(res);
         

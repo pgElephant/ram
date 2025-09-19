@@ -224,6 +224,7 @@ extern void pgraft_validate_configuration(void);
 
 /* Communication functions */
 extern int pgraft_comm_init(const char *address, int port);
+extern int pgraft_comm_start(void);
 extern int pgraft_comm_shutdown(void);
 extern bool pgraft_comm_initialized(void);
 extern int pgraft_comm_get_active_connections(void);
@@ -236,6 +237,8 @@ extern int pgraft_remove_node_comm(uint64_t node_id);
 extern bool pgraft_is_node_connected(uint64_t node_id);
 extern int pgraft_get_connected_nodes_count(void);
 extern int pgraft_get_healthy_nodes_count(void);
+extern int pgraft_serialize_message(const pgraft_message_t *msg, char **buffer, size_t *buffer_size);
+extern int pgraft_get_connection_to_node(uint64_t node_id);
 
 /* Monitoring functions */
 extern void pgraft_monitor_init(void);

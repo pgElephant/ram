@@ -1026,7 +1026,7 @@ int ramctrl_cmd_remove_replica(ramctrl_context_t* ctx)
 	printf("ramctrl: removing replica from cluster\n");
 	
 	/* Implement actual replica removal logic */
-	if (!ramctrl_remove_replica_from_cluster(ctx))
+        if (!ramctrl_remove_node_from_cluster(ctx, ctx->user))
 	{
 		printf("ramctrl: failed to remove replica from cluster\n");
 		return RAMCTRL_EXIT_FAILURE;
@@ -1051,14 +1051,32 @@ ramctrl_remove_replica_from_cluster(ramctrl_context_t* ctx)
 	
 	/* Step 1: Validate replica exists */
 	/* Check if replica is in cluster */
-	ramctrl_node_info_t replica_info;
-	if (!ramctrl_get_node_info(ctx, ctx->user, &replica_info))
+	ramctrl_node_info_t nodes[10];
+	int32_t node_count;
+	if (!ramctrl_get_node_info(ctx, nodes, &node_count))
+	{
+		printf("ramctrl: failed to get cluster nodes\n");
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	
+	/* Find the replica by user/hostname */
+	ramctrl_node_info_t *replica_info = NULL;
+	for (int i = 0; i < node_count; i++)
+	{
+		if (strcmp(nodes[i].node_name, ctx->user) == 0)
+		{
+			replica_info = &nodes[i];
+			break;
+		}
+	}
+	
+	if (!replica_info)
 	{
 		printf("ramctrl: replica '%s' not found in cluster\n", ctx->user);
 		return RAMCTRL_EXIT_FAILURE;
 	}
 	
-	if (!replica_info.is_active)
+	if (!replica_info->is_active)
 	{
 		printf("ramctrl: replica '%s' is not active\n", ctx->user);
 		return RAMCTRL_EXIT_FAILURE;
@@ -1072,7 +1090,7 @@ ramctrl_remove_replica_from_cluster(ramctrl_context_t* ctx)
 	char stop_pg_cmd[512];
 	snprintf(stop_pg_cmd, sizeof(stop_pg_cmd), 
 	         "ssh %s@%s 'sudo systemctl stop postgresql'", 
-	         ctx->user, replica_info.node_address);
+	         ctx->user, replica_info->node_address);
 	
 	int result = system(stop_pg_cmd);
 	if (result != 0)
@@ -1084,7 +1102,7 @@ ramctrl_remove_replica_from_cluster(ramctrl_context_t* ctx)
 	char stop_ramd_cmd[512];
 	snprintf(stop_ramd_cmd, sizeof(stop_ramd_cmd), 
 	         "ssh %s@%s 'sudo systemctl stop ramd'", 
-	         ctx->user, replica_info.node_address);
+	         ctx->user, replica_info->node_address);
 	
 	result = system(stop_ramd_cmd);
 	if (result != 0)
@@ -1116,7 +1134,7 @@ ramctrl_remove_replica_from_cluster(ramctrl_context_t* ctx)
 	char cleanup_cmd[512];
 	snprintf(cleanup_cmd, sizeof(cleanup_cmd), 
 	         "ssh %s@%s 'sudo rm -rf %s'", 
-	         ctx->user, replica_info.node_address, ctx->postgresql_data_dir);
+	         ctx->user, replica_info->node_address, ctx->postgresql_data_dir);
 	
 	result = system(cleanup_cmd);
 	if (result != 0)
@@ -1132,26 +1150,26 @@ ramctrl_remove_replica_from_cluster(ramctrl_context_t* ctx)
 		printf("ramctrl: notifying %d remaining nodes about replica removal\n", cluster_info.node_count);
 		
 		/* Send HTTP notifications to all remaining active nodes */
-		ramctrl_node_info_t *nodes;
-		int node_count;
-		if (ramctrl_get_all_nodes(ctx, &nodes, &node_count))
+		ramctrl_node_info_t *all_nodes;
+		int all_node_count;
+		if (ramctrl_get_all_nodes(ctx, &all_nodes, &all_node_count))
 		{
-			for (int i = 0; i < node_count; i++)
+			for (int i = 0; i < all_node_count; i++)
 			{
-				if (nodes[i].is_active)
+				if (all_nodes[i].is_active)
 				{
 					char notification_url[512];
 					snprintf(notification_url, sizeof(notification_url),
 							 "http://%s:%d/api/v1/cluster/notify",
-							 nodes[i].node_address, nodes[i].port);
+							 all_nodes[i].node_address, all_nodes[i].port);
 					
 					char notification_data[512];
 					snprintf(notification_data, sizeof(notification_data),
 							 "{\"action\":\"replica_removed\",\"replica_id\":%d}",
-							 replica_info.node_id);
+							 replica_info->node_id);
 					
 					printf("ramctrl: notifying node %d at %s about replica removal\n", 
-						   nodes[i].node_id, notification_url);
+						   all_nodes[i].node_id, notification_url);
 					
 					/* Implement actual HTTP POST request */
 					CURL *curl = curl_easy_init();
@@ -1166,20 +1184,20 @@ ramctrl_remove_replica_from_cluster(ramctrl_context_t* ctx)
 							long response_code;
 							curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
 							if (response_code >= 200 && response_code < 300) {
-								printf("ramctrl: successfully notified node %d about replica removal\n", nodes[i].node_id);
+								printf("ramctrl: successfully notified node %d about replica removal\n", all_nodes[i].node_id);
 							} else {
-								printf("ramctrl: warning - node %d returned status %ld\n", nodes[i].node_id, response_code);
+								printf("ramctrl: warning - node %d returned status %ld\n", all_nodes[i].node_id, response_code);
 							}
 						} else {
-							printf("ramctrl: warning - failed to notify node %d: %s\n", nodes[i].node_id, curl_easy_strerror(res));
+							printf("ramctrl: warning - failed to notify node %d: %s\n", all_nodes[i].node_id, curl_easy_strerror(res));
 						}
 						curl_easy_cleanup(curl);
 					} else {
-						printf("ramctrl: warning - failed to initialize curl for node %d\n", nodes[i].node_id);
+						printf("ramctrl: warning - failed to initialize curl for node %d\n", all_nodes[i].node_id);
 					}
 				}
 			}
-			free(nodes);
+			/* nodes is a local array, no need to free */
 		}
 	}
 	

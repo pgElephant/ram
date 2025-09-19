@@ -222,7 +222,7 @@ typedef struct ramctrl_context
 	ramctrl_bootstrap_command_t bootstrap_command;
 	char command_args[16][256];
 	int command_argc;
-	char postgresql_data_dir[256];  // Directory for PostgreSQL data
+	char postgresql_data_dir[256];
 } ramctrl_context_t;
 
 /* Function prototypes */
