@@ -1,12 +1,11 @@
-/*
+/*-------------------------------------------------------------------------
+ *
  * guc.c
- * Configuration management for pgraft extension
+ *		Configuration management for pgraft extension
  *
- * This module provides GUC (Grand Unified Configuration) support
- * for the pgraft PostgreSQL extension.
+ * Copyright (c) 2024-2025, pgElephant, Inc.
  *
- * Copyright (c) 2024, PostgreSQL Global Development Group
- * All rights reserved.
+ *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"

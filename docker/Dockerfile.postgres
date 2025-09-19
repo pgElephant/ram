@@ -1,0 +1,45 @@
+FROM postgres:15-alpine
+
+# Install build dependencies
+RUN apk add --no-cache \
+    build-base \
+    postgresql-dev \
+    libpq-dev \
+    pkgconfig \
+    git \
+    make \
+    gcc \
+    musl-dev
+
+# Copy source code
+COPY . /usr/src/pgraft
+WORKDIR /usr/src/pgraft
+
+# Build pgraft extension
+RUN cd pgraft && make clean && make && make install
+
+# Build ramd daemon
+RUN cd ramd && make clean && make && make install
+
+# Build ramctrl utility
+RUN cd ramctrl && make clean && make && make install
+
+# Create ramd user and directories
+RUN adduser -D -s /bin/sh ramd && \
+    mkdir -p /etc/ramd /var/log/ramd /var/lib/ramd && \
+    chown -R ramd:ramd /etc/ramd /var/log/ramd /var/lib/ramd
+
+# Copy configuration files
+COPY docker/ramd.conf /etc/ramd/ramd.conf
+RUN chown ramd:ramd /etc/ramd/ramd.conf
+
+# Create startup script
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Expose ports
+EXPOSE 5432 8080
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["postgres"]

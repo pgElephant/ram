@@ -1,200 +1,143 @@
-/*
+/*-------------------------------------------------------------------------
+ *
  * health_worker.c
- * Health monitoring worker for pgraft extension
+ *		Health monitoring worker for pgraft extension
  *
- * This module provides health monitoring capabilities for the pgraft extension.
+ * Copyright (c) 2024-2025, pgElephant, Inc.
  *
- * Copyright (c) 2024, PostgreSQL Global Development Group
- * All rights reserved.
+ *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 #include "../include/pgraft.h"
-#include "utils/memutils.h"
-#include "utils/timestamp.h"
-#include "utils/elog.h"
-#include "postmaster/bgworker.h"
-#include "storage/ipc.h"
-#include "storage/latch.h"
-#include "storage/proc.h"
-#include "storage/shmem.h"
-#include "utils/guc.h"
-#include "lib/stringinfo.h"
-#include "miscadmin.h"
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <unistd.h>
 #include <string.h>
-#include <time.h>
 
-#define HEALTH_WORKER_NAME "pgraft health worker"
-#define HEALTH_WORKER_SLEEP_MS 5000
-
-/* Health worker status structure is defined in pgraft.h */
-
-static volatile sig_atomic_t got_sigterm = false;
-static volatile sig_atomic_t got_sighup = false;
-
-/* Health worker status */
 static pgraft_health_worker_status_t g_health_status;
+static bool g_health_initialized = false;
 
-/* Forward declarations */
-static void pgraft_health_worker_sigterm(SIGNAL_ARGS);
-static void pgraft_health_worker_sighup(SIGNAL_ARGS);
-static void perform_health_checks(void);
-
-/*
- * Get health status snapshot
- */
 void
-pgraft_health_status_snapshot(pgraft_health_worker_status_t* out)
+pgraft_health_worker_init(void)
 {
-    if (!out)
-        return;
-    *out = g_health_status;
+    memset(&g_health_status, 0, sizeof(g_health_status));
+    
+    g_health_status.is_running = false;
+    g_health_status.last_activity = 0;
+    g_health_status.health_checks_performed = 0;
+    g_health_status.last_health_status = PGRAFT_HEALTH_OK;
+    g_health_status.warnings_count = 0;
+    g_health_status.errors_count = 0;
+    
+    g_health_initialized = true;
+    
+    elog(INFO, "pgraft_health_worker_init: health worker initialized");
 }
 
-/*
- * Register health worker
- */
 void
-pgraft_health_worker_register(void)
+pgraft_health_worker_start(void)
 {
-    BackgroundWorker worker;
-    
-    MemSet(&worker, 0, sizeof(BackgroundWorker));
-    
-    worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
-    worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
-    worker.bgw_restart_time = BGW_NEVER_RESTART;
-    worker.bgw_main_arg = Int32GetDatum(0);
-    worker.bgw_notify_pid = 0;
-    
-    strlcpy(worker.bgw_library_name, "pgraft", sizeof(worker.bgw_library_name));
-    strlcpy(worker.bgw_name, HEALTH_WORKER_NAME, sizeof(worker.bgw_name));
-    strlcpy(worker.bgw_function_name, "pgraft_health_worker_main", sizeof(worker.bgw_function_name));
-    strlcpy(worker.bgw_type, "pgraft", sizeof(worker.bgw_type));
-    
-    RegisterBackgroundWorker(&worker);
-}
-
-/*
- * Health worker main function
- */
-void
-pgraft_health_worker_main(Datum main_arg)
-{
-    (void) main_arg;
-    
-    /* Initialize health status */
-    MemSet(&g_health_status, 0, sizeof(g_health_status));
-    g_health_status.is_running = true;
-    
-    /* Unblock signals */
-    BackgroundWorkerUnblockSignals();
-    
-    /* Register signal handlers */
-    pqsignal(SIGTERM, pgraft_health_worker_sigterm);
-    pqsignal(SIGHUP, pgraft_health_worker_sighup);
-    
-    /* Connect to database */
-    BackgroundWorkerInitializeConnection("postgres", NULL, 0);
-    
-    elog(INFO, "pgraft: health worker started");
-    
-    /* Main loop */
-    while (!got_sigterm)
+    if (g_health_status.is_running)
     {
-        int rc;
-        
-        /* Check for shutdown conditions */
-        CHECK_FOR_INTERRUPTS();
-        if (got_sigterm)
-        {
-            elog(LOG, "pgraft: health worker detected shutdown condition, exiting");
-            break;
-        }
-        
-        /* Perform health checks */
-        perform_health_checks();
-        
-        /* Wait for next iteration or signal */
-        rc = WaitLatch(&MyProc->procLatch,
-                       WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-                       HEALTH_WORKER_SLEEP_MS,
-                       0);
-        
-        if (rc & WL_POSTMASTER_DEATH)
-        {
-            elog(LOG, "pgraft: health worker detected postmaster death, exiting");
-            proc_exit(0);
-        }
-        
-        if (rc & WL_LATCH_SET)
-            ResetLatch(&MyProc->procLatch);
-        
-        if (got_sighup)
-        {
-            got_sighup = false;
-            ProcessConfigFile(PGC_SIGHUP);
-        }
-        
-        /* Additional shutdown check */
-        CHECK_FOR_INTERRUPTS();
+        elog(WARNING, "pgraft_health_worker_start: health worker already running");
+        return;
     }
     
-    /* Cleanup and exit */
-    g_health_status.is_running = false;
-    elog(INFO, "pgraft: health worker stopped");
-    proc_exit(0);
+    g_health_status.is_running = true;
+    g_health_status.last_activity = GetCurrentTimestamp();
+    
+    elog(INFO, "pgraft_health_worker_start: health worker started");
 }
 
-/*
- * Perform health checks
- */
-static void
-perform_health_checks(void)
+void
+pgraft_health_worker_stop(void)
 {
-    TimestampTz now;
-    pgraft_health_status_t status;
+    if (!g_health_status.is_running)
+    {
+        elog(WARNING, "pgraft_health_worker_stop: health worker not running");
+        return;
+    }
     
-    now = GetCurrentTimestamp();
-    g_health_status.last_activity = now;
+    g_health_status.is_running = false;
+    g_health_status.last_activity = GetCurrentTimestamp();
+    
+    elog(INFO, "pgraft_health_worker_stop: health worker stopped");
+}
+
+void
+pgraft_health_worker_cleanup(void)
+{
+    pgraft_health_worker_stop();
+    g_health_initialized = false;
+    
+    elog(INFO, "pgraft_health_worker_cleanup: health worker cleaned up");
+}
+
+bool
+pgraft_health_worker_get_status(pgraft_health_worker_status_t *status)
+{
+    if (!g_health_initialized)
+    {
+        return false;
+    }
+    
+    *status = g_health_status;
+    return true;
+}
+
+bool
+pgraft_health_worker_check(void)
+{
+    bool is_healthy = true;
+    
+    if (!g_health_status.is_running)
+    {
+        return false;
+    }
+    
+    if (g_health_status.is_running)
+    {
+        g_health_status.last_health_status = PGRAFT_HEALTH_OK;
+    }
+    else
+    {
+        g_health_status.last_health_status = PGRAFT_HEALTH_ERROR;
+        is_healthy = false;
+    }
+    
+    g_health_status.last_activity = GetCurrentTimestamp();
     g_health_status.health_checks_performed++;
     
-    /* Basic health check - can be extended */
-    status = PGRAFT_HEALTH_OK;
-    
-    g_health_status.last_health_status = status;
-    if (status == PGRAFT_HEALTH_WARNING)
-        g_health_status.warnings_count++;
-    if (status == PGRAFT_HEALTH_ERROR || status == PGRAFT_HEALTH_CRITICAL)
+    if (is_healthy)
+    {
+        g_health_status.errors_count = 0;
+    }
+    else
+    {
         g_health_status.errors_count++;
+    }
     
-    elog(DEBUG1, "pgraft: health check completed, status=%d", status);
+    elog(DEBUG1, "pgraft_health_worker_check: health check completed, status: %s", 
+         is_healthy ? "HEALTHY" : "UNHEALTHY");
+    
+    return is_healthy;
 }
 
-/*
- * Signal handler for SIGTERM
- */
-static void
-pgraft_health_worker_sigterm(SIGNAL_ARGS)
+void
+pgraft_health_worker_main(Datum main_arg __attribute__((unused)))
 {
-    (void) postgres_signal_arg;
+    elog(INFO, "pgraft_health_worker_main: health worker main function started");
     
-    elog(LOG, "pgraft: health worker received SIGTERM, initiating shutdown");
-    got_sigterm = true;
-    g_health_status.is_running = false;
+    pgraft_health_worker_init();
+    pgraft_health_worker_start();
     
-    /* Wake up main loop */
-    if (MyProc)
-        SetLatch(&MyProc->procLatch);
-}
-
-/*
- * Signal handler for SIGHUP
- */
-static void
-pgraft_health_worker_sighup(SIGNAL_ARGS)
-{
-    (void) postgres_signal_arg;
-    got_sighup = true;
-    SetLatch(&MyProc->procLatch);
+    while (g_health_status.is_running)
+    {
+        pgraft_health_worker_check();
+        pg_usleep(30000000);
+    }
+    
+    pgraft_health_worker_cleanup();
+    elog(INFO, "pgraft_health_worker_main: health worker main function exiting");
 }

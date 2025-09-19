@@ -18,13 +18,26 @@ CFLAGS += -std=c99 -Wall -Wextra -Werror
 CFLAGS += -I./include
 
 # Extension-specific linker flags
-SHLIB_LINK += -lpthread -lm
+SHLIB_LINK += -lpthread -lm -ldl
+
+# Go Raft library
+GO_RAFT_LIB = src/pgraft_go.dylib
+
+# Build Go Raft library
+$(GO_RAFT_LIB): src/pgraft_go.go src/go.mod
+	cd src && go mod tidy
+	cd src && go build -buildmode=c-shared -o pgraft_go.dylib pgraft_go.go
+
+# Dependencies
+$(OBJS): $(GO_RAFT_LIB)
 
 # Clean target - ensure it exists
 clean: clean-extra
 
 clean-extra:
 	rm -f src/*.o
+	rm -f src/pgraft_go.dylib
+	rm -f src/pgraft_go.h
 
 # Installation directory
 DESTDIR ?= 

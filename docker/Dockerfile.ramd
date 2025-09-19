@@ -1,0 +1,31 @@
+FROM alpine:3.18
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    postgresql-client \
+    libpq \
+    curl \
+    jq
+
+# Install ramd daemon
+COPY ramd/ramd /usr/local/bin/ramd
+RUN chmod +x /usr/local/bin/ramd
+
+# Create ramd user and directories
+RUN adduser -D -s /bin/sh ramd && \
+    mkdir -p /etc/ramd /var/log/ramd /var/lib/ramd && \
+    chown -R ramd:ramd /etc/ramd /var/log/ramd /var/lib/ramd
+
+# Copy configuration files
+COPY docker/ramd.conf /etc/ramd/ramd.conf
+RUN chown ramd:ramd /etc/ramd/ramd.conf
+
+# Switch to ramd user
+USER ramd
+
+# Expose HTTP API port
+EXPOSE 8080
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/ramd"]
+CMD ["--config", "/etc/ramd/ramd.conf", "--daemon"]

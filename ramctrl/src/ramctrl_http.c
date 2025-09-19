@@ -263,7 +263,7 @@ int ramctrl_parse_nodes_info(const char* json, ramctrl_node_info_t* nodes,
 
 	/* Parse each node (simplified parsing) */
 	char* current_pos = nodes_start + 1;
-	int max_nodes = 10; /* Assume max 10 nodes */
+	int max_nodes = 50; /* Support up to 50 nodes in cluster */
 
 	for (int i = 0; i < max_nodes && *current_pos != ']'; i++)
 	{

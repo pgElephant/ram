@@ -166,13 +166,17 @@ typedef struct ramctrl_node_info
 {
 	int32_t node_id;
 	char hostname[RAMCTRL_MAX_HOSTNAME_LENGTH];
+	char node_address[256];
+	char node_name[256];
 	int32_t port;
+	int32_t node_port;
 	ramctrl_node_status_t status;
 	time_t last_seen;
 	bool is_primary;
 	bool is_standby;
 	bool is_leader;
 	bool is_healthy;
+	bool is_active;
 	float health_score;
 	int64_t wal_lsn;
 	int32_t replication_lag_ms;
@@ -185,6 +189,7 @@ typedef struct ramctrl_cluster_info
 	char cluster_name[64];
 	int32_t total_nodes;
 	int32_t active_nodes;
+	int32_t node_count;
 	int32_t primary_node_id;
 	int32_t leader_node_id;
 	bool has_quorum;
@@ -217,6 +222,7 @@ typedef struct ramctrl_context
 	ramctrl_bootstrap_command_t bootstrap_command;
 	char command_args[16][256];
 	int command_argc;
+	char postgresql_data_dir[256];  // Directory for PostgreSQL data
 } ramctrl_context_t;
 
 /* Function prototypes */
@@ -285,5 +291,15 @@ extern bool ramctrl_disable_maintenance_mode(ramctrl_context_t* ctx,
                                              int32_t node_id);
 extern bool ramctrl_get_all_nodes(ramctrl_context_t* ctx,
                                   ramctrl_node_info_t** nodes, int* node_count);
+
+/* Formation command functions */
+extern int ramctrl_cmd_show_cluster(ramctrl_context_t* ctx, const char* cluster_name);
+extern int ramctrl_cmd_add_node(ramctrl_context_t* ctx, const char* node_name, 
+                                const char* node_address, int node_port);
+extern int ramctrl_cmd_remove_node(ramctrl_context_t* ctx, const char* node_name);
+extern bool ramctrl_remove_node_from_consensus(ramctrl_context_t* ctx, const char* node_address);
+extern bool ramctrl_remove_node_from_cluster(ramctrl_context_t* ctx, const char* node_address);
+extern bool ramctrl_add_node_to_cluster(ramctrl_context_t* ctx, ramctrl_node_info_t* node);
+extern bool ramctrl_add_node_to_consensus(ramctrl_context_t* ctx, ramctrl_node_info_t* node);
 
 #endif /* RAMCTRL_H */

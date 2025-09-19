@@ -36,12 +36,25 @@
 #define PGRAFT_VERSION "1.0.0"
 #define PGRAFT_VERSION_NUM 10000
 
+/* Message structure */
+typedef struct pgraft_message
+{
+    int msg_type;
+    uint64_t from_node;
+    uint64_t to_node;
+    uint64_t term;
+    uint64_t index;
+    size_t data_size;
+    char *data;
+} pgraft_message_t;
+
 /* Raft state enumeration */
 typedef enum
 {
     PGRAFT_STATE_FOLLOWER = 0,
     PGRAFT_STATE_CANDIDATE = 1,
-    PGRAFT_STATE_LEADER = 2
+    PGRAFT_STATE_LEADER = 2,
+    PGRAFT_STATE_UNKNOWN = 3
 } pgraft_state_t;
 
 /* Health status enumeration */
@@ -52,6 +65,13 @@ typedef enum
     PGRAFT_HEALTH_ERROR = 2,
     PGRAFT_HEALTH_CRITICAL = 3
 } pgraft_health_status_t;
+
+typedef enum
+{
+    PGRAFT_HEALTH_EVENT_INFO,
+    PGRAFT_HEALTH_EVENT_WARNING,
+    PGRAFT_HEALTH_EVENT_ERROR
+} pgraft_health_event_type_t;
 
 /* Error codes */
 typedef enum
@@ -81,6 +101,7 @@ typedef struct
     int last_applied;
     TimestampTz last_heartbeat;
     bool is_initialized;
+    bool is_running;
 } pgraft_raft_state_t;
 
 /* Health worker status structure */
@@ -135,12 +156,63 @@ extern Datum pgraft_get_quorum_status(PG_FUNCTION_ARGS);
 /* Worker management functions */
 extern void pgraft_worker_manager_init(void);
 extern void pgraft_worker_manager_cleanup(void);
+extern bool pgraft_worker_manager_get_status(pgraft_health_worker_status_t *status);
+extern void pgraft_health_worker_init(void);
+extern void pgraft_health_worker_start(void);
+extern void pgraft_health_worker_stop(void);
+extern void pgraft_health_worker_cleanup(void);
+extern bool pgraft_health_worker_get_status(pgraft_health_worker_status_t *status);
+extern bool pgraft_health_worker_check(void);
 extern void pgraft_health_worker_main(Datum main_arg);
 extern void pgraft_health_worker_register(void);
 extern void pgraft_health_status_snapshot(pgraft_health_worker_status_t* out);
 
+/* Communication functions */
+extern int pgraft_send_message(uint64_t to_node, int msg_type, const char *data, size_t data_size, uint64_t term, uint64_t index);
+extern int pgraft_broadcast_message(int msg_type, const char *data, size_t data_size, uint64_t term, uint64_t index);
+extern int pgraft_add_node_comm(uint64_t node_id, const char *address, int port);
+extern int pgraft_remove_node_comm(uint64_t node_id);
+
+/* Monitor functions */
+extern void pgraft_monitor_tick(void);
+extern void pgraft_log_health_event(pgraft_health_event_type_t event_type, const char *message);
+
+/* Utility functions */
+extern char *pgraft_get_timestamp_string(void);
+extern char *pgraft_format_memory_size(size_t bytes);
+extern uint64_t pgraft_generate_node_id(void);
+extern bool pgraft_is_string_empty(const char *str);
+extern int pgraft_safe_strcpy(char *dest, const char *src, size_t dest_size);
+extern const char *pgraft_bool_to_string(bool value);
+extern bool pgraft_string_to_bool(const char *str);
+
+/* Additional pgraft functions */
+extern void pgraft_process_incoming_messages(void);
+extern void pgraft_create_snapshot(void);
+extern void pgraft_consensus_worker_main(Datum main_arg);
+
 /* Core Raft implementation functions */
 extern void pgraft_raft_init(void);
+extern void pgraft_raft_start(void);
+extern void pgraft_raft_stop(void);
+extern pgraft_raft_state_t *pgraft_raft_get_state(void);
+extern int pgraft_raft_add_node(uint64_t node_id, const char *address, int port);
+extern int pgraft_raft_remove_node(uint64_t node_id);
+extern int pgraft_raft_append_log(const char *data, size_t data_len);
+extern int pgraft_raft_commit_log(long index);
+extern int pgraft_raft_step_message(const char *data, size_t data_len);
+extern char *pgraft_raft_get_stats(void);
+extern char *pgraft_raft_get_nodes(void);
+extern char *pgraft_raft_get_logs(void);
+extern char *pgraft_raft_get_network_status(void);
+extern void pgraft_raft_free_string(char *str);
+extern void pgraft_start_election(void);
+extern bool pgraft_process_vote_request(int candidate_id, int term, int last_log_index, int last_log_term);
+extern bool pgraft_process_heartbeat(int leader_id, int term, int commit_index);
+extern bool pgraft_append_log_entry(const char *command, int term);
+extern void pgraft_commit_log_entries(void);
+extern void pgraft_send_heartbeats(void);
+extern void pgraft_consensus_loop(void);
 extern void pgraft_raft_cleanup(void);
 extern bool pgraft_is_initialized(void);
 extern bool pgraft_is_healthy(void);
@@ -153,12 +225,17 @@ extern void pgraft_validate_configuration(void);
 /* Communication functions */
 extern int pgraft_comm_init(const char *address, int port);
 extern int pgraft_comm_shutdown(void);
+extern bool pgraft_comm_initialized(void);
+extern int pgraft_comm_get_active_connections(void);
+extern pgraft_message_t *pgraft_comm_receive_message(void);
+extern void pgraft_comm_free_message(pgraft_message_t *msg);
 extern int pgraft_send_message(uint64_t to_node, int msg_type, const char *data, size_t data_size, uint64_t term, uint64_t index);
 extern int pgraft_broadcast_message(int msg_type, const char *data, size_t data_size, uint64_t term, uint64_t index);
 extern int pgraft_add_node_comm(uint64_t node_id, const char *address, int port);
 extern int pgraft_remove_node_comm(uint64_t node_id);
 extern bool pgraft_is_node_connected(uint64_t node_id);
 extern int pgraft_get_connected_nodes_count(void);
+extern int pgraft_get_healthy_nodes_count(void);
 
 /* Monitoring functions */
 extern void pgraft_monitor_init(void);
@@ -213,5 +290,33 @@ extern bool pgraft_validate_log_index(int index);
             elog(ERROR, "pgraft: " message); \
         } \
     } while (0)
+
+/* ============================================================================
+ * REPLICATION FUNCTIONS - Using etcd-io/raft patterns
+ * ============================================================================ */
+
+/* Replicate log entry to all nodes in the cluster */
+extern int pgraft_replicate_log_entry(const char *data, size_t data_len);
+
+/* Get replication status information */
+extern char *pgraft_get_replication_info(void);
+
+/* Create a snapshot for replication */
+extern char *pgraft_create_replication_snapshot(void);
+
+/* Apply a snapshot for replication */
+extern int pgraft_apply_replication_snapshot(const char *snapshot_data);
+
+/* Replicate data to a specific node */
+extern int pgraft_replicate_to_node(uint64_t node_id, const char *data, size_t data_len);
+
+/* Get replication lag in milliseconds */
+extern double pgraft_get_replication_lag(void);
+
+/* Force synchronization of replication */
+extern int pgraft_sync_replication(void);
+
+/* Free string returned by replication functions */
+extern void pgraft_free_replication_string(char *str);
 
 #endif /* PGRAFT_H */

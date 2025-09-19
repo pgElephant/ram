@@ -22,6 +22,7 @@ typedef struct ramd_node_t
 	int32_t postgresql_port;
 	int32_t rale_port;
 	int32_t dstore_port;
+	int32_t port;  // Port for the node
 	ramd_node_state_t state;
 	ramd_role_t role;
 	bool is_leader;
@@ -31,6 +32,8 @@ typedef struct ramd_node_t
 	float health_score;
 	int64_t wal_lsn;
 	int32_t replication_lag_ms;
+	int32_t leader_id;
+	int32_t cluster_size;
 } ramd_node_t;
 
 /* Cluster structure */

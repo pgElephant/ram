@@ -1,137 +1,171 @@
-/*
- * worker_manager.c
- * Background worker management for pgraft extension
+/*-------------------------------------------------------------------------
  *
- * This module manages background workers for the pgraft extension,
- * providing health monitoring and cluster management capabilities.
+ * worker_manager.c
+ *		Background worker management for pgraft extension
+ *
+ * Copyright (c) 2024-2025, pgElephant, Inc.
+ *
+ *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
-#include "fmgr.h"
-#include "miscadmin.h"
-#include "postmaster/bgworker.h"
-#include "storage/ipc.h"
-#include "storage/latch.h"
-#include "storage/lwlock.h"
-#include "storage/proc.h"
-#include "storage/shmem.h"
-#include "utils/guc.h"
-#include "utils/elog.h"
 #include "../include/pgraft.h"
+#include <pthread.h>
+#include <string.h>
 
-#define MAX_WORKERS 10
-
-typedef struct
+typedef struct pgraft_worker_def
 {
-    const char* name;
-    const char* function;
-    int sleep_ms;
-    bool enabled;
-    BackgroundWorker worker;
-} worker_definition_t;
+    const char *name;
+    const char *function;
+    int bgw_flags;
+    int bgw_restart_time;
+    const char *bgw_library_name;
+    const char *bgw_function_name;
+    const char *bgw_notify_pid;
+    const char *bgw_main_arg;
+    int bgw_extra;
+} pgraft_worker_def_t;
 
-static worker_definition_t workers[] = {
-    {.name = "pgraft health worker",
-     .function = "pgraft_health_worker_main",
-     .sleep_ms = 5000,
-     .enabled = true}
+typedef struct pgraft_worker
+{
+    BackgroundWorker worker;
+    bool is_registered;
+    bool is_running;
+    pid_t pid;
+    TimestampTz start_time;
+} pgraft_worker_t;
+
+static pgraft_worker_def_t worker_defs[] = {
+    {
+        .name = "pgraft_consensus_worker",
+        .function = "pgraft_consensus_worker_main",
+        .bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION,
+        .bgw_restart_time = 5,
+        .bgw_library_name = "pgraft",
+        .bgw_function_name = "pgraft_consensus_worker_main",
+        .bgw_notify_pid = NULL,
+        .bgw_main_arg = NULL,
+        .bgw_extra = 0
+    },
+    {
+        .name = "pgraft_health_worker",
+        .function = "pgraft_health_worker_main",
+        .bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION,
+        .bgw_restart_time = 10,
+        .bgw_library_name = "pgraft",
+        .bgw_function_name = "pgraft_health_worker_main",
+        .bgw_notify_pid = NULL,
+        .bgw_main_arg = NULL,
+        .bgw_extra = 0
+    }
 };
 
-static int worker_count = sizeof(workers) / sizeof(workers[0]);
-static bool workers_registered = false;
+#define NUM_WORKERS (sizeof(worker_defs) / sizeof(worker_defs[0]))
 
-static void worker_manager_init(void);
-static void register_worker(worker_definition_t* worker_def);
-static void worker_manager_cleanup(void);
+static pgraft_worker_t workers[NUM_WORKERS];
+static bool workers_initialized = false;
 
-void pgraft_worker_manager_init(void);
-void pgraft_worker_manager_cleanup(void);
-void pgraft_worker_manager_get_status(StringInfo buf);
-
-void pgraft_worker_manager_init(void)
+static bool
+register_worker(const pgraft_worker_def_t *worker_def, pgraft_worker_t *worker)
 {
-    if (workers_registered)
-        return;
-
-    worker_manager_init();
-    workers_registered = true;
-
-    elog(LOG, "pgraft: Worker manager initialized with %d workers",
-         worker_count);
-}
-
-static void worker_manager_init(void)
-{
-    int i;
-
-    for (i = 0; i < worker_count; i++)
-    {
-        if (workers[i].enabled)
-            register_worker(&workers[i]);
-    }
-}
-
-static void register_worker(worker_definition_t* worker_def)
-{
-    if (strcmp(worker_def->function, "pgraft_health_worker_main") == 0)
-    {
-        pgraft_health_worker_register();
-        elog(LOG, "pgraft: Registered health worker");
-    }
-    else
-    {
-        elog(WARNING, "pgraft: Unknown worker function: %s",
-             worker_def->function);
-    }
-}
-
-void pgraft_worker_manager_cleanup(void)
-{
-    if (!workers_registered)
-        return;
-
-    elog(LOG, "pgraft: Worker manager cleanup starting...");
+    BackgroundWorker worker_bgw;
     
-    /* Terminate all registered background workers */
-    worker_manager_cleanup();
-    workers_registered = false;
-
-    elog(LOG, "pgraft: Worker manager cleaned up successfully");
+    memset(&worker_bgw, 0, sizeof(worker_bgw));
+    
+    strncpy(worker_bgw.bgw_name, worker_def->name, BGW_MAXLEN - 1);
+    worker_bgw.bgw_flags = worker_def->bgw_flags;
+    worker_bgw.bgw_restart_time = worker_def->bgw_restart_time;
+    worker_bgw.bgw_main_arg = Int32GetDatum(0);
+    
+    if (worker_def->bgw_library_name)
+        strncpy(worker_bgw.bgw_library_name, worker_def->bgw_library_name, BGW_MAXLEN - 1);
+    
+    if (worker_def->bgw_function_name)
+        strncpy(worker_bgw.bgw_function_name, worker_def->bgw_function_name, BGW_MAXLEN - 1);
+    
+    RegisterBackgroundWorker(&worker_bgw);
+    
+    worker->is_registered = true;
+    worker->is_running = false;
+    worker->pid = 0;
+    worker->start_time = 0;
+    
+    elog(INFO, "pgraft_worker_manager: registered worker '%s'", worker_def->name);
+    return true;
 }
 
-static void worker_manager_cleanup(void)
+void
+pgraft_worker_manager_init(void)
 {
     int i;
     
-    elog(DEBUG1, "pgraft: Worker manager cleanup starting with %d workers", worker_count);
-    
-    /* Log cleanup attempt for each worker - the workers will handle their own shutdown signals */
-    for (i = 0; i < worker_count; i++)
+    if (workers_initialized)
     {
-        if (workers[i].enabled)
+        elog(WARNING, "pgraft_worker_manager_init: worker manager already initialized");
+        return;
+    }
+    
+    memset(workers, 0, sizeof(workers));
+    
+    for (i = 0; i < NUM_WORKERS; i++)
+    {
+        if (!register_worker(&worker_defs[i], &workers[i]))
         {
-            elog(DEBUG1, "pgraft: Requesting shutdown for worker: %s", workers[i].name);
+            elog(ERROR, "pgraft_worker_manager_init: failed to register worker '%s'", 
+                 worker_defs[i].name);
+            return;
         }
     }
     
-    /* Reset worker count */
-    worker_count = 0;
-    
-    elog(DEBUG1, "pgraft: Worker manager cleanup completed");
+    workers_initialized = true;
+    elog(INFO, "pgraft_worker_manager_init: worker manager initialized with %lu workers", (unsigned long)NUM_WORKERS);
 }
 
-void pgraft_worker_manager_get_status(StringInfo buf)
+void
+pgraft_worker_manager_cleanup(void)
 {
     int i;
-
-    appendStringInfo(buf, "pgraft Worker Manager Status:\n");
-    appendStringInfo(buf, "Workers registered: %s\n",
-                     workers_registered ? "yes" : "no");
-    appendStringInfo(buf, "Total workers: %d\n", worker_count);
-
-    for (i = 0; i < worker_count; i++)
+    
+    if (!workers_initialized)
     {
-        appendStringInfo(buf, "  %s: %s\n", workers[i].name,
-                         workers[i].enabled ? "enabled" : "disabled");
+        return;
     }
+    
+    for (i = 0; i < NUM_WORKERS; i++)
+    {
+        workers[i].is_registered = false;
+        workers[i].is_running = false;
+    }
+    
+    workers_initialized = false;
+    elog(INFO, "pgraft_worker_manager_cleanup: worker manager cleaned up");
+}
+
+bool
+pgraft_worker_manager_get_status(pgraft_health_worker_status_t *status)
+{
+    int i;
+    int running_count = 0;
+    
+    if (!workers_initialized)
+    {
+        return false;
+    }
+    
+    for (i = 0; i < NUM_WORKERS; i++)
+    {
+        if (workers[i].is_running)
+        {
+            running_count++;
+        }
+    }
+    
+    status->is_running = (running_count > 0);
+    status->last_activity = GetCurrentTimestamp();
+    status->health_checks_performed = running_count;
+    status->last_health_status = running_count > 0 ? PGRAFT_HEALTH_OK : PGRAFT_HEALTH_ERROR;
+    status->warnings_count = 0;
+    status->errors_count = NUM_WORKERS - running_count;
+    
+    return true;
 }

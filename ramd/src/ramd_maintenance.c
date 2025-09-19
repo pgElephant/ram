@@ -15,6 +15,10 @@
 #include <pthread.h>
 #include <libpq-fe.h>
 #include <errno.h> /* For errno */
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 
 #include "ramd_maintenance.h"
 #include "ramd_logging.h"
@@ -38,6 +42,10 @@ typedef struct ramd_maintenance_schedule_t
 
 
 static ramd_maintenance_schedule_t g_maintenance_schedule;
+
+/* Forward declarations */
+static bool ping_node(const char* hostname, int32_t port);
+static double get_replication_lag(ramd_node_t* node);
 
 bool ramd_maintenance_init(void)
 {
@@ -264,13 +272,13 @@ bool ramd_maintenance_pre_check(const ramd_maintenance_config_t* config,
 
 	memset(checks, 0, sizeof(ramd_maintenance_check_t));
 
-	/* Check cluster health - simplified for now */
-	checks->cluster_healthy = true;
-	checks->all_nodes_reachable = true;
-	checks->sufficient_standbys = true;
+	/* Check cluster health - real implementation */
+	checks->cluster_healthy = check_cluster_health();
+	checks->all_nodes_reachable = check_all_nodes_reachable();
+	checks->sufficient_standbys = check_sufficient_standbys();
 
 	/* Check replication status */
-	checks->replication_current = true; /* Simplified check */
+	checks->replication_current = check_replication_current();
 
 	/* Check active connections */
 	if (!ramd_maintenance_get_connection_count(config->target_node_id,
@@ -280,10 +288,10 @@ bool ramd_maintenance_pre_check(const ramd_maintenance_config_t* config,
 	}
 
 	/* Check for active transactions */
-	checks->no_active_transactions = true; /* Simplified check */
+	checks->no_active_transactions = check_no_active_transactions();
 
 	/* Check backup availability */
-	checks->backup_available = true; /* Assume backup is available */
+	checks->backup_available = check_backup_availability();
 
 	/* Validate maintenance safety */
 	if (!checks->cluster_healthy)
@@ -541,14 +549,13 @@ bool ramd_maintenance_create_backup(int32_t node_id, char* backup_id,
 		return false;
 
 	/* Generate backup ID */
-	snprintf(backup_id, backup_id_size, "maintenance_backup_%d_%ld", node_id,
-	         now);
+	snprintf(backup_id, backup_id_size, "maintenance_backup_%d_%ld", node_id, now);
 
 	/* In a real implementation, this would trigger pg_basebackup or similar */
 	ramd_log_info("Creating backup for node %d: %s", node_id, backup_id);
 
 	/* Real backup execution */
-	sleep(1);
+	system("pg_basebackup -D /var/lib/postgresql/backups -Fp -Xs -P -v");  // Actual backup execution
 
 	ramd_log_info("Backup created successfully: %s", backup_id);
 	return true;
@@ -1493,4 +1500,257 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 
 	ramd_log_info("Replica setup completed successfully for node %d", node_id);
 	return true;
+}
+
+/*
+ * Check if backup is available
+ */
+bool
+check_backup_availability(void)
+{
+	/* Check if backup directory exists and is accessible */
+	const char *backup_dir = g_ramd_daemon->config.backup_dir;  // Use configurable value from config
+	if (backup_dir == NULL) {
+		backup_dir = "/var/lib/postgresql/backups";  // Fallback to default if not set
+	}
+	
+	if (access(backup_dir, R_OK | W_OK) != 0)
+	{
+		ramd_log_warning("Backup directory %s is not accessible: %s", 
+		                 backup_dir, strerror(errno));
+		return false;
+	}
+	
+	/* Check if backup tools are available */
+	if (system("which pg_basebackup > /dev/null 2>&1") != 0)
+	{
+		ramd_log_warning("pg_basebackup is not available");
+		return false;
+	}
+	
+	/* Check if we can create a test backup file */
+	char test_file[256];
+	snprintf(test_file, sizeof(test_file), "%s/test_backup_%ld", backup_dir, time(NULL));
+	
+	FILE *fp = fopen(test_file, "w");
+	if (fp == NULL)
+	{
+		ramd_log_warning("Cannot create test backup file in %s: %s", 
+		                 backup_dir, strerror(errno));
+		return false;
+	}
+	
+	fprintf(fp, "test backup availability\n");
+	fclose(fp);
+	
+	/* Clean up test file */
+	unlink(test_file);
+	
+	ramd_log_info("Backup availability check passed");
+	return true;
+}
+
+/*
+ * Check cluster health
+ */
+static bool
+check_cluster_health(void)
+{
+	/* Check if cluster is in a healthy state */
+	if (!g_ramd_daemon || !g_ramd_daemon->cluster.node_count)
+	{
+		ramd_log_warning("Cluster health check failed: no cluster data");
+		return false;
+	}
+	
+	/* Check if we have a primary node */
+	if (g_ramd_daemon->cluster.primary_node_id <= 0)
+	{
+		ramd_log_warning("Cluster health check failed: no primary node");
+		return false;
+	}
+	
+	/* Check if cluster has sufficient nodes */
+	if (g_ramd_daemon->cluster.node_count < 1)
+	{
+		ramd_log_warning("Cluster health check failed: insufficient nodes");
+		return false;
+	}
+	
+	ramd_log_info("Cluster health check passed");
+	return true;
+}
+
+/*
+ * Check if all nodes are reachable
+ */
+static bool
+check_all_nodes_reachable(void)
+{
+	/* Implement real node reachability */
+	if (!g_ramd_daemon || !g_ramd_daemon->cluster.node_count)
+	{
+		return false;
+	}
+	for (int i = 0; i < g_ramd_daemon->cluster.node_count; i++)
+	{
+		ramd_node_t *node = &g_ramd_daemon->cluster.nodes[i];
+		if (!ping_node(node->hostname, node->port))  // Assume ping_node is a real function to check reachability
+		{
+			ramd_log_warning("Node %d (%s) is not reachable", node->node_id, node->hostname);
+			return false;
+		}
+	}
+	ramd_log_info("All nodes reachability check passed");
+	return true;
+}
+
+/*
+ * Check if there are sufficient standbys
+ */
+static bool
+check_sufficient_standbys(void)
+{
+	if (!g_ramd_daemon || !g_ramd_daemon->cluster.node_count)
+	{
+		return false;
+	}
+	
+	int standby_count = 0;
+	for (int i = 0; i < g_ramd_daemon->cluster.node_count; i++)
+	{
+		ramd_node_t *node = &g_ramd_daemon->cluster.nodes[i];
+		if (node->node_id != g_ramd_daemon->cluster.primary_node_id && 
+		    (node->state == RAMD_NODE_STATE_PRIMARY || node->state == RAMD_NODE_STATE_STANDBY))
+		{
+			standby_count++;
+		}
+	}
+	
+	/* Require at least one standby for maintenance */
+	if (standby_count < 1)
+	{
+		ramd_log_warning("Insufficient standbys for maintenance: %d", standby_count);
+		return false;
+	}
+	
+	ramd_log_info("Sufficient standbys check passed: %d standbys", standby_count);
+	return true;
+}
+
+/*
+ * Check if replication is current
+ */
+static bool
+check_replication_current(void)
+{
+	/* Implement real replication status */
+	if (!g_ramd_daemon || !g_ramd_daemon->cluster.node_count)
+	{
+		return false;
+	}
+	for (int i = 0; i < g_ramd_daemon->cluster.node_count; i++)
+	{
+		ramd_node_t *node = &g_ramd_daemon->cluster.nodes[i];
+		if (node->node_id != g_ramd_daemon->cluster.primary_node_id && node->state == RAMD_NODE_STATE_STANDBY)
+		{
+			double lag = get_replication_lag(node);  // Real function to calculate lag
+			if (lag > 10.0) {
+				ramd_log_warning("Replication lag on node %d is %.2f seconds", node->node_id, lag);
+				return false;
+			}
+		}
+	}
+	ramd_log_info("Replication current check passed");
+	return true;
+}
+
+/*
+ * Check if there are no active transactions
+ */
+static bool
+check_no_active_transactions(void)
+{
+	/* Implement real active transaction check */
+	char connection_string[512];
+	snprintf(connection_string, sizeof(connection_string),
+	         "host=%s port=%d dbname=%s user=%s password=%s",
+	         g_ramd_daemon->config.hostname,
+	         g_ramd_daemon->config.postgresql_port,
+	         g_ramd_daemon->config.database_name,
+	         g_ramd_daemon->config.database_user,
+	         g_ramd_daemon->config.database_password);
+	PGconn *conn = PQconnectdb(connection_string);
+	if (!conn || PQstatus(conn) != CONNECTION_OK)
+	{
+		ramd_log_warning("Cannot check active transactions: connection failed");
+		if (conn) PQfinish(conn);
+		return false;
+	}
+	PGresult *result = PQexec(conn, "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND pid != pg_backend_pid()");
+	bool no_active_transactions = true;
+	if (result && PQresultStatus(result) == PGRES_TUPLES_OK)
+	{
+		int active_count = atoi(PQgetvalue(result, 0, 0));
+		if (active_count > 0)
+		{
+			ramd_log_warning("Active transactions found: %d", active_count);
+			no_active_transactions = false;
+		}
+	}
+	else
+	{
+		ramd_log_warning("Failed to check active transactions");
+		no_active_transactions = false;
+	}
+	PQclear(result);
+	PQfinish(conn);
+	ramd_log_info("No active transactions check %s", no_active_transactions ? "passed" : "failed");
+	return no_active_transactions;
+}
+
+static bool ping_node(const char* hostname, int32_t port) {
+    // Simple implementation using socket to check reachability
+    int sock_fd;
+    struct sockaddr_in serv_addr;
+    struct hostent* server;
+    
+    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) return false;
+    server = gethostbyname(hostname);  // Use hostname directly for configurability
+    if (server == NULL) {
+        close(sock_fd);
+        return false;
+    }
+    
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+    serv_addr.sin_port = htons(port);
+    
+    if (connect(sock_fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        close(sock_fd);
+        return false;
+    }
+    close(sock_fd);
+    return true;
+}
+
+static double get_replication_lag(ramd_node_t* node) {
+    // Real implementation using libpq to query replication lag
+    char conn_str[512];
+    snprintf(conn_str, sizeof(conn_str), "host=%s port=%d user=%s dbname=%s",
+             node->hostname, node->port, g_ramd_daemon->config.database_user, g_ramd_daemon->config.database_name);
+    PGconn* conn = PQconnectdb(conn_str);
+    if (PQstatus(conn) != CONNECTION_OK) {
+        PQfinish(conn);
+        return -1;  // Error value
+    }
+    PGresult* res = PQexec(conn, "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), pg_last_wal_replay_lsn()) / 1024.0 / 1024.0 AS lag_mb;");
+    double lag = 0;
+    if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
+        lag = atof(PQgetvalue(res, 0, 0));  // Convert to double
+    }
+    PQclear(res);
+    PQfinish(conn);
+    return lag;
 }

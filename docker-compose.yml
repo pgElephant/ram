@@ -1,0 +1,237 @@
+version: '3.8'
+
+services:
+  # PostgreSQL primary node
+  postgres-primary:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.postgres
+    container_name: pgraft-primary
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGRaft_NODE_ID: 1
+      PGRaft_NODE_NAME: primary
+      PGRaft_CLUSTER_NAME: test-cluster
+      PGRaft_RAFT_PORT: 5433
+      PGRaft_LOG_LEVEL: 2
+    ports:
+      - "5433:5432"
+      - "8080:8080"  # ramd HTTP API
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./pgraft:/usr/local/share/postgresql/extension/pgraft
+    networks:
+      - pgraft-network
+    command: >
+      postgres
+      -c shared_preload_libraries=pgraft
+      -c pgraft.node_id=1
+      -c pgraft.node_name=primary
+      -c pgraft.cluster_name=test-cluster
+      -c pgraft.raft_port=5433
+      -c pgraft.log_level=2
+      -c wal_level=replica
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c hot_standby=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d testdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL standby node 1
+  postgres-standby1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.postgres
+    container_name: pgraft-standby1
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGRaft_NODE_ID: 2
+      PGRaft_NODE_NAME: standby1
+      PGRaft_CLUSTER_NAME: test-cluster
+      PGRaft_RAFT_PORT: 5434
+      PGRaft_LOG_LEVEL: 2
+    ports:
+      - "5434:5432"
+      - "8081:8080"  # ramd HTTP API
+    volumes:
+      - postgres_standby1_data:/var/lib/postgresql/data
+      - ./pgraft:/usr/local/share/postgresql/extension/pgraft
+    networks:
+      - pgraft-network
+    depends_on:
+      - postgres-primary
+    command: >
+      bash -c "
+      until pg_basebackup -h postgres-primary -U postgres -D /var/lib/postgresql/data -R -S standby1;
+      do echo 'Waiting for primary to be ready...'; sleep 2; done &&
+      postgres
+      -c shared_preload_libraries=pgraft
+      -c pgraft.node_id=2
+      -c pgraft.node_name=standby1
+      -c pgraft.cluster_name=test-cluster
+      -c pgraft.raft_port=5434
+      -c pgraft.log_level=2
+      -c wal_level=replica
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c hot_standby=on
+      -c primary_conninfo='host=postgres-primary port=5432 user=postgres'
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d testdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL standby node 2
+  postgres-standby2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.postgres
+    container_name: pgraft-standby2
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGRaft_NODE_ID: 3
+      PGRaft_NODE_NAME: standby2
+      PGRaft_CLUSTER_NAME: test-cluster
+      PGRaft_RAFT_PORT: 5435
+      PGRaft_LOG_LEVEL: 2
+    ports:
+      - "5435:5432"
+      - "8082:8080"  # ramd HTTP API
+    volumes:
+      - postgres_standby2_data:/var/lib/postgresql/data
+      - ./pgraft:/usr/local/share/postgresql/extension/pgraft
+    networks:
+      - pgraft-network
+    depends_on:
+      - postgres-primary
+    command: >
+      bash -c "
+      until pg_basebackup -h postgres-primary -U postgres -D /var/lib/postgresql/data -R -S standby2;
+      do echo 'Waiting for primary to be ready...'; sleep 2; done &&
+      postgres
+      -c shared_preload_libraries=pgraft
+      -c pgraft.node_id=3
+      -c pgraft.node_name=standby2
+      -c pgraft.cluster_name=test-cluster
+      -c pgraft.raft_port=5435
+      -c pgraft.log_level=2
+      -c wal_level=replica
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c hot_standby=on
+      -c primary_conninfo='host=postgres-primary port=5432 user=postgres'
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d testdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ramd daemon for primary
+  ramd-primary:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ramd
+    container_name: ramd-primary
+    environment:
+      RAMD_CONFIG_FILE: /etc/ramd/ramd.conf
+      RAMD_LOG_LEVEL: INFO
+      RAMD_HTTP_PORT: 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./ramd/conf:/etc/ramd
+      - ./ramd/logs:/var/log/ramd
+    networks:
+      - pgraft-network
+    depends_on:
+      - postgres-primary
+    command: ["ramd", "--config", "/etc/ramd/ramd.conf", "--daemon"]
+
+  # ramd daemon for standby1
+  ramd-standby1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ramd
+    container_name: ramd-standby1
+    environment:
+      RAMD_CONFIG_FILE: /etc/ramd/ramd.conf
+      RAMD_LOG_LEVEL: INFO
+      RAMD_HTTP_PORT: 8080
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./ramd/conf:/etc/ramd
+      - ./ramd/logs:/var/log/ramd
+    networks:
+      - pgraft-network
+    depends_on:
+      - postgres-standby1
+    command: ["ramd", "--config", "/etc/ramd/ramd.conf", "--daemon"]
+
+  # ramd daemon for standby2
+  ramd-standby2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ramd
+    container_name: ramd-standby2
+    environment:
+      RAMD_CONFIG_FILE: /etc/ramd/ramd.conf
+      RAMD_LOG_LEVEL: INFO
+      RAMD_HTTP_PORT: 8080
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./ramd/conf:/etc/ramd
+      - ./ramd/logs:/var/log/ramd
+    networks:
+      - pgraft-network
+    depends_on:
+      - postgres-standby2
+    command: ["ramd", "--config", "/etc/ramd/ramd.conf", "--daemon"]
+
+  # Monitoring and management
+  pgraft-monitor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.monitor
+    container_name: pgraft-monitor
+    environment:
+      MONITOR_INTERVAL: 30
+      MONITOR_TARGETS: "postgres-primary:5432,postgres-standby1:5432,postgres-standby2:5432"
+    ports:
+      - "3000:3000"  # Grafana
+      - "9090:9090"  # Prometheus
+    volumes:
+      - ./monitoring/grafana:/etc/grafana
+      - ./monitoring/prometheus:/etc/prometheus
+      - ./monitoring/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - pgraft-network
+    depends_on:
+      - postgres-primary
+      - postgres-standby1
+      - postgres-standby2
+
+volumes:
+  postgres_primary_data:
+  postgres_standby1_data:
+  postgres_standby2_data:
+
+networks:
+  pgraft-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

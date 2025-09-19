@@ -1,11 +1,11 @@
-/*
+/*-------------------------------------------------------------------------
+ *
  * metrics.c
- * Metrics and monitoring for pgraft extension
+ *		Metrics and monitoring for pgraft extension
  *
- * This module provides essential metrics collection and monitoring.
+ * Copyright (c) 2024-2025, pgElephant, Inc.
  *
- * Copyright (c) 2024, PostgreSQL Global Development Group
- * All rights reserved.
+ *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"

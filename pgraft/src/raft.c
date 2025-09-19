@@ -1,501 +1,621 @@
-/*
- * raft.c
- * Core Raft consensus functionality for pgraft extension
+/*-------------------------------------------------------------------------
  *
- * This module provides the main Raft consensus implementation,
- * including initialization, state management, and core operations.
+ * raft.c
+ *		Raft consensus algorithm implementation for pgraft extension
+ *		Uses etcd-io/raft library via Go wrapper
+ *
+ * Copyright (c) 2024-2025, pgElephant, Inc.
+ *
+ *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 #include "../include/pgraft.h"
-#include "utils/guc.h"
-#include "access/htup_details.h"
-#include "funcapi.h"
-#include "utils/builtins.h"
-#include "lib/stringinfo.h"
-#include "utils/timestamp.h"
-#include "postmaster/bgworker.h"
-#include "storage/ipc.h"
-#include "access/tupdesc.h"
-#include "catalog/pg_type.h"
-#include "executor/spi.h"
-#include "nodes/pg_list.h"
-#include "utils/lsyscache.h"
-#include "utils/memutils.h"
-#include "utils/rel.h"
-#include "utils/snapmgr.h"
-#include "miscadmin.h"
+#include <dlfcn.h>
 #include <pthread.h>
+#include <time.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-/* Function info declarations */
-PG_FUNCTION_INFO_V1(pgraft_init);
-PG_FUNCTION_INFO_V1(pgraft_start);
-PG_FUNCTION_INFO_V1(pgraft_stop);
-PG_FUNCTION_INFO_V1(pgraft_add_node);
-PG_FUNCTION_INFO_V1(pgraft_remove_node);
-PG_FUNCTION_INFO_V1(pgraft_get_state);
-PG_FUNCTION_INFO_V1(pgraft_get_leader);
-PG_FUNCTION_INFO_V1(pgraft_get_nodes);
-PG_FUNCTION_INFO_V1(pgraft_get_log);
-PG_FUNCTION_INFO_V1(pgraft_get_stats);
-PG_FUNCTION_INFO_V1(pgraft_append_log);
-PG_FUNCTION_INFO_V1(pgraft_commit_log);
-PG_FUNCTION_INFO_V1(pgraft_read_log);
-PG_FUNCTION_INFO_V1(pgraft_version);
-PG_FUNCTION_INFO_V1(pgraft_is_leader);
-PG_FUNCTION_INFO_V1(pgraft_get_term);
+/* Dynamic loading of Go Raft library */
+static void *go_lib_handle = NULL;
+static bool go_lib_loaded = false;
 
-/* Raft state management - using enum from pgraft.h */
+/* Function pointers for Go Raft functions */
+typedef int (*pgraft_go_init_func)(int nodeID, char* address, int port);
+typedef int (*pgraft_go_start_func)(void);
+typedef int (*pgraft_go_stop_func)(void);
+typedef int (*pgraft_go_add_peer_func)(int nodeID, char* address, int port);
+typedef int (*pgraft_go_remove_peer_func)(int nodeID);
+typedef char* (*pgraft_go_get_state_func)(void);
+typedef int (*pgraft_go_get_leader_func)(void);
+typedef long (*pgraft_go_get_term_func)(void);
+typedef int (*pgraft_go_append_log_func)(char* data, int length);
+typedef char* (*pgraft_go_get_stats_func)(void);
+typedef char* (*pgraft_go_get_nodes_func)(void);
+typedef char* (*pgraft_go_get_logs_func)(void);
+typedef int (*pgraft_go_commit_log_func)(long index);
+typedef int (*pgraft_go_step_message_func)(char* data, int length);
+typedef char* (*pgraft_go_get_network_status_func)(void);
+typedef void (*pgraft_go_free_string_func)(char* str);
 
-/* Raft state structure is defined in pgraft.h */
+/* Replication function pointers */
+typedef int (*pgraft_go_replicate_log_entry_func)(char* data, int dataLen);
+typedef char* (*pgraft_go_get_replication_status_func)(void);
+typedef char* (*pgraft_go_create_snapshot_func)(void);
+typedef int (*pgraft_go_apply_snapshot_func)(char* snapshotData);
+typedef int (*pgraft_go_replicate_to_node_func)(unsigned long long nodeID, char* data, int dataLen);
+typedef double (*pgraft_go_get_replication_lag_func)(void);
+typedef int (*pgraft_go_sync_replication_func)(void);
 
-/* Global variables */
-static pgraft_raft_state_t raft_state = {0};
-static bool raft_initialized = false;
+static pgraft_go_init_func pgraft_go_init_ptr = NULL;
+static pgraft_go_start_func pgraft_go_start_ptr = NULL;
+static pgraft_go_stop_func pgraft_go_stop_ptr = NULL;
+static pgraft_go_add_peer_func pgraft_go_add_peer_ptr = NULL;
+static pgraft_go_remove_peer_func pgraft_go_remove_peer_ptr = NULL;
+static pgraft_go_get_state_func pgraft_go_get_state_ptr = NULL;
+static pgraft_go_get_leader_func pgraft_go_get_leader_ptr = NULL;
+static pgraft_go_get_term_func pgraft_go_get_term_ptr = NULL;
+static pgraft_go_append_log_func pgraft_go_append_log_ptr = NULL;
+static pgraft_go_get_stats_func pgraft_go_get_stats_ptr = NULL;
+static pgraft_go_get_nodes_func pgraft_go_get_nodes_ptr = NULL;
+static pgraft_go_get_logs_func pgraft_go_get_logs_ptr = NULL;
+static pgraft_go_commit_log_func pgraft_go_commit_log_ptr = NULL;
+static pgraft_go_step_message_func pgraft_go_step_message_ptr = NULL;
+static pgraft_go_get_network_status_func pgraft_go_get_network_status_ptr = NULL;
+static pgraft_go_free_string_func pgraft_go_free_string_ptr = NULL;
 
-/* Background worker process */
-static BackgroundWorker worker;
-static bool worker_registered = false;
-static bool worker_running = false;
+/* Replication function pointer variables */
+static pgraft_go_replicate_log_entry_func pgraft_go_replicate_log_entry_ptr = NULL;
+static pgraft_go_get_replication_status_func pgraft_go_get_replication_status_ptr = NULL;
+static pgraft_go_create_snapshot_func pgraft_go_create_snapshot_ptr = NULL;
+static pgraft_go_apply_snapshot_func pgraft_go_apply_snapshot_ptr = NULL;
+static pgraft_go_replicate_to_node_func pgraft_go_replicate_to_node_ptr = NULL;
+static pgraft_go_get_replication_lag_func pgraft_go_get_replication_lag_ptr = NULL;
+static pgraft_go_sync_replication_func pgraft_go_sync_replication_ptr = NULL;
 
-/* Worker initialization control */
-
-/* Init parameters from pgraft_init() */
-static int init_node_id = 1;
-static char *init_address = NULL;
-static int init_port = 5432;
-
-/* Forward declarations */
-static void register_pgraft_worker(void);
-static void pgraft_init_raft_state(void);
+static pgraft_raft_state_t raft_state;
 
 /*
- * Initialize Raft state
+ * Load Go Raft library
+ */
+static int
+load_go_library(void)
+{
+    int retry_count = 0;
+    const int max_retries = 3;
+    
+    if (go_lib_loaded)
+        return 0;
+    
+    /* Try to load the Go library with retries */
+    while (retry_count < max_retries)
+    {
+        go_lib_handle = dlopen("/usr/local/pgsql.17/lib/pgraft_go.dylib", RTLD_LAZY);
+        if (go_lib_handle)
+            break;
+            
+        retry_count++;
+        elog(WARNING, "pgraft_raft: attempt %d failed to load Go library: %s", 
+             retry_count, dlerror());
+        
+        if (retry_count < max_retries)
+        {
+            /* Wait before retry with exponential backoff */
+            pg_usleep(100000 * retry_count); /* 100ms * retry_count */
+        }
+    }
+    
+    if (!go_lib_handle)
+    {
+        elog(ERROR, "pgraft_raft: failed to load Go library after %d attempts", max_retries);
+        return -1;
+    }
+    
+    /* Load function pointers */
+    pgraft_go_init_ptr = (pgraft_go_init_func) dlsym(go_lib_handle, "pgraft_go_init");
+    pgraft_go_start_ptr = (pgraft_go_start_func) dlsym(go_lib_handle, "pgraft_go_start");
+    pgraft_go_stop_ptr = (pgraft_go_stop_func) dlsym(go_lib_handle, "pgraft_go_stop");
+    pgraft_go_add_peer_ptr = (pgraft_go_add_peer_func) dlsym(go_lib_handle, "pgraft_go_add_peer");
+    pgraft_go_remove_peer_ptr = (pgraft_go_remove_peer_func) dlsym(go_lib_handle, "pgraft_go_remove_peer");
+    pgraft_go_get_state_ptr = (pgraft_go_get_state_func) dlsym(go_lib_handle, "pgraft_go_get_state");
+    pgraft_go_get_leader_ptr = (pgraft_go_get_leader_func) dlsym(go_lib_handle, "pgraft_go_get_leader");
+    pgraft_go_get_term_ptr = (pgraft_go_get_term_func) dlsym(go_lib_handle, "pgraft_go_get_term");
+    pgraft_go_append_log_ptr = (pgraft_go_append_log_func) dlsym(go_lib_handle, "pgraft_go_append_log");
+    pgraft_go_get_stats_ptr = (pgraft_go_get_stats_func) dlsym(go_lib_handle, "pgraft_go_get_stats");
+    pgraft_go_get_nodes_ptr = (pgraft_go_get_nodes_func) dlsym(go_lib_handle, "pgraft_go_get_nodes");
+    pgraft_go_get_logs_ptr = (pgraft_go_get_logs_func) dlsym(go_lib_handle, "pgraft_go_get_logs");
+    pgraft_go_commit_log_ptr = (pgraft_go_commit_log_func) dlsym(go_lib_handle, "pgraft_go_commit_log");
+    pgraft_go_step_message_ptr = (pgraft_go_step_message_func) dlsym(go_lib_handle, "pgraft_go_step_message");
+    pgraft_go_get_network_status_ptr = (pgraft_go_get_network_status_func) dlsym(go_lib_handle, "pgraft_go_get_network_status");
+    pgraft_go_free_string_ptr = (pgraft_go_free_string_func) dlsym(go_lib_handle, "pgraft_go_free_string");
+    
+    /* Load replication function pointers */
+    pgraft_go_replicate_log_entry_ptr = (pgraft_go_replicate_log_entry_func) dlsym(go_lib_handle, "pgraft_go_replicate_log_entry");
+    pgraft_go_get_replication_status_ptr = (pgraft_go_get_replication_status_func) dlsym(go_lib_handle, "pgraft_go_get_replication_status");
+    pgraft_go_create_snapshot_ptr = (pgraft_go_create_snapshot_func) dlsym(go_lib_handle, "pgraft_go_create_snapshot");
+    pgraft_go_apply_snapshot_ptr = (pgraft_go_apply_snapshot_func) dlsym(go_lib_handle, "pgraft_go_apply_snapshot");
+    pgraft_go_replicate_to_node_ptr = (pgraft_go_replicate_to_node_func) dlsym(go_lib_handle, "pgraft_go_replicate_to_node");
+    pgraft_go_get_replication_lag_ptr = (pgraft_go_get_replication_lag_func) dlsym(go_lib_handle, "pgraft_go_get_replication_lag");
+    pgraft_go_sync_replication_ptr = (pgraft_go_sync_replication_func) dlsym(go_lib_handle, "pgraft_go_sync_replication");
+    
+    /* Check if all critical functions were loaded */
+    if (!pgraft_go_init_ptr || !pgraft_go_start_ptr || !pgraft_go_stop_ptr)
+    {
+        elog(ERROR, "pgraft_raft: failed to load critical Go functions");
+        dlclose(go_lib_handle);
+        go_lib_handle = NULL;
+        return -1;
+    }
+    
+    go_lib_loaded = true;
+    elog(INFO, "pgraft_raft: Go Raft library loaded successfully");
+    return 0;
+}
+
+/*
+ * Unload Go Raft library
  */
 static void
-pgraft_init_raft_state(void)
+unload_go_library(void)
 {
-    /* Initialize raft state */
+    if (go_lib_handle)
+    {
+        dlclose(go_lib_handle);
+        go_lib_handle = NULL;
+    }
+    
+    /* Reset function pointers */
+    pgraft_go_init_ptr = NULL;
+    pgraft_go_start_ptr = NULL;
+    pgraft_go_stop_ptr = NULL;
+    pgraft_go_add_peer_ptr = NULL;
+    pgraft_go_remove_peer_ptr = NULL;
+    pgraft_go_get_state_ptr = NULL;
+    pgraft_go_get_leader_ptr = NULL;
+    pgraft_go_get_term_ptr = NULL;
+    pgraft_go_append_log_ptr = NULL;
+    pgraft_go_get_stats_ptr = NULL;
+    pgraft_go_get_nodes_ptr = NULL;
+    pgraft_go_get_logs_ptr = NULL;
+    pgraft_go_commit_log_ptr = NULL;
+    pgraft_go_step_message_ptr = NULL;
+    pgraft_go_get_network_status_ptr = NULL;
+    pgraft_go_free_string_ptr = NULL;
+    
+    go_lib_loaded = false;
+    elog(INFO, "pgraft_raft: Go Raft library unloaded");
+}
+
+void
+pgraft_raft_init(void)
+{
+    memset(&raft_state, 0, sizeof(raft_state));
+    
+    /* Initialize state */
     raft_state.state = PGRAFT_STATE_FOLLOWER;
     raft_state.current_term = 0;
     raft_state.voted_for = -1;
-    raft_state.leader_id = -1;
     raft_state.last_log_index = 0;
     raft_state.last_log_term = 0;
     raft_state.commit_index = 0;
     raft_state.last_applied = 0;
-    raft_state.last_heartbeat = 0;
+    raft_state.leader_id = -1;
+    raft_state.last_heartbeat = GetCurrentTimestamp();
     raft_state.is_initialized = true;
     
-    raft_initialized = true;
-    elog(INFO, "pgraft: Raft state initialized");
-}
-
-
-/*
- * Initialize pgraft with node configuration
- */
-Datum
-pgraft_init(PG_FUNCTION_ARGS)
-{
-    int node_id;
-    text *address_text;
-    int port;
-    char *address;
-    
-    /* Get function arguments */
-    node_id = PG_GETARG_INT32(0);
-    address_text = PG_GETARG_TEXT_PP(1);
-    port = PG_GETARG_INT32(2);
-    
-    /* Convert address to C string */
-    address = text_to_cstring(address_text);
-    
-    /* Validate parameters */
-    if (node_id <= 0 || node_id > 1000)
-        elog(ERROR, "pgraft_init: node_id must be between 1 and 1000, got %d", node_id);
-    
-    if (port <= 0 || port > 65535)
-        elog(ERROR, "pgraft_init: port must be between 1 and 65535, got %d", port);
-    
-    if (strlen(address) == 0)
-        elog(ERROR, "pgraft_init: address cannot be empty");
-    
-    /* Store initialization parameters */
-    init_node_id = node_id;
-    init_port = port;
-    
-    if (init_address)
-        pfree(init_address);
-    init_address = pstrdup(address);
-    
-    /* Initialize Raft state */
-    pgraft_init_raft_state();
-    
-    /* Register background worker */
-    register_pgraft_worker();
-    
-    elog(INFO, "pgraft_init: initialized node %d at %s:%d", node_id, address, port);
-    
-    PG_RETURN_BOOL(true);
-}
-
-/*
- * Start the Raft consensus process
- */
-Datum
-pgraft_start(PG_FUNCTION_ARGS)
-{
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_start: pgraft not initialized, call pgraft_init first");
-    
-    if (worker_running)
+    /* Load Go Raft library */
+    if (load_go_library() != 0)
     {
-        elog(WARNING, "pgraft_start: worker already running");
-        PG_RETURN_BOOL(true);
+        elog(ERROR, "pgraft_raft: failed to load Go Raft library");
+        return;
     }
     
-    /* Start the background worker */
-    worker_running = true;
-    elog(INFO, "pgraft_start: Raft consensus started");
-    
-    PG_RETURN_BOOL(true);
+    elog(INFO, "pgraft_raft: Raft state initialized with etcd-io/raft");
 }
 
-/*
- * Stop the Raft consensus process
- */
-Datum
-pgraft_stop(PG_FUNCTION_ARGS)
+void
+pgraft_raft_start(void)
 {
-    if (!raft_initialized)
+    int result;
+    
+    if (!go_lib_loaded || !pgraft_go_start_ptr)
     {
-        elog(WARNING, "pgraft_stop: pgraft not initialized");
-        PG_RETURN_BOOL(false);
+        elog(ERROR, "pgraft_raft: Go Raft library not loaded");
+        return;
     }
     
-    if (!worker_running)
+    /* Start Go Raft system */
+    result = pgraft_go_start_ptr();
+    if (result != 0)
     {
-        elog(WARNING, "pgraft_stop: worker not running");
-        PG_RETURN_BOOL(false);
+        elog(ERROR, "pgraft_raft: failed to start Go Raft system: %d", result);
+        return;
     }
     
-    /* Stop the background worker */
-    worker_running = false;
-    elog(INFO, "pgraft_stop: Raft consensus stopped");
-    
-    PG_RETURN_BOOL(true);
+    raft_state.is_running = true;
+    elog(INFO, "pgraft_raft: Raft system started with etcd-io/raft");
 }
 
-/*
- * Add a node to the cluster
- */
-Datum
-pgraft_add_node(PG_FUNCTION_ARGS)
+void
+pgraft_raft_stop(void)
 {
-    int node_id;
-    text *address_text;
-    int port;
-    char *address;
+    int result;
     
-    /* Get function arguments */
-    node_id = PG_GETARG_INT32(0);
-    address_text = PG_GETARG_TEXT_PP(1);
-    port = PG_GETARG_INT32(2);
+    if (!go_lib_loaded || !pgraft_go_stop_ptr)
+    {
+        elog(WARNING, "pgraft_raft: Go Raft library not loaded");
+        return;
+    }
     
-    /* Convert address to C string */
-    address = text_to_cstring(address_text);
+    /* Stop Go Raft system */
+    result = pgraft_go_stop_ptr();
+    if (result != 0)
+    {
+        elog(WARNING, "pgraft_raft: failed to stop Go Raft system: %d", result);
+    }
     
-    /* Validate parameters */
-    if (node_id <= 0 || node_id > 1000)
-        elog(ERROR, "pgraft_add_node: node_id must be between 1 and 1000, got %d", node_id);
-    
-    if (port <= 0 || port > 65535)
-        elog(ERROR, "pgraft_add_node: port must be between 1 and 65535, got %d", port);
-    
-    if (strlen(address) == 0)
-        elog(ERROR, "pgraft_add_node: address cannot be empty");
-    
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_add_node: pgraft not initialized, call pgraft_init first");
-    
-    /* TODO: Implement actual node addition logic */
-    elog(INFO, "pgraft_add_node: adding node %d at %s:%d", node_id, address, port);
-    
-    PG_RETURN_BOOL(true);
+    raft_state.is_running = false;
+    elog(INFO, "pgraft_raft: Raft system stopped");
 }
 
-/*
- * Remove a node from the cluster
- */
-Datum
-pgraft_remove_node(PG_FUNCTION_ARGS)
+void
+pgraft_raft_cleanup(void)
 {
-    int node_id;
+    /* Stop the system first */
+    pgraft_raft_stop();
     
-    /* Get function arguments */
-    node_id = PG_GETARG_INT32(0);
+    /* Unload Go library */
+    unload_go_library();
     
-    /* Validate parameters */
-    if (node_id <= 0 || node_id > 1000)
-        elog(ERROR, "pgraft_remove_node: node_id must be between 1 and 1000, got %d", node_id);
+    /* Reset state */
+    memset(&raft_state, 0, sizeof(raft_state));
     
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_remove_node: pgraft not initialized, call pgraft_init first");
-    
-    /* TODO: Implement actual node removal logic */
-    elog(INFO, "pgraft_remove_node: removing node %d", node_id);
-    
-    PG_RETURN_BOOL(true);
+    elog(INFO, "pgraft_raft: Raft system cleaned up");
 }
 
-/*
- * Get current Raft state
- */
-Datum
-pgraft_get_state(PG_FUNCTION_ARGS)
+int
+pgraft_raft_add_node(uint64_t node_id, const char *address, int port)
 {
-    StringInfoData buf;
+    int result;
+    
+    if (!go_lib_loaded || !pgraft_go_add_peer_ptr)
+    {
+        elog(ERROR, "pgraft_raft: Go Raft library not loaded");
+        return -1;
+    }
+    
+    /* Add peer to Go Raft system */
+    result = pgraft_go_add_peer_ptr((int)node_id, (char*)address, port);
+    if (result != 0)
+    {
+        elog(ERROR, "pgraft_raft: failed to add node %llu: %d", (unsigned long long)node_id, result);
+        return -1;
+    }
+    
+    elog(INFO, "pgraft_raft: added node %llu at %s:%d", (unsigned long long)node_id, address, port);
+    return 0;
+}
+
+int
+pgraft_raft_remove_node(uint64_t node_id)
+{
+    int result;
+    
+    if (!go_lib_loaded || !pgraft_go_remove_peer_ptr)
+    {
+        elog(ERROR, "pgraft_raft: Go Raft library not loaded");
+        return -1;
+    }
+    
+    /* Remove peer from Go Raft system */
+    result = pgraft_go_remove_peer_ptr((int)node_id);
+    if (result != 0)
+    {
+        elog(ERROR, "pgraft_raft: failed to remove node %llu: %d", (unsigned long long)node_id, result);
+        return -1;
+    }
+    
+    elog(INFO, "pgraft_raft: removed node %llu", (unsigned long long)node_id);
+    return 0;
+}
+
+pgraft_raft_state_t*
+pgraft_raft_get_state(void)
+{
     char *state_str;
+    int leader_id;
+    long term;
     
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_get_state: pgraft not initialized, call pgraft_init first");
-    
-    initStringInfo(&buf);
-    
-    switch (raft_state.state)
+    if (!go_lib_loaded || !pgraft_go_get_state_ptr || !pgraft_go_get_leader_ptr || !pgraft_go_get_term_ptr)
     {
-        case PGRAFT_STATE_FOLLOWER:
-            appendStringInfoString(&buf, "follower");
-            break;
-        case PGRAFT_STATE_CANDIDATE:
-            appendStringInfoString(&buf, "candidate");
-            break;
-        case PGRAFT_STATE_LEADER:
-            appendStringInfoString(&buf, "leader");
-            break;
-        default:
-            appendStringInfoString(&buf, "unknown");
-            break;
+        return &raft_state;
     }
     
-    state_str = buf.data;
-    PG_RETURN_TEXT_P(cstring_to_text(state_str));
+    /* Get state from Go Raft system */
+    state_str = pgraft_go_get_state_ptr();
+    if (state_str)
+    {
+        if (strcmp(state_str, "leader") == 0)
+            raft_state.state = PGRAFT_STATE_LEADER;
+        else if (strcmp(state_str, "candidate") == 0)
+            raft_state.state = PGRAFT_STATE_CANDIDATE;
+        else if (strcmp(state_str, "follower") == 0)
+            raft_state.state = PGRAFT_STATE_FOLLOWER;
+        else
+            raft_state.state = PGRAFT_STATE_UNKNOWN;
+        
+        pgraft_go_free_string_ptr(state_str);
+    }
+    
+    /* Get leader ID */
+    leader_id = pgraft_go_get_leader_ptr();
+    if (leader_id >= 0)
+        raft_state.leader_id = leader_id;
+    
+    /* Get current term */
+    term = pgraft_go_get_term_ptr();
+    if (term >= 0)
+        raft_state.current_term = term;
+    
+    return &raft_state;
+}
+
+int
+pgraft_raft_append_log(const char *data, size_t data_len)
+{
+    int result;
+    
+    if (!go_lib_loaded || !pgraft_go_append_log_ptr)
+    {
+        elog(ERROR, "pgraft_raft: Go Raft library not loaded");
+        return -1;
+    }
+    
+    /* Append log entry to Go Raft system */
+    result = pgraft_go_append_log_ptr((char*)data, (int)data_len);
+    if (result != 0)
+    {
+        elog(ERROR, "pgraft_raft: failed to append log entry: %d", result);
+        return -1;
+    }
+    
+    return 0;
+}
+
+int
+pgraft_raft_commit_log(long index)
+{
+    int result;
+    
+    if (!go_lib_loaded || !pgraft_go_commit_log_ptr)
+    {
+        elog(ERROR, "pgraft_raft: Go Raft library not loaded");
+        return -1;
+    }
+    
+    /* Commit log entry in Go Raft system */
+    result = pgraft_go_commit_log_ptr(index);
+    if (result != 0)
+    {
+        elog(ERROR, "pgraft_raft: failed to commit log entry: %d", result);
+        return -1;
+    }
+    
+    return 0;
+}
+
+int
+pgraft_raft_step_message(const char *data, size_t data_len)
+{
+    int result;
+    
+    if (!go_lib_loaded || !pgraft_go_step_message_ptr)
+    {
+        elog(ERROR, "pgraft_raft: Go Raft library not loaded");
+        return -1;
+    }
+    
+    /* Step message in Go Raft system */
+    result = pgraft_go_step_message_ptr((char*)data, (int)data_len);
+    if (result != 0)
+    {
+        elog(ERROR, "pgraft_raft: failed to step message: %d", result);
+        return -1;
+    }
+    
+    return 0;
+}
+
+char*
+pgraft_raft_get_stats(void)
+{
+    if (!go_lib_loaded || !pgraft_go_get_stats_ptr)
+    {
+        return NULL;
+    }
+    
+    return pgraft_go_get_stats_ptr();
+}
+
+char*
+pgraft_raft_get_nodes(void)
+{
+    if (!go_lib_loaded || !pgraft_go_get_nodes_ptr)
+    {
+        return NULL;
+    }
+    
+    return pgraft_go_get_nodes_ptr();
+}
+
+char*
+pgraft_raft_get_logs(void)
+{
+    if (!go_lib_loaded || !pgraft_go_get_logs_ptr)
+    {
+        return NULL;
+    }
+    
+    return pgraft_go_get_logs_ptr();
+}
+
+char*
+pgraft_raft_get_network_status(void)
+{
+    if (!go_lib_loaded || !pgraft_go_get_network_status_ptr)
+    {
+        return NULL;
+    }
+    
+    return pgraft_go_get_network_status_ptr();
+}
+
+void
+pgraft_raft_free_string(char *str)
+{
+    if (go_lib_loaded && pgraft_go_free_string_ptr && str)
+    {
+        pgraft_go_free_string_ptr(str);
+    }
+}
+
+/* ============================================================================
+ * REPLICATION FUNCTIONS - C wrappers for Go etcd-io/raft replication
+ * ============================================================================ */
+
+/*
+ * Replicate log entry to all nodes in the cluster
+ */
+int
+pgraft_replicate_log_entry(const char *data, size_t data_len)
+{
+    if (!go_lib_loaded || !pgraft_go_replicate_log_entry_ptr)
+    {
+        elog(ERROR, "pgraft_replication: Go library not loaded");
+        return 0;
+    }
+    
+    if (!data || data_len == 0)
+    {
+        elog(ERROR, "pgraft_replication: invalid data parameters");
+        return 0;
+    }
+    
+    return pgraft_go_replicate_log_entry_ptr((char *)data, (int)data_len);
 }
 
 /*
- * Get current leader ID
+ * Get replication status information
  */
-Datum
-pgraft_get_leader(PG_FUNCTION_ARGS)
+char *
+pgraft_get_replication_info(void)
 {
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_get_leader: pgraft not initialized, call pgraft_init first");
+    if (!go_lib_loaded || !pgraft_go_get_replication_status_ptr)
+    {
+        elog(ERROR, "pgraft_replication: Go library not loaded");
+        return NULL;
+    }
     
-    PG_RETURN_INT32(raft_state.leader_id);
+    return pgraft_go_get_replication_status_ptr();
 }
 
 /*
- * Get cluster nodes information
+ * Create a snapshot for replication
  */
-Datum
-pgraft_get_nodes(PG_FUNCTION_ARGS)
+char *
+pgraft_create_replication_snapshot(void)
 {
-    StringInfoData buf;
-    char *nodes_str;
+    if (!go_lib_loaded || !pgraft_go_create_snapshot_ptr)
+    {
+        elog(ERROR, "pgraft_replication: Go library not loaded");
+        return NULL;
+    }
     
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_get_nodes: pgraft not initialized, call pgraft_init first");
-    
-    initStringInfo(&buf);
-    appendStringInfo(&buf, "{\"nodes\":[{\"id\":%d,\"address\":\"%s\",\"port\":%d}]}", 
-                     init_node_id, init_address ? init_address : "unknown", init_port);
-    
-    nodes_str = buf.data;
-    PG_RETURN_TEXT_P(cstring_to_text(nodes_str));
+    return pgraft_go_create_snapshot_ptr();
 }
 
 /*
- * Get log information
+ * Apply a snapshot for replication
  */
-Datum
-pgraft_get_log(PG_FUNCTION_ARGS)
+int
+pgraft_apply_replication_snapshot(const char *snapshot_data)
 {
-    StringInfoData buf;
-    char *log_str;
+    if (!go_lib_loaded || !pgraft_go_apply_snapshot_ptr)
+    {
+        elog(ERROR, "pgraft_replication: Go library not loaded");
+        return 0;
+    }
     
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_get_log: pgraft not initialized, call pgraft_init first");
+    if (!snapshot_data)
+    {
+        elog(ERROR, "pgraft_replication: invalid snapshot data");
+        return 0;
+    }
     
-    initStringInfo(&buf);
-    appendStringInfo(&buf, "{\"last_log_index\":%d,\"last_log_term\":%d,\"commit_index\":%d}", 
-                     raft_state.last_log_index, raft_state.last_log_term, raft_state.commit_index);
-    
-    log_str = buf.data;
-    PG_RETURN_TEXT_P(cstring_to_text(log_str));
+    return pgraft_go_apply_snapshot_ptr((char *)snapshot_data);
 }
 
 /*
- * Get statistics
+ * Replicate data to a specific node
  */
-Datum
-pgraft_get_stats(PG_FUNCTION_ARGS)
+int
+pgraft_replicate_to_node(uint64_t node_id, const char *data, size_t data_len)
 {
-    StringInfoData buf;
-    char *stats_str;
+    if (!go_lib_loaded || !pgraft_go_replicate_to_node_ptr)
+    {
+        elog(ERROR, "pgraft_replication: Go library not loaded");
+        return 0;
+    }
     
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_get_stats: pgraft not initialized, call pgraft_init first");
+    if (!data || data_len == 0)
+    {
+        elog(ERROR, "pgraft_replication: invalid data parameters");
+        return 0;
+    }
     
-    initStringInfo(&buf);
-    appendStringInfo(&buf, "{\"state\":\"%s\",\"term\":%d,\"leader_id\":%d,\"last_log_index\":%d}", 
-                     raft_state.state == PGRAFT_STATE_LEADER ? "leader" : 
-                     raft_state.state == PGRAFT_STATE_CANDIDATE ? "candidate" : "follower",
-                     raft_state.current_term, raft_state.leader_id, raft_state.last_log_index);
-    
-    stats_str = buf.data;
-    PG_RETURN_TEXT_P(cstring_to_text(stats_str));
+    return pgraft_go_replicate_to_node_ptr((uint64_t)node_id, (char *)data, (int)data_len);
 }
 
 /*
- * Append log entry
+ * Get replication lag in milliseconds
  */
-Datum
-pgraft_append_log(PG_FUNCTION_ARGS)
+double
+pgraft_get_replication_lag(void)
 {
-    text *data_text;
-    char *data;
+    if (!go_lib_loaded || !pgraft_go_get_replication_lag_ptr)
+    {
+        elog(ERROR, "pgraft_replication: Go library not loaded");
+        return 0.0;
+    }
     
-    /* Get function arguments */
-    data_text = PG_GETARG_TEXT_PP(0);
-    
-    /* Convert data to C string */
-    data = text_to_cstring(data_text);
-    
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_append_log: pgraft not initialized, call pgraft_init first");
-    
-    if (raft_state.state != PGRAFT_STATE_LEADER)
-        elog(ERROR, "pgraft_append_log: only leader can append log entries");
-    
-    /* TODO: Implement actual log append logic */
-    raft_state.last_log_index++;
-    elog(INFO, "pgraft_append_log: appended log entry %d (data: %s)", raft_state.last_log_index, data);
-    
-    /* Free the data string */
-    pfree(data);
-    
-    PG_RETURN_BOOL(true);
+    return pgraft_go_get_replication_lag_ptr();
 }
 
 /*
- * Commit log entry
+ * Force synchronization of replication
  */
-Datum
-pgraft_commit_log(PG_FUNCTION_ARGS)
+int
+pgraft_sync_replication(void)
 {
-    int index;
+    if (!go_lib_loaded || !pgraft_go_sync_replication_ptr)
+    {
+        elog(ERROR, "pgraft_replication: Go library not loaded");
+        return 0;
+    }
     
-    /* Get function arguments */
-    index = PG_GETARG_INT32(0);
-    
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_commit_log: pgraft not initialized, call pgraft_init first");
-    
-    if (index <= 0 || index > raft_state.last_log_index)
-        elog(ERROR, "pgraft_commit_log: invalid log index %d", index);
-    
-    /* TODO: Implement actual log commit logic */
-    if (index > raft_state.commit_index)
-        raft_state.commit_index = index;
-    
-    elog(INFO, "pgraft_commit_log: committed log entry %d", index);
-    
-    PG_RETURN_BOOL(true);
+    return pgraft_go_sync_replication_ptr();
 }
 
 /*
- * Read log entry
+ * Free string returned by replication functions
  */
-Datum
-pgraft_read_log(PG_FUNCTION_ARGS)
+void
+pgraft_free_replication_string(char *str)
 {
-    int index;
-    StringInfoData buf;
-    char *log_str;
-    
-    /* Get function arguments */
-    index = PG_GETARG_INT32(0);
-    
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_read_log: pgraft not initialized, call pgraft_init first");
-    
-    if (index <= 0 || index > raft_state.last_log_index)
-        elog(ERROR, "pgraft_read_log: invalid log index %d", index);
-    
-    /* TODO: Implement actual log read logic */
-    initStringInfo(&buf);
-    appendStringInfo(&buf, "{\"index\":%d,\"term\":%d,\"data\":\"log_entry_%d\"}", 
-                     index, raft_state.last_log_term, index);
-    
-    log_str = buf.data;
-    PG_RETURN_TEXT_P(cstring_to_text(log_str));
-}
-
-/*
- * Get version information
- */
-Datum
-pgraft_version(PG_FUNCTION_ARGS)
-{
-    PG_RETURN_TEXT_P(cstring_to_text("pgraft 1.0.0"));
-}
-
-/*
- * Check if current node is leader
- */
-Datum
-pgraft_is_leader(PG_FUNCTION_ARGS)
-{
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_is_leader: pgraft not initialized, call pgraft_init first");
-    
-    PG_RETURN_BOOL(raft_state.state == PGRAFT_STATE_LEADER);
-}
-
-/*
- * Get current term
- */
-Datum
-pgraft_get_term(PG_FUNCTION_ARGS)
-{
-    if (!raft_initialized)
-        elog(ERROR, "pgraft_get_term: pgraft not initialized, call pgraft_init first");
-    
-    PG_RETURN_INT32(raft_state.current_term);
-}
-
-
-
-/*
- * Register background worker
- */
-static void
-register_pgraft_worker(void)
-{
-    /* Configure worker */
-    memset(&worker, 0, sizeof(BackgroundWorker));
-    worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
-    worker.bgw_start_time = BgWorkerStart_ConsistentState;
-    worker.bgw_restart_time = BGW_NEVER_RESTART;
-    snprintf(worker.bgw_library_name, BGW_MAXLEN, "pgraft");
-    snprintf(worker.bgw_function_name, BGW_MAXLEN, "pgraft_worker_main");
-    snprintf(worker.bgw_name, BGW_MAXLEN, "pgraft consensus worker");
-    worker.bgw_main_arg = (Datum) 0;
-    worker.bgw_notify_pid = 0;
-    
-    /* Register the worker */
-    RegisterBackgroundWorker(&worker);
-    worker_registered = true;
-    elog(INFO, "pgraft: consensus worker registered successfully");
+    if (go_lib_loaded && pgraft_go_free_string_ptr && str)
+    {
+        pgraft_go_free_string_ptr(str);
+    }
 }

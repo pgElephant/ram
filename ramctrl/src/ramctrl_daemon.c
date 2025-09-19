@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/wait.h>
+#include <curl/curl.h>
 #include <signal.h>
 
 #include "ramctrl.h"
@@ -398,41 +399,7 @@ int ramctrl_cmd_failover(ramctrl_context_t* ctx)
 }
 
 
-int ramctrl_cmd_show_cluster(ramctrl_context_t* ctx)
-{
-	ramctrl_cluster_info_t cluster_info;
-	ramctrl_daemon_status_t daemon_status;
-
-	if (!ctx)
-		return RAMCTRL_EXIT_FAILURE;
-
-	memset(&daemon_status, 0, sizeof(daemon_status));
-	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
-
-	if (!daemon_status.is_running)
-	{
-		fprintf(stderr, "ramctrl: ramd daemon is not running\n");
-		return RAMCTRL_EXIT_FAILURE;
-	}
-
-	memset(&cluster_info, 0, sizeof(cluster_info));
-	if (!ramctrl_get_cluster_info(ctx, &cluster_info))
-	{
-		fprintf(stderr, "ramctrl: failed to get cluster information\n");
-		return RAMCTRL_EXIT_FAILURE;
-	}
-
-	ramctrl_table_print_header("Cluster Information");
-	ramctrl_table_print_row("Name", cluster_info.cluster_name);
-	ramctrl_table_print_row_int("Cluster ID", cluster_info.cluster_id);
-	ramctrl_table_print_row_int("Total Nodes", cluster_info.total_nodes);
-	ramctrl_table_print_row_int("Active Nodes", cluster_info.active_nodes);
-	ramctrl_table_print_row_int("Primary Node", cluster_info.primary_node_id);
-	ramctrl_table_print_row_int("Leader Node", cluster_info.leader_node_id);
-	ramctrl_table_print_footer();
-
-	return RAMCTRL_EXIT_SUCCESS;
-}
+/* ramctrl_cmd_show_cluster is defined in ramctrl_formation.c */
 
 
 int ramctrl_cmd_show_nodes(ramctrl_context_t* ctx)
@@ -481,68 +448,10 @@ int ramctrl_cmd_show_nodes(ramctrl_context_t* ctx)
 }
 
 
-int ramctrl_cmd_add_node(ramctrl_context_t* ctx)
-{
-	ramctrl_daemon_status_t daemon_status;
-
-	if (!ctx)
-		return RAMCTRL_EXIT_FAILURE;
-
-	memset(&daemon_status, 0, sizeof(daemon_status));
-	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
-
-	if (!daemon_status.is_running)
-	{
-		fprintf(stderr, "ramctrl: ramd daemon is not running\n");
-		return RAMCTRL_EXIT_FAILURE;
-	}
-
-	if (ctx->verbose)
-		printf("ramctrl: adding node to cluster...\n");
-
-	if (!ramctrl_add_node(ctx, 1, ctx->hostname, ctx->port))
-	{
-		fprintf(stderr, "ramctrl: failed to add node\n");
-		return RAMCTRL_EXIT_FAILURE;
-	}
-
-	if (ctx->verbose)
-		printf("ramctrl: node added successfully\n");
-
-	return RAMCTRL_EXIT_SUCCESS;
-}
+/* ramctrl_cmd_add_node is defined in ramctrl_formation.c */
 
 
-int ramctrl_cmd_remove_node(ramctrl_context_t* ctx)
-{
-	ramctrl_daemon_status_t daemon_status;
-
-	if (!ctx)
-		return RAMCTRL_EXIT_FAILURE;
-
-	memset(&daemon_status, 0, sizeof(daemon_status));
-	daemon_status.is_running = ramctrl_daemon_is_running(ctx);
-
-	if (!daemon_status.is_running)
-	{
-		fprintf(stderr, "ramctrl: ramd daemon is not running\n");
-		return RAMCTRL_EXIT_FAILURE;
-	}
-
-	if (ctx->verbose)
-		printf("ramctrl: removing node from cluster...\n");
-
-	if (!ramctrl_remove_node(ctx, 1))
-	{
-		fprintf(stderr, "ramctrl: failed to remove node\n");
-		return RAMCTRL_EXIT_FAILURE;
-	}
-
-	if (ctx->verbose)
-		printf("ramctrl: node removed successfully\n");
-
-	return RAMCTRL_EXIT_SUCCESS;
-}
+/* ramctrl_cmd_remove_node is defined in ramctrl_formation.c */
 
 
 int ramctrl_cmd_enable_maintenance(ramctrl_context_t* ctx)
@@ -900,7 +809,7 @@ int ramctrl_cmd_show(ramctrl_context_t* ctx)
 	switch (ctx->show_command)
 	{
 	case RAMCTRL_SHOW_CLUSTER:
-		return ramctrl_cmd_show_cluster(ctx);
+                return ramctrl_cmd_show_cluster(ctx, ctx->hostname);
 	case RAMCTRL_SHOW_NODES:
 		return ramctrl_cmd_show_nodes(ctx);
 	case RAMCTRL_SHOW_REPLICATION:
@@ -928,9 +837,9 @@ int ramctrl_cmd_node(ramctrl_context_t* ctx)
 	switch (ctx->node_command)
 	{
 	case RAMCTRL_NODE_ADD:
-		return ramctrl_cmd_add_node(ctx);
+                return ramctrl_cmd_add_node(ctx, ctx->user, ctx->hostname, ctx->port);
 	case RAMCTRL_NODE_REMOVE:
-		return ramctrl_cmd_remove_node(ctx);
+		return ramctrl_cmd_remove_node(ctx, ctx->user);
 	case RAMCTRL_NODE_LIST:
 		return ramctrl_cmd_show_nodes(ctx);
 	case RAMCTRL_NODE_STATUS:
@@ -1114,7 +1023,167 @@ int ramctrl_cmd_remove_replica(ramctrl_context_t* ctx)
 	if (!ctx)
 		return RAMCTRL_EXIT_FAILURE;
 
-	printf("ramctrl: remove replica functionality not yet implemented\n");
+	printf("ramctrl: removing replica from cluster\n");
+	
+	/* Implement actual replica removal logic */
+	if (!ramctrl_remove_replica_from_cluster(ctx))
+	{
+		printf("ramctrl: failed to remove replica from cluster\n");
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	
+	printf("ramctrl: replica removed successfully\n");
+	
+	return RAMCTRL_EXIT_SUCCESS;
+}
+
+/*
+ * Remove replica from cluster
+ */
+static bool
+ramctrl_remove_replica_from_cluster(ramctrl_context_t* ctx)
+{
+	if (!ctx)
+	{
+		printf("ramctrl: invalid context for replica removal\n");
+		return false;
+	}
+	
+	/* Step 1: Validate replica exists */
+	/* Check if replica is in cluster */
+	ramctrl_node_info_t replica_info;
+	if (!ramctrl_get_node_info(ctx, ctx->user, &replica_info))
+	{
+		printf("ramctrl: replica '%s' not found in cluster\n", ctx->user);
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	
+	if (!replica_info.is_active)
+	{
+		printf("ramctrl: replica '%s' is not active\n", ctx->user);
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	
+	/* Step 2: Stop replica services */
+	/* Stop PostgreSQL and ramd on replica */
+	printf("ramctrl: stopping services on replica '%s'\n", ctx->user);
+	
+	/* Stop PostgreSQL service */
+	char stop_pg_cmd[512];
+	snprintf(stop_pg_cmd, sizeof(stop_pg_cmd), 
+	         "ssh %s@%s 'sudo systemctl stop postgresql'", 
+	         ctx->user, replica_info.node_address);
+	
+	int result = system(stop_pg_cmd);
+	if (result != 0)
+	{
+		printf("ramctrl: warning: failed to stop PostgreSQL on replica\n");
+	}
+	
+	/* Stop ramd service */
+	char stop_ramd_cmd[512];
+	snprintf(stop_ramd_cmd, sizeof(stop_ramd_cmd), 
+	         "ssh %s@%s 'sudo systemctl stop ramd'", 
+	         ctx->user, replica_info.node_address);
+	
+	result = system(stop_ramd_cmd);
+	if (result != 0)
+	{
+		printf("ramctrl: warning: failed to stop ramd on replica\n");
+	}
+	
+	/* Step 3: Remove from consensus */
+	/* Remove replica from Raft consensus group */
+	if (!ramctrl_remove_node_from_consensus(ctx, ctx->user))
+	{
+		printf("ramctrl: failed to remove replica from consensus system\n");
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	
+	/* Step 4: Update cluster configuration */
+	/* Remove replica from cluster configuration */
+	if (!ramctrl_remove_node_from_cluster(ctx, ctx->user))
+	{
+		printf("ramctrl: failed to remove replica from cluster configuration\n");
+		return RAMCTRL_EXIT_FAILURE;
+	}
+	
+	/* Step 5: Clean up replica resources */
+	/* Clean up replica data and configuration */
+	printf("ramctrl: cleaning up replica resources\n");
+	
+	/* Remove replica data directory */
+	char cleanup_cmd[512];
+	snprintf(cleanup_cmd, sizeof(cleanup_cmd), 
+	         "ssh %s@%s 'sudo rm -rf %s'", 
+	         ctx->user, replica_info.node_address, ctx->postgresql_data_dir);
+	
+	result = system(cleanup_cmd);
+	if (result != 0)
+	{
+		printf("ramctrl: warning: failed to clean up replica data\n");
+	}
+	
+	/* Step 6: Notify cluster of removal */
+	/* Notify other nodes about replica removal */
+	ramctrl_cluster_info_t cluster_info;
+	if (ramctrl_get_cluster_info(ctx, &cluster_info))
+	{
+		printf("ramctrl: notifying %d remaining nodes about replica removal\n", cluster_info.node_count);
+		
+		/* Send HTTP notifications to all remaining active nodes */
+		ramctrl_node_info_t *nodes;
+		int node_count;
+		if (ramctrl_get_all_nodes(ctx, &nodes, &node_count))
+		{
+			for (int i = 0; i < node_count; i++)
+			{
+				if (nodes[i].is_active)
+				{
+					char notification_url[512];
+					snprintf(notification_url, sizeof(notification_url),
+							 "http://%s:%d/api/v1/cluster/notify",
+							 nodes[i].node_address, nodes[i].port);
+					
+					char notification_data[512];
+					snprintf(notification_data, sizeof(notification_data),
+							 "{\"action\":\"replica_removed\",\"replica_id\":%d}",
+							 replica_info.node_id);
+					
+					printf("ramctrl: notifying node %d at %s about replica removal\n", 
+						   nodes[i].node_id, notification_url);
+					
+					/* Implement actual HTTP POST request */
+					CURL *curl = curl_easy_init();
+					if (curl) {
+						curl_easy_setopt(curl, CURLOPT_URL, notification_url);
+						curl_easy_setopt(curl, CURLOPT_POSTFIELDS, notification_data);
+						curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+						curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+						
+						CURLcode res = curl_easy_perform(curl);
+						if (res == CURLE_OK) {
+							long response_code;
+							curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+							if (response_code >= 200 && response_code < 300) {
+								printf("ramctrl: successfully notified node %d about replica removal\n", nodes[i].node_id);
+							} else {
+								printf("ramctrl: warning - node %d returned status %ld\n", nodes[i].node_id, response_code);
+							}
+						} else {
+							printf("ramctrl: warning - failed to notify node %d: %s\n", nodes[i].node_id, curl_easy_strerror(res));
+						}
+						curl_easy_cleanup(curl);
+					} else {
+						printf("ramctrl: warning - failed to initialize curl for node %d\n", nodes[i].node_id);
+					}
+				}
+			}
+			free(nodes);
+		}
+	}
+	
+	printf("ramctrl: replica removal completed successfully\n");
 	return RAMCTRL_EXIT_SUCCESS;
 }
 

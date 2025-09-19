@@ -48,6 +48,9 @@ bool ramctrl_daemon_wait_for_shutdown(ramctrl_context_t* ctx,
 /* Log management */
 bool ramctrl_daemon_get_logs(ramctrl_context_t* ctx, char* output,
                              size_t output_size, int num_lines);
+
+/* Replica management */
+static bool ramctrl_remove_replica_from_cluster(ramctrl_context_t* ctx);
 bool ramctrl_daemon_follow_logs(ramctrl_context_t* ctx);
 
 /* Configuration management */

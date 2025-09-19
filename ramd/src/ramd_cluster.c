@@ -10,6 +10,7 @@
 
 #include "ramd_cluster.h"
 #include "ramd_logging.h"
+#include <libpq-fe.h>
 /* librale.h removed - using pgraft instead */
 
 bool ramd_cluster_init(ramd_cluster_t* cluster, const ramd_config_t* config)
@@ -380,10 +381,74 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 		return false;
 	}
 
-	/* Simplified implementation without librale */
-	/* int32_t leader_id = 0; */ /* TODO: Implement RALE consensus state query */
-	/* This should query the actual RALE consensus state */
-
+	/* Implement RALE consensus state query */
+	
+	/* Step 1: Query pgraft extension for consensus state */
+	/* Connect to PostgreSQL and query pgraft consensus state */
+	PGconn *conn = PQconnectdb("host=localhost port=5432 dbname=postgres user=postgres");
+	if (PQstatus(conn) != CONNECTION_OK)
+	{
+		ramd_log_error("Failed to connect to PostgreSQL: %s", PQerrorMessage(conn));
+		PQfinish(conn);
+		return false;
+	}
+	
+	/* Step 2: Get current leader information */
+	/* Retrieve current leader ID from consensus state */
+	PGresult *res = PQexec(conn, "SELECT pgraft_get_leader_id()");
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		ramd_log_error("Failed to get leader ID: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		return false;
+	}
+	
+	int32_t leader_id = 0;
+	if (PQntuples(res) > 0)
+	{
+		leader_id = atoi(PQgetvalue(res, 0, 0));
+	}
+	PQclear(res);
+	
+	/* Step 3: Get node role and status */
+	/* Determine if node is leader, follower, or candidate */
+	res = PQexec(conn, "SELECT pgraft_get_current_state()");
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		ramd_log_error("Failed to get current state: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		return false;
+	}
+	
+	int32_t current_state = 0;
+	if (PQntuples(res) > 0)
+	{
+		current_state = atoi(PQgetvalue(res, 0, 0));
+	}
+	PQclear(res);
+	
+	/* Step 4: Get cluster membership */
+	/* Retrieve current cluster membership */
+	res = PQexec(conn, "SELECT pgraft_get_cluster_nodes()");
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		ramd_log_error("Failed to get cluster nodes: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		return false;
+	}
+	
+	int node_count = PQntuples(res);
+	PQclear(res);
+	PQfinish(conn);
+	
+	/* Update node information with consensus data */
+	node->leader_id = leader_id;
+	node->state = current_state;
+	node->cluster_size = node_count;
+	
 	/* For now, create a basic node representation */
 	memset(node, 0, sizeof(ramd_node_t));
 	node->node_id = node_id;

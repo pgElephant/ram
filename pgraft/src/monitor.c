@@ -1,12 +1,11 @@
-/*
- * monitor_simple.c
- * Simplified monitoring for pgraft extension
+/*-------------------------------------------------------------------------
  *
- * This module provides basic monitoring capabilities without
- * duplicating functions from metrics.c
+ * monitor.c
+ *		Monitoring capabilities for pgraft extension
  *
- * Copyright (c) 2024, PostgreSQL Global Development Group
- * All rights reserved.
+ * Copyright (c) 2024-2025, pgElephant, Inc.
+ *
+ *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
@@ -48,6 +47,10 @@ typedef struct pgraft_monitor_state
     int failed_checks;
     int warnings_count;
     int errors_count;
+    int info_events;
+    int warning_events;
+    int error_events;
+    int total_events;
 } pgraft_monitor_state_t;
 
 static pgraft_monitor_state_t monitor_state = {0};
@@ -118,7 +121,32 @@ pgraft_monitor_check_health(void)
     pgraft_monitor_update_metrics();
 }
 
-/* Note: pgraft_monitor_tick function removed as it was unused */
+/*
+ * Monitor tick function
+ */
+void
+pgraft_monitor_tick(void)
+{
+    if (!monitor_state.enabled)
+        return;
+    
+    /* Update monitoring metrics */
+    pgraft_monitor_update_metrics();
+    
+    /* Check cluster health */
+    pgraft_monitor_check_health();
+    
+    /* Update monitoring state */
+    monitor_state.last_check = GetCurrentTimestamp();
+    monitor_state.total_checks++;
+    
+    /* Log monitoring activity */
+    if (monitor_state.total_checks % 100 == 0)
+    {
+        elog(DEBUG1, "pgraft_monitor_tick: completed %d checks, %d failed checks", 
+             monitor_state.total_checks, monitor_state.failed_checks);
+    }
+}
 
 /*
  * Check cluster health
@@ -358,6 +386,42 @@ pgraft_get_detailed_node_info(PG_FUNCTION_ARGS)
     
     info_json = buf.data;
     PG_RETURN_TEXT_P(cstring_to_text(info_json));
+}
+
+/*
+ * Log health event
+ */
+void
+pgraft_log_health_event(pgraft_health_event_type_t event_type, const char *message)
+{
+    if (!monitor_state.enabled)
+        return;
+    
+    /* Update event counters */
+    switch (event_type)
+    {
+        case PGRAFT_HEALTH_EVENT_INFO:
+            monitor_state.info_events++;
+            elog(INFO, "pgraft_health_event: %s", message);
+            break;
+            
+        case PGRAFT_HEALTH_EVENT_WARNING:
+            monitor_state.warning_events++;
+            elog(WARNING, "pgraft_health_event: %s", message);
+            break;
+            
+        case PGRAFT_HEALTH_EVENT_ERROR:
+            monitor_state.error_events++;
+            elog(ERROR, "pgraft_health_event: %s", message);
+            break;
+            
+        default:
+            elog(DEBUG1, "pgraft_health_event: %s", message);
+            break;
+    }
+    
+    /* Update total events */
+    monitor_state.total_events++;
 }
 
 /* Note: Functions pgraft_get_cluster_health, pgraft_get_performance_metrics, 

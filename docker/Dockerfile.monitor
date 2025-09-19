@@ -1,0 +1,22 @@
+FROM prom/prometheus:latest
+
+# Install additional monitoring tools
+USER root
+RUN apk add --no-cache curl jq
+
+# Copy Prometheus configuration
+COPY monitoring/prometheus/prometheus.yml /etc/prometheus/prometheus.yml
+
+# Copy Grafana configuration
+COPY monitoring/grafana/grafana.ini /etc/grafana/grafana.ini
+COPY monitoring/dashboards/ /var/lib/grafana/dashboards/
+
+# Create startup script
+COPY docker/monitor-entrypoint.sh /usr/local/bin/monitor-entrypoint.sh
+RUN chmod +x /usr/local/bin/monitor-entrypoint.sh
+
+# Expose ports
+EXPOSE 9090 3000
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/monitor-entrypoint.sh"]

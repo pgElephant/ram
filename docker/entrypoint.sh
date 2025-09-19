@@ -1,84 +1,111 @@
 #!/bin/bash
 set -e
 
-# Function to start PostgreSQL
-start_postgres() {
-    echo "Starting PostgreSQL..."
-    exec postgres -D /var/lib/postgresql/data \
-        -c config_file=/etc/postgresql/postgresql.conf \
-        -c hba_file=/etc/postgresql/pg_hba.conf
+# Function to wait for PostgreSQL to be ready
+wait_for_postgres() {
+    local host=$1
+    local port=$2
+    local max_attempts=30
+    local attempt=1
+    
+    echo "Waiting for PostgreSQL at $host:$port to be ready..."
+    
+    while [ $attempt -le $max_attempts ]; do
+        if pg_isready -h "$host" -p "$port" -U postgres >/dev/null 2>&1; then
+            echo "PostgreSQL is ready at $host:$port"
+            return 0
+        fi
+        
+        echo "Attempt $attempt/$max_attempts: PostgreSQL not ready yet, waiting..."
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    
+    echo "PostgreSQL failed to become ready after $max_attempts attempts"
+    return 1
+}
+
+# Function to initialize pgraft extension
+init_pgraft() {
+    local db_name=${1:-postgres}
+    
+    echo "Initializing pgraft extension in database $db_name..."
+    
+    # Wait for PostgreSQL to be ready
+    wait_for_postgres "localhost" "5432"
+    
+    # Create extension
+    psql -U postgres -d "$db_name" -c "CREATE EXTENSION IF NOT EXISTS pgraft;"
+    
+    # Initialize cluster if this is the primary node
+    if [ "$PGRaft_NODE_ID" = "1" ]; then
+        echo "Initializing cluster as primary node..."
+        psql -U postgres -d "$db_name" -c "SELECT pgraft_init_cluster('$PGRaft_CLUSTER_NAME', $PGRaft_NODE_ID, '$PGRaft_NODE_NAME');"
+    else
+        echo "Joining cluster as node $PGRaft_NODE_ID..."
+        psql -U postgres -d "$db_name" -c "SELECT pgraft_join_cluster('$PGRaft_CLUSTER_NAME', $PGRaft_NODE_ID, '$PGRaft_NODE_NAME');"
+    fi
 }
 
 # Function to start ramd daemon
 start_ramd() {
     echo "Starting ramd daemon..."
-    ramd start --config /etc/ramd/ramd.conf &
-    RAMD_PID=$!
-    echo "ramd started with PID: $RAMD_PID"
-}
-
-# Function to wait for PostgreSQL to be ready
-wait_for_postgres() {
-    echo "Waiting for PostgreSQL to be ready..."
-    until pg_isready -h localhost -p 5432 -U postgres; do
-        echo "PostgreSQL is not ready yet..."
+    
+    # Start ramd in background
+    ramd --config /etc/ramd/ramd.conf --daemon &
+    
+    # Wait for ramd to be ready
+    local max_attempts=30
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        if curl -s http://localhost:8080/health >/dev/null 2>&1; then
+            echo "ramd daemon is ready"
+            return 0
+        fi
+        
+        echo "Attempt $attempt/$max_attempts: ramd not ready yet, waiting..."
         sleep 2
+        attempt=$((attempt + 1))
     done
-    echo "PostgreSQL is ready!"
+    
+    echo "ramd daemon failed to become ready after $max_attempts attempts"
+    return 1
 }
 
-# Function to initialize pgraft extension
-init_pgraft() {
-    echo "Initializing pgraft extension..."
-    psql -h localhost -p 5432 -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pgraft;"
-    echo "pgraft extension initialized!"
-}
-
-# Function to setup cluster configuration
-setup_cluster() {
-    echo "Setting up cluster configuration..."
-    psql -h localhost -p 5432 -U postgres -d postgres << EOF
--- Configure pgraft
-ALTER SYSTEM SET pgraft.enabled = on;
-ALTER SYSTEM SET pgraft.node_id = ${PGRAPT_NODE_ID:-1};
-ALTER SYSTEM SET pgraft.cluster_addresses = '${PGRAPT_CLUSTER_ADDRESSES:-localhost:5432}';
-ALTER SYSTEM SET pgraft.heartbeat_interval = ${PGRAPT_HEARTBEAT_INTERVAL:-1000};
-ALTER SYSTEM SET pgraft.election_timeout = ${PGRAPT_ELECTION_TIMEOUT:-5000};
-
--- Reload configuration
-SELECT pg_reload_conf();
-EOF
-    echo "Cluster configuration completed!"
-}
-
-# Function to handle shutdown
-shutdown() {
-    echo "Shutting down services..."
-    if [ ! -z "$RAMD_PID" ]; then
-        kill $RAMD_PID 2>/dev/null || true
-    fi
-    pg_ctl stop -D /var/lib/postgresql/data
-    exit 0
-}
-
-# Set up signal handlers
-trap shutdown SIGTERM SIGINT
-
-# Start PostgreSQL in background
-start_postgres &
-POSTGRES_PID=$!
-
-# Wait for PostgreSQL to be ready
-wait_for_postgres
-
-# Initialize pgraft extension
-init_pgraft
-
-# Setup cluster configuration
-setup_cluster
-
-# Start ramd daemon
-start_ramd
-
-# Wait for PostgreSQL process
-wait $POSTGRES_PID
+# Main execution
+case "$1" in
+    postgres)
+        echo "Starting PostgreSQL with pgraft extension..."
+        
+        # Start PostgreSQL
+        exec postgres "$@"
+        ;;
+    init)
+        echo "Initializing pgraft cluster..."
+        init_pgraft "${2:-postgres}"
+        ;;
+    ramd)
+        echo "Starting ramd daemon..."
+        start_ramd
+        ;;
+    *)
+        echo "Starting PostgreSQL with pgraft extension and ramd daemon..."
+        
+        # Start PostgreSQL in background
+        postgres "$@" &
+        POSTGRES_PID=$!
+        
+        # Wait for PostgreSQL to be ready
+        wait_for_postgres "localhost" "5432"
+        
+        # Initialize pgraft
+        init_pgraft "${POSTGRES_DB:-postgres}"
+        
+        # Start ramd daemon
+        start_ramd
+        
+        # Wait for PostgreSQL process
+        wait $POSTGRES_PID
+        ;;
+esac
