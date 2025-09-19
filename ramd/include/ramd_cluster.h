@@ -13,6 +13,7 @@
 
 #include "ramd.h"
 #include "ramd_config.h"
+#include <libpq-fe.h>
 
 /* Node information structure */
 typedef struct ramd_node_t
@@ -49,6 +50,8 @@ typedef struct ramd_cluster_t
 	bool in_failover;
 	time_t last_topology_change;
 	time_t last_health_check;
+	/* PostgreSQL connection for pgraft integration */
+	PGconn* pg_conn;
 } ramd_cluster_t;
 
 /* Cluster management functions */

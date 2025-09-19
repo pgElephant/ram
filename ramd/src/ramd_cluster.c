@@ -10,6 +10,9 @@
 
 #include "ramd_cluster.h"
 #include "ramd_logging.h"
+#include "ramd_pgraft.h"
+#include "ramd_conn.h"
+#include "ramd_query.h"
 #include <libpq-fe.h>
 /* librale.h removed - using pgraft instead */
 
@@ -26,6 +29,36 @@ bool ramd_cluster_init(ramd_cluster_t* cluster, const ramd_config_t* config)
 	cluster->primary_node_id = -1;
 	cluster->leader_node_id = -1;
 	cluster->last_topology_change = time(NULL);
+
+	/* Initialize PostgreSQL connection for pgraft integration */
+	char conn_string[512];
+	snprintf(conn_string, sizeof(conn_string),
+	         "host=%s port=%d dbname=%s user=%s password=%s",
+	         config->hostname, config->postgresql_port,
+	         config->database_name, config->database_user, config->database_password);
+
+	cluster->pg_conn = ramd_conn_get(config->hostname, config->postgresql_port,
+	                                 config->database_name, config->database_user,
+	                                 config->database_password);
+	if (!cluster->pg_conn)
+	{
+		ramd_log_error("Failed to connect to PostgreSQL for pgraft integration");
+		/* Continue without pgraft integration */
+	}
+	else
+	{
+		ramd_log_info("PostgreSQL connection established for pgraft integration");
+		
+		/* Check if pgraft extension is available */
+		if (ramd_pgraft_check_availability(cluster->pg_conn) == 1)
+		{
+			ramd_log_info("pgraft extension is available and ready");
+		}
+		else
+		{
+			ramd_log_warning("pgraft extension is not available - cluster will use fallback logic");
+		}
+	}
 
 	ramd_log_info("Cluster initialized: %s (local_node_id=%d) - cluster is "
 	              "empty and ready for bootstrap",
@@ -83,6 +116,14 @@ void ramd_cluster_cleanup(ramd_cluster_t* cluster)
 		return;
 
 	ramd_log_info("Cleaning up cluster: %s", cluster->cluster_name);
+	
+	/* Close PostgreSQL connection if it exists */
+	if (cluster->pg_conn)
+	{
+		ramd_conn_close(cluster->pg_conn);
+		cluster->pg_conn = NULL;
+	}
+	
 	memset(cluster, 0, sizeof(ramd_cluster_t));
 }
 
@@ -145,6 +186,29 @@ bool ramd_cluster_has_quorum(const ramd_cluster_t* cluster)
 	if (!cluster)
 		return false;
 
+	/* Use pgraft consensus for quorum decisions if available */
+	if (cluster->pg_conn)
+	{
+		/* Check if we have a leader using pgraft */
+		int leader = ramd_pgraft_get_leader(cluster->pg_conn);
+		if (leader > 0)
+		{
+			ramd_log_debug("ramd_cluster_has_quorum: pgraft leader is %d", leader);
+			return true; /* If we have a leader, we have quorum */
+		}
+		else
+		{
+			ramd_log_debug("ramd_cluster_has_quorum: no pgraft leader, checking cluster health");
+			int is_healthy = ramd_pgraft_is_cluster_healthy(cluster->pg_conn);
+			if (is_healthy > 0)
+			{
+				return true;
+			}
+		}
+	}
+
+	/* Fall back to the original logic if pgraft is not available */
+	ramd_log_debug("ramd_cluster_has_quorum: falling back to simple quorum logic");
 	int healthy_nodes = ramd_cluster_count_healthy_nodes(cluster);
 	return healthy_nodes > (cluster->node_count / 2);
 }
@@ -385,11 +449,10 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 	
 	/* Step 1: Query pgraft extension for consensus state */
 	/* Connect to PostgreSQL and query pgraft consensus state */
-	PGconn *conn = PQconnectdb("host=localhost port=5432 dbname=postgres user=postgres");
-	if (PQstatus(conn) != CONNECTION_OK)
+	PGconn *conn = ramd_conn_get("localhost", 5432, "postgres", "postgres", "");
+	if (!conn)
 	{
-		ramd_log_error("Failed to connect to PostgreSQL: %s", PQerrorMessage(conn));
-		PQfinish(conn);
+		ramd_log_error("Failed to connect to PostgreSQL");
 		return false;
 	}
 	
@@ -400,7 +463,7 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 	{
 		ramd_log_error("Failed to get leader ID: %s", PQerrorMessage(conn));
 		PQclear(res);
-		PQfinish(conn);
+		ramd_conn_close(conn);
 		return false;
 	}
 	
@@ -418,7 +481,7 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 	{
 		ramd_log_error("Failed to get current state: %s", PQerrorMessage(conn));
 		PQclear(res);
-		PQfinish(conn);
+		ramd_conn_close(conn);
 		return false;
 	}
 	
@@ -436,7 +499,7 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 	{
 		ramd_log_error("Failed to get cluster nodes: %s", PQerrorMessage(conn));
 		PQclear(res);
-		PQfinish(conn);
+		ramd_conn_close(conn);
 		return false;
 	}
 	

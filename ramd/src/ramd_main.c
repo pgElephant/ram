@@ -23,14 +23,108 @@
 #include "ramd_sync_replication.h"
 #include "ramd_config_reload.h"
 #include "ramd_maintenance.h"
+#include "ramd_conn.h"
 
 /* Global daemon instance */
 ramd_daemon_t* g_ramd_daemon = NULL;
 
-/* Structure definition is in ramd_daemon.h */
 
 /* Signal handling */
 static volatile sig_atomic_t g_shutdown_requested = 0;
+
+/* Structure definition is in ramd_daemon.h */
+
+/*
+ * Establish PostgreSQL connection with retry logic using ramd_conn.c
+ * Keeps trying every 1 minute until successful connection
+ */
+static bool ramd_establish_postgres_connection(void)
+{
+	if (!g_ramd_daemon)
+		return false;
+	
+	ramd_log_info("Attempting to connect to PostgreSQL at %s:%d",
+	              g_ramd_daemon->config.hostname,
+	              g_ramd_daemon->config.postgresql_port);
+	
+	/* Use ramd_conn.c to get cached connection */
+	PGconn* conn = ramd_conn_get_cached(
+		g_ramd_daemon->config.node_id,
+		g_ramd_daemon->config.hostname,
+		g_ramd_daemon->config.postgresql_port,
+		g_ramd_daemon->config.database_name,
+		g_ramd_daemon->config.database_user,
+		g_ramd_daemon->config.database_password
+	);
+	
+	if (!conn)
+	{
+		ramd_log_error("Failed to connect to PostgreSQL");
+		return false;
+	}
+	
+	ramd_log_info("Successfully connected to PostgreSQL at %s:%d",
+	              g_ramd_daemon->config.hostname,
+	              g_ramd_daemon->config.postgresql_port);
+	return true;
+}
+
+/*
+ * Get the global PostgreSQL connection using ramd_conn.c
+ * Returns NULL if no connection available
+ */
+PGconn* ramd_get_postgres_connection(void)
+{
+	if (!g_ramd_daemon)
+		return NULL;
+	
+	/* Use ramd_conn.c to get cached connection */
+	return ramd_conn_get_cached(
+		g_ramd_daemon->config.node_id,
+		g_ramd_daemon->config.hostname,
+		g_ramd_daemon->config.postgresql_port,
+		g_ramd_daemon->config.database_name,
+		g_ramd_daemon->config.database_user,
+		g_ramd_daemon->config.database_password
+	);
+}
+
+/*
+ * Connection monitoring thread
+ * Checks connection every minute and reconnects if needed
+ */
+static void* ramd_connection_monitor_thread(void* arg)
+{
+	(void)arg; /* Unused parameter */
+	
+	while (!g_shutdown_requested)
+	{
+		sleep(60); /* Wait 1 minute */
+		
+		if (g_shutdown_requested)
+			break;
+		
+		PGconn* conn = ramd_get_postgres_connection();
+		if (!conn)
+		{
+			ramd_log_warning("PostgreSQL connection lost, attempting to reconnect...");
+			
+			/* Keep trying to reconnect every minute */
+			while (!g_shutdown_requested && !ramd_establish_postgres_connection())
+			{
+				ramd_log_error("Failed to reconnect to PostgreSQL, retrying in 60 seconds...");
+				sleep(60);
+			}
+			
+			if (!g_shutdown_requested)
+			{
+				ramd_log_info("Successfully reconnected to PostgreSQL");
+			}
+		}
+	}
+	
+	return NULL;
+}
 
 static void ramd_signal_handler(int sig)
 {
@@ -158,6 +252,23 @@ bool ramd_init(const char* config_file)
 	}
 
 	/* Logging will be initialized after command line overrides */
+
+	/* Initialize connection subsystem */
+	if (!ramd_conn_init())
+	{
+		fprintf(stderr, "Failed to initialize connection subsystem\n");
+		ramd_cleanup();
+		return false;
+	}
+
+	/* Establish PostgreSQL connection - BLOCK until successful */
+	fprintf(stderr, "Establishing PostgreSQL connection...\n");
+	while (!ramd_establish_postgres_connection())
+	{
+		fprintf(stderr, "Failed to connect to PostgreSQL, retrying in 60 seconds...\n");
+		sleep(60);
+	}
+	fprintf(stderr, "PostgreSQL connection established successfully\n");
 
 	/* Initialize cluster */
 	if (!ramd_cluster_init(&g_ramd_daemon->cluster, &g_ramd_daemon->config))
@@ -296,6 +407,9 @@ void ramd_cleanup(void)
 	/* Destroy mutex */
 	pthread_mutex_destroy(&g_ramd_daemon->mutex);
 
+	/* Cleanup PostgreSQL connections using ramd_conn.c */
+	ramd_conn_cleanup();
+
 	/* Cleanup logging */
 	ramd_logging_cleanup();
 
@@ -364,6 +478,19 @@ void ramd_run(void)
 		ramd_log_fatal("Monitor startup failure: Critical error - unable to "
 		               "start database monitoring subsystem");
 		return;
+	}
+
+	/* Start PostgreSQL connection monitoring thread */
+	pthread_t conn_monitor_thread;
+	if (pthread_create(&conn_monitor_thread, NULL, ramd_connection_monitor_thread, NULL) != 0)
+	{
+		ramd_log_error("Failed to create PostgreSQL connection monitoring thread");
+	}
+	else
+	{
+		ramd_log_info("PostgreSQL connection monitoring thread started");
+		/* Detach the thread so it cleans up automatically */
+		pthread_detach(conn_monitor_thread);
 	}
 
 	g_ramd_daemon->running = true;

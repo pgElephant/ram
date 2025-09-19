@@ -26,6 +26,9 @@
 #include "ramd_postgresql.h"
 #include "ramd_daemon.h"
 #include "ramd_cluster.h"
+#include "ramd_basebackup.h"
+#include "ramd_conn.h"
+#include "ramd_query.h"
 
 /* Global maintenance state */
 static ramd_maintenance_state_t g_maintenance_states[RAMD_MAX_NODES];
@@ -551,17 +554,34 @@ bool ramd_maintenance_create_backup(int32_t node_id, char* backup_id,
 	/* Generate backup ID */
 	snprintf(backup_id, backup_id_size, "maintenance_backup_%d_%ld", node_id, now);
 
-	/* Execute actual backup using pg_basebackup */
+	/* Execute actual backup using ramd_basebackup */
 	ramd_log_info("Creating backup for node %d: %s", node_id, backup_id);
 
 	/* Real backup execution using configurable backup directory */
-	char backup_cmd[512];
 	const char *backup_dir = g_ramd_daemon->config.backup_dir;
 	if (backup_dir == NULL) {
 		backup_dir = "/var/lib/postgresql/backups";
 	}
-	snprintf(backup_cmd, sizeof(backup_cmd), "pg_basebackup -D %s -Fp -Xs -P -v", backup_dir);
+	
+	/* Create backup directory if it doesn't exist */
+	char backup_cmd[256];
+	snprintf(backup_cmd, sizeof(backup_cmd), "mkdir -p %s", backup_dir);
 	system(backup_cmd);
+	
+	/* Use ramd_basebackup function with ramd_conn */
+	PGconn *conn = ramd_conn_get("localhost", 5432, "postgres", "postgres", NULL);
+	if (!conn) {
+		ramd_log_error("Failed to connect to PostgreSQL for backup");
+		return false;
+	}
+	
+	int result = ramd_take_basebackup(conn, backup_dir, backup_id);
+	ramd_conn_close(conn);
+	
+	if (result != 0) {
+		ramd_log_error("Failed to create backup for node %d", node_id);
+		return false;
+	}
 
 	ramd_log_info("Backup created successfully: %s", backup_id);
 	return true;
@@ -898,20 +918,20 @@ bool ramd_maintenance_take_basebackup_from_primary(const char* data_dir,
 	ramd_log_info("Taking base backup from primary %s:%d to %s", primary_host,
 	              primary_port, data_dir);
 
-	/* Build pg_basebackup command */
-	char backup_cmd[2048];
-	snprintf(backup_cmd, sizeof(backup_cmd),
-	         "pg_basebackup -h %s -p %d -U postgres -D %s -Fp -Xs -P -v "
-	         "--no-password",
-	         primary_host, primary_port, data_dir);
-
-	ramd_log_info("Executing: %s", backup_cmd);
+	/* Use ramd_basebackup function with ramd_conn */
+	PGconn *conn = ramd_conn_get(primary_host, primary_port, "postgres", "postgres", NULL);
+	if (!conn) {
+		ramd_log_error("Failed to connect to primary for backup");
+		return false;
+	}
 
 	/* Execute base backup */
-	int result = system(backup_cmd);
+	int result = ramd_take_basebackup(conn, data_dir, "maintenance_backup");
+	ramd_conn_close(conn);
+	
 	if (result != 0)
 	{
-		ramd_log_error("Base backup failed with exit code %d", result);
+		ramd_log_error("Base backup failed");
 		return false;
 	}
 
@@ -1686,14 +1706,17 @@ check_no_active_transactions(void)
 	         g_ramd_daemon->config.database_name,
 	         g_ramd_daemon->config.database_user,
 	         g_ramd_daemon->config.database_password);
-	PGconn *conn = PQconnectdb(connection_string);
-	if (!conn || PQstatus(conn) != CONNECTION_OK)
+	PGconn *conn = ramd_conn_get(g_ramd_daemon->config.hostname,
+	                             g_ramd_daemon->config.postgresql_port,
+	                             g_ramd_daemon->config.database_name,
+	                             g_ramd_daemon->config.database_user,
+	                             g_ramd_daemon->config.database_password);
+	if (!conn)
 	{
 		ramd_log_warning("Cannot check active transactions: connection failed");
-		if (conn) PQfinish(conn);
 		return false;
 	}
-	PGresult *result = PQexec(conn, "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND pid != pg_backend_pid()");
+	PGresult *result = ramd_conn_exec(conn, "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND pid != pg_backend_pid()");
 	bool no_active_transactions = true;
 	if (result && PQresultStatus(result) == PGRES_TUPLES_OK)
 	{
@@ -1710,7 +1733,7 @@ check_no_active_transactions(void)
 		no_active_transactions = false;
 	}
 	PQclear(result);
-	PQfinish(conn);
+	ramd_conn_close(conn);
 	ramd_log_info("No active transactions check %s", no_active_transactions ? "passed" : "failed");
 	return no_active_transactions;
 }
@@ -1741,20 +1764,18 @@ static bool ping_node(const char* hostname, int32_t port) {
 }
 
 static double get_replication_lag(ramd_node_t* node) {
-    char conn_str[512];
-    snprintf(conn_str, sizeof(conn_str), "host=%s port=%d user=%s dbname=%s",
-             node->hostname, node->port, g_ramd_daemon->config.database_user, g_ramd_daemon->config.database_name);
-    PGconn* conn = PQconnectdb(conn_str);
-    if (PQstatus(conn) != CONNECTION_OK) {
-        PQfinish(conn);
+    PGconn* conn = ramd_conn_get(node->hostname, node->port, 
+                                g_ramd_daemon->config.database_name,
+                                g_ramd_daemon->config.database_user, "");
+    if (!conn) {
         return -1;  // Error value
     }
-    PGresult* res = PQexec(conn, "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), pg_last_wal_replay_lsn()) / 1024.0 / 1024.0 AS lag_mb;");
+    PGresult* res = ramd_query_exec_with_result(conn, "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), pg_last_wal_replay_lsn()) / 1024.0 / 1024.0 AS lag_mb;");
     double lag = 0;
     if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
         lag = atof(PQgetvalue(res, 0, 0));  // Convert to double
     }
     PQclear(res);
-    PQfinish(conn);
+    ramd_conn_close(conn);
     return lag;
 }

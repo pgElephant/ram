@@ -18,6 +18,8 @@
 #include "ramd_sync_replication.h"
 #include "ramd_logging.h"
 #include "ramd_postgresql.h"
+#include "ramd_basebackup.h"
+#include "ramd_conn.h"
 #include "ramd_daemon.h"
 
 /* Global synchronous replication state */
@@ -565,19 +567,25 @@ bool ramd_sync_replication_take_basebackup(const ramd_config_t* config,
 	ramd_log_info("Taking base backup from primary %s:%d", primary_host,
 	              primary_port);
 
-	/* Build pg_basebackup command */
-	char backup_cmd[2048];
-	snprintf(backup_cmd, sizeof(backup_cmd),
-	         "pg_basebackup -h %s -p %d -U postgres -D %s -Fp -Xs -P -v",
-	         primary_host, primary_port, config->postgresql_data_dir);
-
-	ramd_log_info("Executing: %s", backup_cmd);
+	/* Use ramd_basebackup function */
+	char conninfo[512];
+	snprintf(conninfo, sizeof(conninfo), "host=%s port=%d dbname=postgres user=postgres",
+	         primary_host, primary_port);
+	
+	PGconn *conn = ramd_conn_get(primary_host, primary_port, "postgres", 
+	                             config->replication_user, "");
+	if (!conn) {
+		ramd_log_error("Failed to connect to primary for backup");
+		return false;
+	}
 
 	/* Execute base backup */
-	int result = system(backup_cmd);
+	int result = ramd_take_basebackup(conn, config->postgresql_data_dir, "sync_replication_backup");
+	ramd_conn_close(conn);
+	
 	if (result != 0)
 	{
-		ramd_log_error("Base backup failed with exit code %d", result);
+		ramd_log_error("Base backup failed");
 		return false;
 	}
 

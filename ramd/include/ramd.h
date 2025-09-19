@@ -26,6 +26,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <libpq-fe.h>
 
 /* Version information */
 #define RAMD_VERSION_MAJOR 1
@@ -86,6 +87,7 @@ extern void ramd_cleanup(void);
 extern void ramd_run(void);
 extern void ramd_stop(void);
 extern bool ramd_is_running(void);
+extern PGconn* ramd_get_postgres_connection(void);
 
 /* Signal handling */
 extern void ramd_setup_signals(void);

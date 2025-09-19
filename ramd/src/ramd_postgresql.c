@@ -11,6 +11,9 @@
 #include "ramd_postgresql.h"
 #include "ramd_logging.h"
 #include "ramd_defaults.h"
+#include "ramd_basebackup.h"
+#include "ramd_conn.h"
+#include "ramd_query.h"
 #include <libpq-fe.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -50,13 +53,11 @@ bool ramd_postgresql_connect(ramd_postgresql_connection_t* conn,
 	}
 
 	ramd_log_debug("PostgreSQL connection string: %s", conninfo);
-	conn->connection = PQconnectdb(conninfo);
+	conn->connection = ramd_conn_get(host, port, database, user, password);
 
-	if (PQstatus((PGconn*) conn->connection) != CONNECTION_OK)
+	if (!conn->connection)
 	{
-		ramd_log_error("PostgreSQL connection failed: %s",
-		               PQerrorMessage((PGconn*) conn->connection));
-		PQfinish((PGconn*) conn->connection);
+		ramd_log_error("PostgreSQL connection failed");
 		conn->connection = NULL;
 		conn->is_connected = false;
 		return false;
@@ -77,7 +78,7 @@ void ramd_postgresql_disconnect(ramd_postgresql_connection_t* conn)
 
 	if (conn->connection)
 	{
-		PQfinish((PGconn*) conn->connection);
+		ramd_conn_close((PGconn*) conn->connection);
 		conn->connection = NULL;
 	}
 
@@ -203,7 +204,6 @@ bool ramd_postgresql_create_basebackup(const ramd_config_t* config,
                                        const char* primary_host,
                                        int32_t primary_port)
 {
-	char command[1024];
 	int status;
 
 	if (!config || !primary_host)
@@ -211,13 +211,17 @@ bool ramd_postgresql_create_basebackup(const ramd_config_t* config,
 
 	ramd_log_info("Taking base backup from %s:%d", primary_host, primary_port);
 
-	/* Execute pg_basebackup command */
-	snprintf(command, sizeof(command),
-	         "%s/pg_basebackup -h %s -p %d -D %s -U %s -v -P -W -R",
-	         config->postgresql_bin_dir, primary_host, primary_port,
-	         config->postgresql_data_dir, config->replication_user);
+	/* Use ramd_basebackup function with ramd_conn */
+	PGconn *conn = ramd_conn_get(primary_host, primary_port, "postgres", config->replication_user, NULL);
+	if (!conn) {
+		ramd_log_error("Failed to connect to primary for backup");
+		return false;
+	}
 
-	status = system(command);
+	int result = ramd_take_basebackup(conn, config->postgresql_data_dir, "postgresql_basebackup");
+	ramd_conn_close(conn);
+	
+	status = result == 0 ? 0 : -1;
 
 	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 	{
@@ -943,8 +947,9 @@ float ramd_postgresql_get_health_score(const ramd_config_t* config)
 	         config->hostname, config->postgresql_port, config->database_name,
 	         config->database_user);
 
-	conn = PQconnectdb(conninfo);
-	if (PQstatus(conn) == CONNECTION_OK)
+	conn = ramd_conn_get(config->hostname, config->postgresql_port, "postgres",
+	                     config->database_user, "");
+	if (conn)
 	{
 		/* Check replication lag if this is a standby */
 		res = PQexec(
@@ -974,14 +979,14 @@ float ramd_postgresql_get_health_score(const ramd_config_t* config)
 		}
 		PQclear(res);
 
-		PQfinish(conn);
+		ramd_conn_close(conn);
 	}
 	else
 	{
 		/* Connection failed, subtract from health score */
 		health -= 0.2f;
 		if (conn)
-			PQfinish(conn);
+			ramd_conn_close(conn);
 	}
 
 	ramd_log_debug("PostgreSQL health score: %.2f", health);

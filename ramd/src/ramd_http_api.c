@@ -25,6 +25,8 @@
 #include "ramd_logging.h"
 #include "ramd_postgresql.h"
 #include "ramd_cluster.h"
+#include "ramd_conn.h"
+#include "ramd_query.h"
 #include "ramd_config_reload.h"
 #include "ramd_sync_replication.h"
 #include "ramd_maintenance.h"
@@ -1413,11 +1415,10 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	         "host=%s port=%d dbname=postgres user=postgres", 
 	         hostname, new_node_id + 5432);
 	
-	PGconn *conn = PQconnectdb(conn_string);
-	if (PQstatus(conn) != CONNECTION_OK)
+	PGconn *conn = ramd_conn_get(hostname, new_node_id + 5432, "postgres", "postgres", "");
+	if (!conn)
 	{
-		ramd_log_error("Failed to connect to replica PostgreSQL: %s", PQerrorMessage(conn));
-		PQfinish(conn);
+		ramd_log_error("Failed to connect to replica PostgreSQL");
 		return;
 	}
 	
@@ -1428,7 +1429,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	{
 		ramd_log_error("Failed to check pgraft extension: %s", PQerrorMessage(conn));
 		PQclear(res);
-		PQfinish(conn);
+		ramd_conn_close(conn);
 		return;
 	}
 	
@@ -1444,7 +1445,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 		{
 			ramd_log_error("Failed to create pgraft extension: %s", PQerrorMessage(conn));
 			PQclear(res);
-			PQfinish(conn);
+			ramd_conn_close(conn);
 			return;
 		}
 		PQclear(res);
@@ -1478,7 +1479,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	{
 		ramd_log_error("Failed to verify pgraft extension: %s", PQerrorMessage(conn));
 		PQclear(res);
-		PQfinish(conn);
+		ramd_conn_close(conn);
 		return;
 	}
 	
@@ -1497,11 +1498,10 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	
 	/* Step 4a: Get current cluster configuration */
 	/* Retrieve current cluster state and configuration */
-	PGconn *consensus_conn = PQconnectdb(conn_string);
-	if (PQstatus(consensus_conn) != CONNECTION_OK)
+	PGconn *consensus_conn = ramd_conn_get(hostname, new_node_id + 5432, "postgres", "postgres", "");
+	if (!consensus_conn)
 	{
-		ramd_log_error("Failed to connect for consensus: %s", PQerrorMessage(consensus_conn));
-		PQfinish(consensus_conn);
+		ramd_log_error("Failed to connect for consensus");
 		return;
 	}
 	
@@ -1512,7 +1512,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	{
 		ramd_log_error("Failed to add node to consensus: %s", PQerrorMessage(consensus_conn));
 		PQclear(consensus_res);
-		PQfinish(consensus_conn);
+		ramd_conn_close(consensus_conn);
 		return;
 	}
 	PQclear(consensus_res);
