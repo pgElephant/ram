@@ -20,9 +20,9 @@ typedef struct ramd_postgresql_connection_t
 {
 	char host[RAMD_MAX_HOSTNAME_LENGTH];
 	int32_t port;
-	char database[64];
-	char user[64];
-	char password[64];
+	char database[RAMD_MAX_HOSTNAME_LENGTH];
+	char user[RAMD_MAX_HOSTNAME_LENGTH];
+	char password[RAMD_MAX_HOSTNAME_LENGTH];
 	void* connection; /* PGconn * */
 	bool is_connected;
 	time_t last_activity;

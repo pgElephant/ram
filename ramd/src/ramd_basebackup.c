@@ -110,35 +110,35 @@ build_basebackup_command(const char *conninfo, BaseBackupOptions *options)
         return NULL;
     }
 
-    pos += snprintf(cmd + pos, cmd_len - pos, "pg_basebackup -D %s", options->target_dir);
+    pos += (size_t)snprintf(cmd + pos, cmd_len - pos, "pg_basebackup -D %s", options->target_dir);
 
     if (options->label)
-        pos += snprintf(cmd + pos, cmd_len - pos, " -l \"%s\"", options->label);
+        pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " -l \"%s\"", options->label);
     
     if (options->progress)
-        pos += snprintf(cmd + pos, cmd_len - pos, " -P");
+        pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " -P");
     
     if (options->verbose)
-        pos += snprintf(cmd + pos, cmd_len - pos, " -v");
+        pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " -v");
     
     if (options->write_recovery_conf)
-        pos += snprintf(cmd + pos, cmd_len - pos, " -R");
+        pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " -R");
     
     if (options->verify_checksums)
-        pos += snprintf(cmd + pos, cmd_len - pos, " --verify-checksums");
+        pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " --verify-checksums");
 
     if (options->compression_level > 0)
-        pos += snprintf(cmd + pos, cmd_len - pos, " -Z %d", options->compression_level);
+        pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " -Z %d", options->compression_level);
 
     if (options->max_rate > 0)
-        pos += snprintf(cmd + pos, cmd_len - pos, " --max-rate=%d", options->max_rate);
+        pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " --max-rate=%d", options->max_rate);
 
-    pos += snprintf(cmd + pos, cmd_len - pos, " -X %s", options->wal_method == 1 ? "stream" : "fetch");
+    pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " -X %s", options->wal_method == 1 ? "stream" : "fetch");
     
     if (options->nthreads > 1)
-        pos += snprintf(cmd + pos, cmd_len - pos, " -T %d", options->nthreads);
+        pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " -T %d", options->nthreads);
 
-    pos += snprintf(cmd + pos, cmd_len - pos, " \"%s\"", conninfo);
+    pos += (size_t)snprintf(cmd + pos, cmd_len - pos, " \"%s\"", conninfo);
 
     return cmd;
 }

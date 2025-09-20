@@ -73,15 +73,15 @@ void
 ramd_log(ramd_log_level_t level, const char* file, int line,
          const char* function, const char* format, ...)
 {
-	va_list args;
-	char timestamp[64];
-	char message[RAMD_MAX_LOG_MESSAGE];
-	char full_message[RAMD_MAX_LOG_MESSAGE + 256];
-	char username[256];
+	va_list      args;
+	char         timestamp[RAMD_MAX_TIMESTAMP_LENGTH];
+	char         message[RAMD_MAX_LOG_MESSAGE];
+	char         full_message[RAMD_MAX_LOG_MESSAGE + RAMD_MAX_USERNAME_LENGTH];
+	char         username[RAMD_MAX_USERNAME_LENGTH];
 	struct passwd *pw;
-	time_t now;
-	struct tm* tm_info;
-	pid_t pid;
+	time_t       now;
+	struct tm*   tm_info;
+	pid_t        pid;
 
 	if (!g_ramd_logging.initialized || level < g_ramd_logging.min_level)
 		return;

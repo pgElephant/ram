@@ -13,9 +13,11 @@ ramd_SOURCES = src/ramd_main.c \
                src/ramd_sync_replication.c \
                src/ramd_config_reload.c \
                src/ramd_maintenance.c \
-               src/ramd_cascade.c \
-               src/ramd_callbacks.c \
-               src/ramd_metrics.c
+               src/ramd_metrics.c \
+               src/ramd_basebackup.c \
+               src/ramd_conn.c \
+               src/ramd_query.c \
+               src/ramd_pgraft.c
 
 # Link with pthread and PostgreSQL
 ramd_LDADD = -lpthread -L/usr/local/pgsql/lib -L/opt/homebrew/lib -lpq

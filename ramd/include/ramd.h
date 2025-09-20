@@ -34,21 +34,8 @@
 #define RAMD_VERSION_PATCH 0
 #define RAMD_VERSION_STRING "1.0.0"
 
-/* Configuration constants */
-#define RAMD_MAX_HOSTNAME_LENGTH 256
-#define RAMD_MAX_PATH_LENGTH 512
-#define RAMD_MAX_COMMAND_LENGTH 1024
-#define RAMD_MAX_LOG_MESSAGE 2048
 /* Use centralized defaults from ramd_defaults.h */
 #include "ramd_defaults.h"
-#define RAMD_MAX_NODES RAMD_DEFAULT_MAX_NODES
-#define RAMD_DEFAULT_PORT RAMD_DEFAULT_PG_PORT
-#define RAMD_DEFAULT_DSTORE_PORT 7401
-
-/* Daemon constants */
-#define RAMD_MONITOR_INTERVAL_MS 5000      /* 5 seconds */
-#define RAMD_FAILOVER_TIMEOUT_MS 30000     /* 30 seconds */
-#define RAMD_HEALTH_CHECK_TIMEOUT_MS 10000 /* 10 seconds */
 
 /* Node states */
 typedef enum ramd_node_state

@@ -169,8 +169,10 @@ ramd_failover_select_new_primary(const ramd_cluster_t* cluster,
 
 	for (i = 0; i < cluster->node_count; i++)
 	{
-		const ramd_node_t* node = &cluster->nodes[i];
+		const ramd_node_t* node;
 		ramd_postgresql_connection_t conn;
+
+		node = &cluster->nodes[i];
 
 		if (node->role != RAMD_ROLE_STANDBY || !node->is_healthy)
 			continue;
@@ -250,7 +252,7 @@ ramd_failover_promote_node(ramd_cluster_t* cluster,
 	cluster->primary_node_id = node_id;
 
 	ramd_log_info("Waiting for PostgreSQL promotion to complete...");
-	sleep(3);
+	sleep(RAMD_FAILOVER_SLEEP_SECONDS);
 
 	if (!ramd_failover_validate_promotion(cluster, node_id))
 	{
@@ -316,10 +318,10 @@ ramd_failover_update_sync_replication_config(ramd_cluster_t* cluster,
                                                   int32_t new_primary_id)
 {
 	ramd_node_t* new_primary;
-	char sync_standby_names[512] = "";
+	char sync_standby_names[RAMD_MAX_COMMAND_LENGTH] = "";
 	int standby_count = 0;
 	int i;
-	char config_update[1024];
+	char config_update[RAMD_MAX_COMMAND_LENGTH];
 	ramd_postgresql_connection_t conn;
 	PGresult* res;
 
@@ -435,7 +437,7 @@ ramd_failover_rebuild_replica_node(ramd_cluster_t* cluster,
 {
 	ramd_node_t* node;
 	ramd_node_t* primary;
-	char rm_cmd[512];
+	char rm_cmd[RAMD_MAX_COMMAND_LENGTH];
 	ramd_postgresql_connection_t conn;
 	PGresult* res;
 	bool is_recovering;
@@ -492,7 +494,7 @@ ramd_failover_rebuild_replica_node(ramd_cluster_t* cluster,
 		return false;
 	}
 
-	sleep(5);
+	sleep(RAMD_FAILOVER_VALIDATION_SLEEP_SECONDS);
 
 	if (ramd_postgresql_connect(&conn, node->hostname, node->postgresql_port,
 	                            "postgres", "postgres", ""))
@@ -721,7 +723,7 @@ ramd_failover_take_basebackup(const ramd_config_t* config,
                                    int32_t primary_port)
 {
 	int result;
-	char conninfo[512];
+	char conninfo[RAMD_MAX_COMMAND_LENGTH];
 	PGconn *conn;
 
 	if (!config || !primary_host)

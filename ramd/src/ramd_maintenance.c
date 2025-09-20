@@ -14,7 +14,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <libpq-fe.h>
-#include <errno.h> /* For errno */
+#include <errno.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -33,12 +33,12 @@
 extern ramd_daemon_t* g_ramd_daemon;
 #include "ramd_query.h"
 
-/* Global maintenance state */
+
 static ramd_maintenance_state_t g_maintenance_states[RAMD_MAX_NODES];
 static pthread_mutex_t g_maintenance_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool g_maintenance_initialized = false;
 
-/* Global maintenance schedule */
+
 typedef struct ramd_maintenance_schedule_t
 {
 	time_t scheduled_time;
@@ -49,7 +49,7 @@ typedef struct ramd_maintenance_schedule_t
 
 static ramd_maintenance_schedule_t g_maintenance_schedule;
 
-/* Forward declarations */
+
 static bool ping_node(const char* hostname, int32_t port);
 static double get_replication_lag(ramd_node_t* node);
 
@@ -57,8 +57,10 @@ bool ramd_maintenance_init(void)
 {
 	pthread_mutex_lock(&g_maintenance_mutex);
 
-	/* Initialize all maintenance states */
-	for (int i = 0; i < RAMD_MAX_NODES; i++)
+	
+	int i;
+
+	for (i = 0; i < RAMD_MAX_NODES; i++)
 	{
 		memset(&g_maintenance_states[i], 0, sizeof(ramd_maintenance_state_t));
 		g_maintenance_states[i].status = RAMD_MAINTENANCE_STATUS_INACTIVE;
@@ -72,7 +74,6 @@ bool ramd_maintenance_init(void)
 	return true;
 }
 
-
 void ramd_maintenance_cleanup(void)
 {
 	pthread_mutex_lock(&g_maintenance_mutex);
@@ -82,10 +83,9 @@ void ramd_maintenance_cleanup(void)
 	ramd_log_info("Maintenance mode system cleaned up");
 }
 
-
 bool ramd_maintenance_enter(const ramd_maintenance_config_t* config)
 {
-	ramd_maintenance_check_t checks;
+	ramd_maintenance_check_t  checks;
 	ramd_maintenance_state_t* state;
 
 	if (!config || !g_maintenance_initialized)
@@ -98,7 +98,7 @@ bool ramd_maintenance_enter(const ramd_maintenance_config_t* config)
 		return false;
 	}
 
-	/* Perform pre-maintenance checks */
+	
 	if (!ramd_maintenance_pre_check(config, &checks))
 	{
 		ramd_log_error("Pre-maintenance checks failed: %s",
@@ -110,7 +110,7 @@ bool ramd_maintenance_enter(const ramd_maintenance_config_t* config)
 
 	state = &g_maintenance_states[config->target_node_id - 1];
 
-	/* Check if already in maintenance */
+	
 	if (state->in_maintenance)
 	{
 		ramd_log_warning("Node %d is already in maintenance mode",
@@ -119,7 +119,7 @@ bool ramd_maintenance_enter(const ramd_maintenance_config_t* config)
 		return false;
 	}
 
-	/* Initialize maintenance state */
+	
 	state->in_maintenance = true;
 	state->type = config->type;
 	state->status = RAMD_MAINTENANCE_STATUS_PENDING;
@@ -141,7 +141,7 @@ bool ramd_maintenance_enter(const ramd_maintenance_config_t* config)
 	    config->target_node_id, ramd_maintenance_type_to_string(config->type),
 	    config->reason);
 
-	/* Disable auto-failover if requested */
+	
 	if (config->disable_auto_failover)
 	{
 		if (!ramd_maintenance_disable_auto_failover(config->target_node_id))
@@ -151,10 +151,10 @@ bool ramd_maintenance_enter(const ramd_maintenance_config_t* config)
 		}
 	}
 
-	/* Create backup if requested */
+	
 	if (config->backup_before_maintenance)
 	{
-		char backup_id[64];
+		char backup_id[RAMD_MAX_TIMESTAMP_LENGTH];
 		if (ramd_maintenance_create_backup(config->target_node_id, backup_id,
 		                                   sizeof(backup_id)))
 		{
@@ -169,7 +169,7 @@ bool ramd_maintenance_enter(const ramd_maintenance_config_t* config)
 		}
 	}
 
-	/* Drain connections if requested */
+	
 	if (config->drain_connections)
 	{
 		ramd_log_info("Draining connections for node %d",
@@ -187,7 +187,7 @@ bool ramd_maintenance_enter(const ramd_maintenance_config_t* config)
 		}
 	}
 
-	/* Mark maintenance as active */
+	
 	pthread_mutex_lock(&g_maintenance_mutex);
 	state->status = RAMD_MAINTENANCE_STATUS_ACTIVE;
 	strncpy(state->status_message, "Maintenance mode active",
@@ -226,7 +226,7 @@ bool ramd_maintenance_exit(int32_t node_id)
 
 	ramd_log_info("Exiting maintenance mode for node %d", node_id);
 
-	/* Re-enable auto-failover if it was disabled */
+	
 	if (state->auto_failover_disabled)
 	{
 		if (!ramd_maintenance_enable_auto_failover(node_id))
@@ -236,14 +236,14 @@ bool ramd_maintenance_exit(int32_t node_id)
 		}
 	}
 
-	/* Allow new connections */
+	
 	if (!ramd_maintenance_prevent_new_connections(node_id, false))
 	{
 		ramd_log_warning("Failed to re-enable connections for node %d",
 		                 node_id);
 	}
 
-	/* Clear maintenance state */
+	
 	pthread_mutex_lock(&g_maintenance_mutex);
 	memset(state, 0, sizeof(ramd_maintenance_state_t));
 	state->status = RAMD_MAINTENANCE_STATUS_INACTIVE;
@@ -278,28 +278,28 @@ bool ramd_maintenance_pre_check(const ramd_maintenance_config_t* config,
 
 	memset(checks, 0, sizeof(ramd_maintenance_check_t));
 
-	/* Check cluster health - real implementation */
+	
 	checks->cluster_healthy = check_cluster_health();
 	checks->all_nodes_reachable = check_all_nodes_reachable();
 	checks->sufficient_standbys = check_sufficient_standbys();
 
-	/* Check replication status */
+	
 	checks->replication_current = check_replication_current();
 
-	/* Check active connections */
+	
 	if (!ramd_maintenance_get_connection_count(config->target_node_id,
 	                                           &checks->active_connections))
 	{
-		checks->active_connections = -1; /* Unknown */
+		checks->active_connections = -1; 
 	}
 
-	/* Check for active transactions */
+	
 	checks->no_active_transactions = check_no_active_transactions();
 
-	/* Check backup availability */
+	
 	checks->backup_available = check_backup_availability();
 
-	/* Validate maintenance safety */
+	
 	if (!checks->cluster_healthy)
 	{
 		strncat(checks->check_details, "Cluster is not healthy. ",
@@ -319,7 +319,7 @@ bool ramd_maintenance_pre_check(const ramd_maintenance_config_t* config,
 	if (config &&
 	    config->target_node_id == g_ramd_daemon->cluster.primary_node_id)
 	{
-		/* Check if we have at least one healthy standby */
+		
 		int32_t healthy_standbys = 0;
 		for (int32_t i = 0; i < g_ramd_daemon->cluster.node_count; i++)
 		{
@@ -362,7 +362,7 @@ bool ramd_maintenance_drain_connections(int32_t node_id, int32_t timeout_ms)
 	ramd_log_info("Draining connections for node %d (timeout: %d ms)", node_id,
 	              timeout_ms);
 
-	/* Prevent new connections */
+	
 	if (!ramd_maintenance_prevent_new_connections(node_id, true))
 	{
 		ramd_log_error("Failed to prevent new connections for node %d",
@@ -370,7 +370,7 @@ bool ramd_maintenance_drain_connections(int32_t node_id, int32_t timeout_ms)
 		return false;
 	}
 
-	/* Wait for existing connections to close */
+	
 	while (elapsed_ms < timeout_ms)
 	{
 		if (!ramd_maintenance_get_connection_count(node_id, &connection_count))
@@ -380,7 +380,7 @@ bool ramd_maintenance_drain_connections(int32_t node_id, int32_t timeout_ms)
 			break;
 		}
 
-		if (connection_count <= 1) /* Only our own connection should remain */
+		if (connection_count <= 1) 
 		{
 			ramd_log_info("Successfully drained connections for node %d",
 			              node_id);
@@ -419,7 +419,7 @@ bool ramd_maintenance_get_connection_count(int32_t node_id
 
 	*count = 0;
 
-	/* Connect to PostgreSQL to get connection count */
+	
 	ramd_postgresql_connection_t pg_conn;
 	if (!ramd_postgresql_connect(&pg_conn, g_ramd_daemon->config.hostname,
 	                             g_ramd_daemon->config.postgresql_port,
@@ -432,7 +432,7 @@ bool ramd_maintenance_get_connection_count(int32_t node_id
 
 	conn = (PGconn*) pg_conn.connection;
 
-	/* Query active connections */
+	
 	res = ramd_query_exec_with_result(conn, "SELECT count(*) FROM pg_stat_activity "
 	                                       "WHERE state = 'active' AND datname IS NOT NULL");
 
@@ -452,9 +452,9 @@ bool ramd_maintenance_prevent_new_connections(int32_t node_id, bool prevent)
 {
 	PGconn* conn;
 	PGresult* res;
-	char sql[256];
+	char sql[RAMD_MAX_COMMAND_LENGTH];
 
-	/* Connect to PostgreSQL to prevent new connections */
+	
 	ramd_postgresql_connection_t pg_conn;
 	if (!ramd_postgresql_connect(&pg_conn, g_ramd_daemon->config.hostname,
 	                             g_ramd_daemon->config.postgresql_port,
@@ -469,12 +469,12 @@ bool ramd_maintenance_prevent_new_connections(int32_t node_id, bool prevent)
 
 	if (prevent)
 	{
-		/* Set connection limit to 1 (for superuser only) */
+		
 		snprintf(sql, sizeof(sql), "ALTER SYSTEM SET max_connections = 1");
 	}
 	else
 	{
-		/* Reset to default connection limit */
+		
 		snprintf(sql, sizeof(sql), "ALTER SYSTEM RESET max_connections");
 	}
 
@@ -491,7 +491,7 @@ bool ramd_maintenance_prevent_new_connections(int32_t node_id, bool prevent)
 
 	PQclear(res);
 
-	/* Reload configuration */
+	
 	res = ramd_query_exec_with_result(conn, "SELECT pg_reload_conf()");
 	PQclear(res);
 
@@ -554,24 +554,24 @@ bool ramd_maintenance_create_backup(int32_t node_id, char* backup_id,
 	if (!backup_id || backup_id_size == 0)
 		return false;
 
-	/* Generate backup ID */
+	
 	snprintf(backup_id, backup_id_size, "maintenance_backup_%d_%ld", node_id, now);
 
-	/* Execute actual backup using ramd_basebackup */
+	
 	ramd_log_info("Creating backup for node %d: %s", node_id, backup_id);
 
-	/* Real backup execution using configurable backup directory */
+	
 	const char *backup_dir = g_ramd_daemon->config.backup_dir;
 	if (backup_dir == NULL) {
 		backup_dir = "/var/lib/postgresql/backups";
 	}
 	
-	/* Create backup directory if it doesn't exist */
-	char backup_cmd[256];
+	
+	char backup_cmd[RAMD_MAX_COMMAND_LENGTH];
 	snprintf(backup_cmd, sizeof(backup_cmd), "mkdir -p %s", backup_dir);
 	system(backup_cmd);
 	
-	/* Use ramd_basebackup function with ramd_conn */
+	
 	PGconn *conn = ramd_conn_get(g_ramd_daemon->config.hostname, g_ramd_daemon->config.postgresql_port, 
 	                             g_ramd_daemon->config.database_name, g_ramd_daemon->config.database_user, NULL);
 	if (!conn) {
@@ -673,13 +673,13 @@ bool ramd_maintenance_is_cluster_safe_for_maintenance(int32_t target_node_id)
 }
 
 
-/* Implementation of maintenance management functions */
+
 bool ramd_maintenance_verify_backup(const char* backup_id)
 {
 	if (!backup_id)
 		return false;
 
-	/* Connect to PostgreSQL to verify backup */
+	
 	ramd_postgresql_connection_t pg_conn;
 	if (!ramd_postgresql_connect(&pg_conn, g_ramd_daemon->config.hostname,
 	                             g_ramd_daemon->config.postgresql_port,
@@ -694,7 +694,7 @@ bool ramd_maintenance_verify_backup(const char* backup_id)
 	PGresult* res;
 	bool backup_valid = false;
 
-	/* Query backup information from pg_stat_archiver or backup history */
+	
 	res = ramd_query_exec_with_result(conn, "SELECT last_archived_wal FROM pg_stat_archiver");
 	if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
 	{
@@ -721,7 +721,7 @@ bool ramd_maintenance_monitor_progress(int32_t node_id)
 	pthread_mutex_lock(&g_maintenance_mutex);
 	ramd_maintenance_state_t* state = &g_maintenance_states[node_id - 1];
 
-	/* Check if maintenance is in progress */
+	
 	bool in_progress = (state->type != RAMD_MAINTENANCE_NONE);
 
 	if (in_progress)
@@ -759,14 +759,14 @@ bool ramd_maintenance_schedule(const ramd_maintenance_config_t* config)
 	if (!config)
 		return false;
 
-	/* Schedule maintenance window - default to 1 hour from now */
+	
 	time_t now = time(NULL);
-	time_t maintenance_time = now + (1 * 3600); /* 1 hour from now */
+	time_t maintenance_time = now + (RAMD_MAINTENANCE_SCHEDULE_DELAY_HOURS * 3600); 
 
 	ramd_log_info("Scheduled maintenance for node %d at %s",
 	              config->target_node_id, ctime(&maintenance_time));
 
-	/* Store maintenance schedule */
+	
 	pthread_mutex_lock(&g_maintenance_mutex);
 	g_maintenance_schedule.scheduled_time = maintenance_time;
 	g_maintenance_schedule.config = *config;
@@ -795,7 +795,7 @@ bool ramd_maintenance_list_scheduled(ramd_maintenance_state_t* states,
 }
 
 
-/* Enhanced bootstrap automation functions */
+
 bool ramd_maintenance_bootstrap_new_node(
     const ramd_config_t* config, const char* node_name, const char* node_host,
     int32_t node_port, const char* primary_host, int32_t primary_port)
@@ -806,8 +806,8 @@ bool ramd_maintenance_bootstrap_new_node(
 	ramd_log_info("Bootstrapping new node: %s (%s:%d) from primary %s:%d",
 	              node_name, node_host, node_port, primary_host, primary_port);
 
-	/* Step 1: Create node directory structure */
-	char node_data_dir[512];
+	
+	char node_data_dir[RAMD_MAX_PATH_LENGTH];
 	snprintf(node_data_dir, sizeof(node_data_dir), "%s/%s",
 	         config->postgresql_data_dir, node_name);
 
@@ -818,8 +818,8 @@ bool ramd_maintenance_bootstrap_new_node(
 		return false;
 	}
 
-	/* Step 2: Initialize PostgreSQL data directory */
-	char initdb_cmd[1024];
+	
+	char initdb_cmd[RAMD_MAX_COMMAND_LENGTH];
 	snprintf(initdb_cmd, sizeof(initdb_cmd),
 	         "initdb -D %s --auth=trust --encoding=UTF8 --locale=C",
 	         node_data_dir);
@@ -832,7 +832,7 @@ bool ramd_maintenance_bootstrap_new_node(
 		return false;
 	}
 
-	/* Step 3: Configure postgresql.conf for replication */
+	
 	char postgresql_conf_path[512];
 	snprintf(postgresql_conf_path, sizeof(postgresql_conf_path),
 	         "%s/postgresql.conf", node_data_dir);
@@ -855,7 +855,7 @@ bool ramd_maintenance_bootstrap_new_node(
 	fprintf(postgresql_conf, "hot_standby = on\n");
 	fprintf(postgresql_conf, "wal_keep_segments = 64\n");
 	fprintf(postgresql_conf, "archive_mode = on\n");
-	/* Use literal %%p and %%f so PostgreSQL expands them at runtime */
+	
 	fprintf(postgresql_conf,
 	        "archive_command = 'test ! -f %s/archive/%s && cp %%p "
 	        "%s/archive/%%f'\n",
@@ -863,12 +863,12 @@ bool ramd_maintenance_bootstrap_new_node(
 
 	fclose(postgresql_conf);
 
-	/* Step 4: Create archive directory */
+	
 	char archive_dir[512];
 	snprintf(archive_dir, sizeof(archive_dir), "%s/archive", node_data_dir);
 	mkdir(archive_dir, 0755);
 
-	/* Step 5: Configure pg_hba.conf for replication */
+	
 	char pg_hba_conf_path[512];
 	snprintf(pg_hba_conf_path, sizeof(pg_hba_conf_path), "%s/pg_hba.conf",
 	         node_data_dir);
@@ -890,7 +890,7 @@ bool ramd_maintenance_bootstrap_new_node(
 
 	fclose(pg_hba_conf);
 
-	/* Step 6: Take base backup from primary */
+	
 	if (!ramd_maintenance_take_basebackup_from_primary(
 	        node_data_dir, primary_host, primary_port))
 	{
@@ -898,7 +898,7 @@ bool ramd_maintenance_bootstrap_new_node(
 		return false;
 	}
 
-	/* Step 7: Configure recovery for streaming replication */
+	
 	if (!ramd_maintenance_configure_recovery_for_primary(
 	        node_data_dir, primary_host, primary_port))
 	{
@@ -911,7 +911,7 @@ bool ramd_maintenance_bootstrap_new_node(
 }
 
 
-/* Function to take base backup from primary */
+
 bool ramd_maintenance_take_basebackup_from_primary(const char* data_dir,
                                                    const char* primary_host,
                                                    int32_t primary_port)
@@ -922,14 +922,14 @@ bool ramd_maintenance_take_basebackup_from_primary(const char* data_dir,
 	ramd_log_info("Taking base backup from primary %s:%d to %s", primary_host,
 	              primary_port, data_dir);
 
-	/* Use ramd_basebackup function with ramd_conn */
+	
 	PGconn *conn = ramd_conn_get(primary_host, primary_port, "postgres", "postgres", NULL);
 	if (!conn) {
 		ramd_log_error("Failed to connect to primary for backup");
 		return false;
 	}
 
-	/* Execute base backup */
+	
 	int result = ramd_take_basebackup(conn, data_dir, "maintenance_backup");
 	ramd_conn_close(conn);
 	
@@ -944,7 +944,7 @@ bool ramd_maintenance_take_basebackup_from_primary(const char* data_dir,
 }
 
 
-/* Function to configure recovery for primary */
+
 bool ramd_maintenance_configure_recovery_for_primary(const char* data_dir,
                                                      const char* primary_host,
                                                      int32_t primary_port)
@@ -955,8 +955,8 @@ bool ramd_maintenance_configure_recovery_for_primary(const char* data_dir,
 	ramd_log_info("Configuring recovery for primary %s:%d in %s", primary_host,
 	              primary_port, data_dir);
 
-	/* Check PostgreSQL version to determine configuration method */
-	bool use_recovery_conf = true; /* Default for older versions */
+	
+	bool use_recovery_conf = true; 
 
 	/* Try to detect PostgreSQL version by checking if postgresql.auto.conf
 	 * exists */
@@ -966,12 +966,12 @@ bool ramd_maintenance_configure_recovery_for_primary(const char* data_dir,
 
 	if (access(auto_conf_path, F_OK) == 0)
 	{
-		use_recovery_conf = false; /* PostgreSQL 12+ */
+		use_recovery_conf = false; 
 	}
 
 	if (use_recovery_conf)
 	{
-		/* Create recovery.conf for PostgreSQL < 12 */
+		
 		char recovery_conf_path[512];
 		snprintf(recovery_conf_path, sizeof(recovery_conf_path),
 		         "%s/recovery.conf", data_dir);
@@ -999,7 +999,7 @@ bool ramd_maintenance_configure_recovery_for_primary(const char* data_dir,
 	}
 	else
 	{
-		/* Use postgresql.auto.conf for PostgreSQL 12+ */
+		
 		FILE* auto_conf_file = fopen(auto_conf_path, "a");
 		if (!auto_conf_file)
 		{
@@ -1021,7 +1021,7 @@ bool ramd_maintenance_configure_recovery_for_primary(const char* data_dir,
 		ramd_log_info("Updated postgresql.auto.conf for streaming replication");
 	}
 
-	/* Create trigger file directory and ensure it doesn't exist initially */
+	
 	char trigger_file[512];
 	snprintf(trigger_file, sizeof(trigger_file), "%s/failover.trigger",
 	         data_dir);
@@ -1032,7 +1032,7 @@ bool ramd_maintenance_configure_recovery_for_primary(const char* data_dir,
 }
 
 
-/* Function to bootstrap a complete cluster */
+
 bool ramd_maintenance_bootstrap_cluster(
     const ramd_config_t* config, const char* cluster_name,
     const char* primary_host, int32_t primary_port, const char** standby_hosts,
@@ -1045,7 +1045,7 @@ bool ramd_maintenance_bootstrap_cluster(
 	ramd_log_info("Bootstrapping complete cluster: %s with %d standby nodes",
 	              cluster_name, standby_count);
 
-	/* Step 1: Bootstrap primary node */
+	
 	if (!ramd_maintenance_bootstrap_primary_node(config, cluster_name,
 	                                             primary_host, primary_port))
 	{
@@ -1053,7 +1053,7 @@ bool ramd_maintenance_bootstrap_cluster(
 		return false;
 	}
 
-	/* Step 2: Bootstrap standby nodes */
+	
 	for (int i = 0; i < standby_count; i++)
 	{
 		char node_name[64];
@@ -1068,7 +1068,7 @@ bool ramd_maintenance_bootstrap_cluster(
 		}
 	}
 
-	/* Step 3: Start primary node */
+	
 	if (!ramd_maintenance_start_postgresql_node(config, primary_host,
 	                                            primary_port))
 	{
@@ -1076,7 +1076,7 @@ bool ramd_maintenance_bootstrap_cluster(
 		return false;
 	}
 
-	/* Step 4: Start standby nodes */
+	
 	for (int i = 0; i < standby_count; i++)
 	{
 		if (!ramd_maintenance_start_postgresql_node(config, standby_hosts[i],
@@ -1087,8 +1087,8 @@ bool ramd_maintenance_bootstrap_cluster(
 		}
 	}
 
-	/* Step 5: Verify cluster health */
-	sleep(10); /* Wait for all nodes to start */
+	
+	sleep(10); 
 
 	if (!ramd_maintenance_verify_cluster_health(config, primary_host,
 	                                            primary_port, standby_hosts,
@@ -1103,7 +1103,7 @@ bool ramd_maintenance_bootstrap_cluster(
 }
 
 
-/* Function to bootstrap primary node */
+
 bool ramd_maintenance_bootstrap_primary_node(const ramd_config_t* config,
                                              const char* cluster_name,
                                              const char* primary_host,
@@ -1115,7 +1115,7 @@ bool ramd_maintenance_bootstrap_primary_node(const ramd_config_t* config,
 	ramd_log_info("Bootstrapping primary node: %s (%s:%d)", cluster_name,
 	              primary_host, primary_port);
 
-	/* Step 1: Create primary data directory */
+	
 	char primary_data_dir[512];
 	snprintf(primary_data_dir, sizeof(primary_data_dir), "%s/%s",
 	         config->postgresql_data_dir, cluster_name);
@@ -1127,8 +1127,8 @@ bool ramd_maintenance_bootstrap_primary_node(const ramd_config_t* config,
 		return false;
 	}
 
-	/* Step 2: Initialize PostgreSQL data directory */
-	char initdb_cmd[1024];
+	
+	char initdb_cmd[RAMD_MAX_COMMAND_LENGTH];
 	snprintf(initdb_cmd, sizeof(initdb_cmd),
 	         "%s/initdb -D %s --auth=trust --encoding=UTF8 --locale=C",
 	         config->postgresql_bin_dir, primary_data_dir);
@@ -1141,7 +1141,7 @@ bool ramd_maintenance_bootstrap_primary_node(const ramd_config_t* config,
 		return false;
 	}
 
-	/* Step 3: Configure postgresql.conf for primary */
+	
 	char postgresql_conf_path[512];
 	snprintf(postgresql_conf_path, sizeof(postgresql_conf_path),
 	         "%s/postgresql.conf", primary_data_dir);
@@ -1164,7 +1164,7 @@ bool ramd_maintenance_bootstrap_primary_node(const ramd_config_t* config,
 	fprintf(postgresql_conf, "max_replication_slots = 10\n");
 	fprintf(postgresql_conf, "wal_keep_size = 1GB\n");
 	fprintf(postgresql_conf, "archive_mode = on\n");
-	/* Use literal %%p and %%f so PostgreSQL expands them at runtime */
+	
 	fprintf(postgresql_conf,
 	        "archive_command = 'test ! -f %s/archive/%s && cp %%p "
 	        "%s/archive/%%f'\n",
@@ -1172,12 +1172,12 @@ bool ramd_maintenance_bootstrap_primary_node(const ramd_config_t* config,
 
 	fclose(postgresql_conf);
 
-	/* Step 4: Create archive directory */
+	
 	char archive_dir[512];
 	snprintf(archive_dir, sizeof(archive_dir), "%s/archive", primary_data_dir);
 	mkdir(archive_dir, 0755);
 
-	/* Step 5: Configure pg_hba.conf for replication */
+	
 	char pg_hba_conf_path[512];
 	snprintf(pg_hba_conf_path, sizeof(pg_hba_conf_path), "%s/pg_hba.conf",
 	         primary_data_dir);
@@ -1191,7 +1191,7 @@ bool ramd_maintenance_bootstrap_primary_node(const ramd_config_t* config,
 
 	fprintf(pg_hba_conf, "\n# Primary replication access for cluster: %s\n",
 	        cluster_name);
-	/* Use configurable network range instead of allowing all */
+	
 	char* network_range = getenv("PG_NETWORK_RANGE");
 	if (!network_range || strlen(network_range) == 0)
 		network_range = RAMD_DEFAULT_NETWORK_RANGE; /* Default to localhost only
@@ -1212,7 +1212,7 @@ bool ramd_maintenance_bootstrap_primary_node(const ramd_config_t* config,
 }
 
 
-/* Function to start PostgreSQL node */
+
 bool ramd_maintenance_start_postgresql_node(const ramd_config_t* config,
                                             const char* host, int32_t port)
 {
@@ -1221,7 +1221,7 @@ bool ramd_maintenance_start_postgresql_node(const ramd_config_t* config,
 
 	ramd_log_info("Starting PostgreSQL node on %s:%d", host, port);
 
-	/* Build pg_ctl start command */
+	
 	char start_cmd[1024];
 	snprintf(start_cmd, sizeof(start_cmd), "pg_ctl -D %s -o \"-p %d\" start",
 	         config->postgresql_data_dir, port);
@@ -1240,7 +1240,7 @@ bool ramd_maintenance_start_postgresql_node(const ramd_config_t* config,
 }
 
 
-/* Function to verify cluster health */
+
 bool ramd_maintenance_verify_cluster_health(
     const ramd_config_t* config, const char* primary_host, int32_t primary_port,
     const char** standby_hosts, int32_t* standby_ports, int32_t standby_count)
@@ -1250,14 +1250,14 @@ bool ramd_maintenance_verify_cluster_health(
 
 	ramd_log_info("Verifying cluster health...");
 
-	/* Step 1: Verify primary is running and accepting connections */
+	
 	if (!ramd_maintenance_verify_node_health(primary_host, primary_port))
 	{
 		ramd_log_error("Primary node health check failed");
 		return false;
 	}
 
-	/* Step 2: Verify all standby nodes are running and replicating */
+	
 	for (int i = 0; i < standby_count; i++)
 	{
 		if (!ramd_maintenance_verify_node_health(standby_hosts[i],
@@ -1280,7 +1280,7 @@ bool ramd_maintenance_verify_cluster_health(
 }
 
 
-/* Function to verify individual node health */
+
 bool ramd_maintenance_verify_node_health(const char* host, int32_t port)
 {
 	if (!host)
@@ -1288,7 +1288,7 @@ bool ramd_maintenance_verify_node_health(const char* host, int32_t port)
 
 	ramd_log_info("Verifying node health: %s:%d", host, port);
 
-	/* Connect to PostgreSQL and run basic health checks */
+	
 	ramd_postgresql_connection_t conn;
 	if (!ramd_postgresql_connect(&conn, host, port, "postgres", "postgres", ""))
 	{
@@ -1296,7 +1296,7 @@ bool ramd_maintenance_verify_node_health(const char* host, int32_t port)
 		return false;
 	}
 
-	/* Check if PostgreSQL is running */
+	
 	PGresult* res = ramd_query_exec_with_result((PGconn*) conn.connection, "SELECT version()");
 	if (!res || PQntuples(res) == 0)
 	{
@@ -1308,7 +1308,7 @@ bool ramd_maintenance_verify_node_health(const char* host, int32_t port)
 
 	PQclear(res);
 
-	/* Check if node is accepting connections */
+	
 	res = ramd_query_exec_with_result((PGconn*) conn.connection, "SELECT pg_is_in_recovery()");
 	if (!res || PQntuples(res) == 0)
 	{
@@ -1327,7 +1327,7 @@ bool ramd_maintenance_verify_node_health(const char* host, int32_t port)
 }
 
 
-/* Function to verify replication status */
+
 bool ramd_maintenance_verify_replication_status(const char* host, int32_t port)
 {
 	if (!host)
@@ -1335,7 +1335,7 @@ bool ramd_maintenance_verify_replication_status(const char* host, int32_t port)
 
 	ramd_log_info("Verifying replication status: %s:%d", host, port);
 
-	/* Connect to PostgreSQL and check replication status */
+	
 	ramd_postgresql_connection_t conn;
 	if (!ramd_postgresql_connect(&conn, host, port, "postgres", "postgres", ""))
 	{
@@ -1343,7 +1343,7 @@ bool ramd_maintenance_verify_replication_status(const char* host, int32_t port)
 		return false;
 	}
 
-	/* Check if node is in recovery mode */
+	
 	PGresult* res =
 	    ramd_query_exec_with_result((PGconn*) conn.connection, "SELECT pg_is_in_recovery()");
 	if (!res || PQntuples(res) == 0)
@@ -1365,7 +1365,7 @@ bool ramd_maintenance_verify_replication_status(const char* host, int32_t port)
 		return false;
 	}
 
-	/* Check replication lag */
+	
 	res = ramd_query_exec_with_result((PGconn*) conn.connection,
 	                                  "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn(), "
 	                                  "pg_last_xact_replay_timestamp()");
@@ -1404,7 +1404,7 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 	ramd_log_info("Setting up replica node %d: %s:%d for cluster '%s'", node_id,
 	              replica_host, replica_port, cluster_name);
 
-	/* Find primary node from existing cluster */
+	
 	ramd_cluster_t* cluster = &g_ramd_daemon->cluster;
 	bool primary_found = false;
 
@@ -1430,13 +1430,13 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 	ramd_log_info("Using primary %s:%d for replica setup", primary_host,
 	              primary_port);
 
-	/* Step 1: Prepare replica data directory */
+	
 	snprintf(replica_data_dir, sizeof(replica_data_dir), "%s/%s_replica_%d",
 	         config->postgresql_data_dir, cluster_name, node_id);
 
 	ramd_log_info("Creating replica data directory: %s", replica_data_dir);
 
-	/* Remove existing directory if it exists */
+	
 	char remove_cmd[1024];
 	snprintf(remove_cmd, sizeof(remove_cmd), "rm -rf %s", replica_data_dir);
 	int result = system(remove_cmd);
@@ -1446,7 +1446,7 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 		    "Failed to remove existing replica directory, continuing...");
 	}
 
-	/* Create new directory */
+	
 	char mkdir_cmd[512];
 	snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", replica_data_dir);
 	result = system(mkdir_cmd);
@@ -1456,7 +1456,7 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 		return false;
 	}
 
-	/* Step 2: Take base backup from primary */
+	
 	ramd_log_info("Taking base backup from primary %s:%d", primary_host,
 	              primary_port);
 
@@ -1467,7 +1467,7 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 		return false;
 	}
 
-	/* Step 3: Configure replica-specific settings */
+	
 	ramd_log_info("Configuring replica settings");
 
 	char postgresql_conf_path[512];
@@ -1492,10 +1492,10 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 
 	fclose(postgresql_conf);
 
-	/* Step 4: Configure replication connection */
+	
 	ramd_log_info("Configuring streaming replication");
 
-	/* For PostgreSQL 12+, use standby.signal and postgresql.auto.conf */
+	
 	char standby_signal_path[512];
 	snprintf(standby_signal_path, sizeof(standby_signal_path),
 	         "%s/standby.signal", replica_data_dir);
@@ -1538,7 +1538,7 @@ bool ramd_maintenance_setup_replica(const ramd_config_t* config,
 bool
 check_backup_availability(void)
 {
-	/* Check if backup directory exists and is accessible */
+	
 	const char *backup_dir = g_ramd_daemon->config.backup_dir;
 	if (backup_dir == NULL) {
 		backup_dir = "/var/lib/postgresql/backups";
@@ -1551,14 +1551,14 @@ check_backup_availability(void)
 		return false;
 	}
 	
-	/* Check if backup tools are available */
+	
 	if (system("which pg_basebackup > /dev/null 2>&1") != 0)
 	{
 		ramd_log_warning("pg_basebackup is not available");
 		return false;
 	}
 	
-	/* Check if we can create a test backup file */
+	
 	char test_file[256];
 	snprintf(test_file, sizeof(test_file), "%s/test_backup_%ld", backup_dir, time(NULL));
 	
@@ -1573,7 +1573,7 @@ check_backup_availability(void)
 	fprintf(fp, "test backup availability\n");
 	fclose(fp);
 	
-	/* Clean up test file */
+	
 	unlink(test_file);
 	
 	ramd_log_info("Backup availability check passed");
@@ -1586,21 +1586,21 @@ check_backup_availability(void)
 bool
 check_cluster_health(void)
 {
-	/* Check if cluster is in a healthy state */
+	
 	if (!g_ramd_daemon || !g_ramd_daemon->cluster.node_count)
 	{
 		ramd_log_warning("Cluster health check failed: no cluster data");
 		return false;
 	}
 	
-	/* Check if we have a primary node */
+	
 	if (g_ramd_daemon->cluster.primary_node_id <= 0)
 	{
 		ramd_log_warning("Cluster health check failed: no primary node");
 		return false;
 	}
 	
-	/* Check if cluster has sufficient nodes */
+	
 	if (g_ramd_daemon->cluster.node_count < 1)
 	{
 		ramd_log_warning("Cluster health check failed: insufficient nodes");
@@ -1617,7 +1617,7 @@ check_cluster_health(void)
 bool
 check_all_nodes_reachable(void)
 {
-	/* Implement real node reachability */
+	
 	if (!g_ramd_daemon || !g_ramd_daemon->cluster.node_count)
 	{
 		return false;
@@ -1657,7 +1657,7 @@ check_sufficient_standbys(void)
 		}
 	}
 	
-	/* Require at least one standby for maintenance */
+	
 	if (standby_count < 1)
 	{
 		ramd_log_warning("Insufficient standbys for maintenance: %d", standby_count);
@@ -1674,7 +1674,7 @@ check_sufficient_standbys(void)
 bool
 check_replication_current(void)
 {
-	/* Implement real replication status */
+	
 	if (!g_ramd_daemon || !g_ramd_daemon->cluster.node_count)
 	{
 		return false;
@@ -1701,7 +1701,7 @@ check_replication_current(void)
 bool
 check_no_active_transactions(void)
 {
-	/* Implement real active transaction check */
+	
 	char connection_string[512];
 	snprintf(connection_string, sizeof(connection_string),
 	         "host=%s port=%d dbname=%s user=%s password=%s",

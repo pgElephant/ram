@@ -34,7 +34,7 @@ typedef struct ramd_failover_context_t
 	int32_t new_primary_node_id;
 	time_t started_at;
 	time_t completed_at;
-	char reason[256];
+	char reason[RAMD_MAX_HOSTNAME_LENGTH];
 	bool auto_triggered;
 	int32_t retry_count;
 } ramd_failover_context_t;

@@ -17,7 +17,7 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
-/* Global metrics instance */
+
 ramd_metrics_t* g_ramd_metrics = NULL;
 
 bool ramd_metrics_init(ramd_metrics_t* metrics)
@@ -26,13 +26,13 @@ bool ramd_metrics_init(ramd_metrics_t* metrics)
 		return false;
 
 	memset(metrics, 0, sizeof(ramd_metrics_t));
-	
+
 	metrics->enabled = true;
-	metrics->collection_interval_ms = 5000; /* 5 seconds */
+	metrics->collection_interval_ms = RAMD_METRICS_COLLECTION_INTERVAL_MS;
 	metrics->daemon_start_time = time(NULL);
 	metrics->last_metrics_update = time(NULL);
 	
-	/* Initialize counters */
+	
 	metrics->total_health_checks = 0;
 	metrics->failed_health_checks = 0;
 	metrics->total_failovers = 0;
@@ -63,14 +63,14 @@ bool ramd_metrics_collect(ramd_metrics_t* metrics, const ramd_cluster_t* cluster
 		
 	time_t now = time(NULL);
 	
-	/* Update cluster-level metrics */
+	
 	metrics->cluster_total_nodes = cluster->node_count;
 	metrics->cluster_healthy_nodes = ramd_cluster_count_healthy_nodes(cluster);
 	metrics->cluster_primary_node_id = cluster->primary_node_id;
 	metrics->cluster_has_quorum = ramd_cluster_has_quorum(cluster);
 	metrics->cluster_is_leader = (cluster->leader_node_id == cluster->local_node_id);
 	
-	/* Update local node metrics */
+	
 	ramd_node_t* local_node = ramd_cluster_get_local_node((ramd_cluster_t*)cluster);
 	if (local_node)
 	{
@@ -85,18 +85,18 @@ bool ramd_metrics_collect(ramd_metrics_t* metrics, const ramd_cluster_t* cluster
 		metrics->node_replication_lag_ms = local_node->replication_lag_ms;
 	}
 	
-	/* Update resource usage */
+	
 	struct rusage usage;
 	if (getrusage(RUSAGE_SELF, &usage) == 0)
 	{
-		metrics->memory_usage_bytes = (size_t)(usage.ru_maxrss * 1024); /* Convert to bytes */
+		metrics->memory_usage_bytes = (size_t)(usage.ru_maxrss * RAMD_KILOBYTE_TO_BYTES);
 	}
 	
-	/* Update replication metrics */
+	
 	metrics->replication_lag_max_ms = 0;
 	metrics->replication_lag_avg_ms = 0;
 	metrics->replication_connections_active = 0;
-	metrics->replication_connections_total = cluster->node_count - 1; /* All except primary */
+	metrics->replication_connections_total = cluster->node_count - RAMD_PRIMARY_NODE_COUNT;
 	
 	for (int i = 0; i < cluster->node_count; i++)
 	{
@@ -126,7 +126,7 @@ bool ramd_metrics_update_node(ramd_metrics_t* metrics, const ramd_node_t* node)
 	if (!metrics || !node)
 		return false;
 		
-	/* Update node-specific metrics if this is the local node */
+	
 	if (node->node_id == metrics->node_id)
 	{
 		metrics->node_state = node->state;
@@ -160,14 +160,14 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 	if (!metrics)
 		return NULL;
 		
-	char* output = malloc(8192); /* Allocate buffer for Prometheus output */
+	char* output = malloc(RAMD_MAX_COMMAND_LENGTH); 
 	if (!output)
 		return NULL;
 		
 	char* ptr = output;
-	size_t remaining = 8192;
+	size_t remaining = RAMD_MAX_COMMAND_LENGTH;
 	
-	/* Cluster metrics */
+	
 	ptr += snprintf(ptr, remaining,
 		"# HELP ramd_cluster_nodes_total Total number of nodes in cluster\n"
 		"# TYPE ramd_cluster_nodes_total gauge\n"
@@ -192,7 +192,7 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 	
 	remaining -= (size_t)(ptr - output);
 	
-	/* Node metrics */
+	
 	ptr += snprintf(ptr, remaining,
 		"# HELP ramd_node_healthy Whether this node is healthy (1=yes, 0=no)\n"
 		"# TYPE ramd_node_healthy gauge\n"
@@ -213,7 +213,7 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 	
 	remaining -= (size_t)(ptr - output);
 	
-	/* Performance metrics */
+	
 	ptr += snprintf(ptr, remaining,
 		"# HELP ramd_health_checks_total Total number of health checks performed\n"
 		"# TYPE ramd_health_checks_total counter\n"
@@ -238,7 +238,7 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 	
 	remaining -= (size_t)(ptr - output);
 	
-	/* HTTP API metrics */
+	
 	ptr += snprintf(ptr, remaining,
 		"# HELP ramd_http_requests_total Total number of HTTP requests\n"
 		"# TYPE ramd_http_requests_total counter\n"
@@ -259,7 +259,7 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 	
 	remaining -= (size_t)(ptr - output);
 	
-	/* Replication metrics */
+	
 	ptr += snprintf(ptr, remaining,
 		"# HELP ramd_replication_lag_max_ms Maximum replication lag in milliseconds\n"
 		"# TYPE ramd_replication_lag_max_ms gauge\n"
@@ -280,7 +280,7 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 	
 	remaining -= (size_t)(ptr - output);
 	
-	/* Resource metrics */
+	
 	ptr += snprintf(ptr, remaining,
 		"# HELP ramd_memory_usage_bytes Memory usage in bytes\n"
 		"# TYPE ramd_memory_usage_bytes gauge\n"
@@ -291,7 +291,7 @@ char* ramd_metrics_to_prometheus(const ramd_metrics_t* metrics)
 		metrics->memory_usage_bytes,
 		time(NULL) - metrics->daemon_start_time);
 	
-	/* Add final newline */
+	
 	*ptr = '\n';
 	ptr++;
 	*ptr = '\0';
@@ -305,7 +305,7 @@ void ramd_metrics_free_prometheus_output(char* output)
 		free(output);
 }
 
-/* Metrics update functions */
+
 void ramd_metrics_increment_health_checks(ramd_metrics_t* metrics, bool success)
 {
 	if (!metrics)

@@ -29,14 +29,14 @@ typedef struct ramd_config
 	char postgresql_data_dir[RAMD_MAX_PATH_LENGTH];
 	char postgresql_config_file[RAMD_MAX_PATH_LENGTH];
 	char postgresql_log_dir[RAMD_MAX_PATH_LENGTH];
-	char database_name[64];
-	char database_user[64];
-	char database_password[64];
-	char postgresql_user[64];
-	char replication_user[64];
+	char database_name[RAMD_MAX_HOSTNAME_LENGTH];
+	char database_user[RAMD_MAX_HOSTNAME_LENGTH];
+	char database_password[RAMD_MAX_HOSTNAME_LENGTH];
+	char postgresql_user[RAMD_MAX_HOSTNAME_LENGTH];
+	char replication_user[RAMD_MAX_HOSTNAME_LENGTH];
 
 	/* Cluster settings */
-	char cluster_name[64];
+	char cluster_name[RAMD_MAX_HOSTNAME_LENGTH];
 	int32_t cluster_size;
 	bool auto_failover_enabled;
 	bool synchronous_replication;
@@ -55,13 +55,13 @@ typedef struct ramd_config
 
 	/* HTTP API settings */
 	bool http_api_enabled;
-	char http_bind_address[64];
+	char http_bind_address[RAMD_MAX_HOSTNAME_LENGTH];
 	int32_t http_port;
 	bool http_auth_enabled;
-	char http_auth_token[256];
+	char http_auth_token[RAMD_MAX_COMMAND_LENGTH];
 
 	/* Synchronous replication settings */
-	char sync_standby_names[512];
+	char sync_standby_names[RAMD_MAX_COMMAND_LENGTH];
 	int32_t num_sync_standbys;
 	int32_t sync_timeout_ms;
 	bool enforce_sync_standbys;
@@ -74,9 +74,9 @@ typedef struct ramd_config
 	/* Daemon settings */
 	char pid_file[RAMD_MAX_PATH_LENGTH];
 	bool daemonize;
-	char user[64];
-	char group[64];
-	char backup_dir[256];
+	char user[RAMD_MAX_HOSTNAME_LENGTH];
+	char group[RAMD_MAX_HOSTNAME_LENGTH];
+	char backup_dir[RAMD_MAX_PATH_LENGTH];
 } ramd_config_t;
 
 /* Configuration functions */

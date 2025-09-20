@@ -20,9 +20,8 @@
 /* HTTP API Configuration */
 #include "ramd_defaults.h"
 #define RAMD_HTTP_DEFAULT_PORT RAMD_DEFAULT_HTTP_PORT
-#define RAMD_HTTP_MAX_CONNECTIONS 64
-#define RAMD_HTTP_MAX_REQUEST_SIZE 8192
-#define RAMD_HTTP_MAX_RESPONSE_SIZE 16384
+#define RAMD_HTTP_MAX_REQUEST_SIZE RAMD_MAX_COMMAND_LENGTH
+#define RAMD_HTTP_MAX_RESPONSE_SIZE (RAMD_MAX_COMMAND_LENGTH * 2)
 
 /* HTTP Methods */
 typedef enum
@@ -52,22 +51,22 @@ typedef enum
 typedef struct ramd_http_request_t
 {
 	ramd_http_method_t method;
-	char path[256];
-	char query_string[512];
+	char path[RAMD_MAX_PATH_LENGTH];
+	char query_string[RAMD_MAX_COMMAND_LENGTH];
 	char body[RAMD_HTTP_MAX_REQUEST_SIZE];
 	size_t body_length;
-	char headers[1024];
-	char authorization[256];
+	char headers[RAMD_MAX_COMMAND_LENGTH];
+	char authorization[RAMD_MAX_HOSTNAME_LENGTH];
 } ramd_http_request_t;
 
 /* HTTP Response Structure */
 typedef struct ramd_http_response_t
 {
 	ramd_http_status_code_t status;
-	char content_type[64];
+	char content_type[RAMD_MAX_HOSTNAME_LENGTH];
 	char body[RAMD_HTTP_MAX_RESPONSE_SIZE];
 	size_t body_length;
-	char headers[512];
+	char headers[RAMD_MAX_COMMAND_LENGTH];
 } ramd_http_response_t;
 
 /* HTTP Server Context */
@@ -78,9 +77,9 @@ typedef struct ramd_http_server_t
 	bool running;
 	pthread_t server_thread;
 	pthread_mutex_t mutex;
-	char bind_address[64];
+	char bind_address[RAMD_MAX_HOSTNAME_LENGTH];
 	bool auth_enabled;
-	char auth_token[256];
+	char auth_token[RAMD_MAX_COMMAND_LENGTH];
 } ramd_http_server_t;
 
 /* HTTP Client Connection */

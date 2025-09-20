@@ -20,12 +20,13 @@
 #include <errno.h>
 #include <sys/stat.h>
 
-bool ramd_postgresql_connect(ramd_postgresql_connection_t* conn,
-                             const char* host, int32_t port,
-                             const char* database, const char* user,
-                             const char* password)
+bool
+ramd_postgresql_connect(ramd_postgresql_connection_t *conn,
+                       const char *host, int32_t port,
+                       const char *database, const char *user,
+                       const char *password)
 {
-	char conninfo[1024];
+	char conninfo[RAMD_MAX_COMMAND_LENGTH];
 
 	if (!conn || !host || !database || !user)
 		return false;
@@ -37,20 +38,14 @@ bool ramd_postgresql_connect(ramd_postgresql_connection_t* conn,
 	if (password)
 		strncpy(conn->password, password, sizeof(conn->password) - 1);
 
-	/* Build connection string */
 	if (password && strlen(password) > 0)
-	{
-		snprintf(
-		    conninfo, sizeof(conninfo),
-		    "host=%s port=%d dbname=%s user=%s password=%s connect_timeout=10",
-		    host, port, database, user, password);
-	}
-	else
-	{
 		snprintf(conninfo, sizeof(conninfo),
-		         "host=%s port=%d dbname=%s user=%s connect_timeout=10", host,
-		         port, database, user);
-	}
+		         "host=%s port=%d dbname=%s user=%s password=%s connect_timeout=%d",
+		         host, port, database, user, password, RAMD_DEFAULT_CONNECTION_TIMEOUT);
+	else
+		snprintf(conninfo, sizeof(conninfo),
+		         "host=%s port=%d dbname=%s user=%s connect_timeout=%d",
+		         host, port, database, user, RAMD_DEFAULT_CONNECTION_TIMEOUT);
 
 	ramd_log_debug("PostgreSQL connection string: %s", conninfo);
 	conn->connection = ramd_conn_get(host, port, database, user, password);
@@ -70,29 +65,27 @@ bool ramd_postgresql_connect(ramd_postgresql_connection_t* conn,
 	return true;
 }
 
-
-void ramd_postgresql_disconnect(ramd_postgresql_connection_t* conn)
+void
+ramd_postgresql_disconnect(ramd_postgresql_connection_t *conn)
 {
 	if (!conn)
 		return;
 
 	if (conn->connection)
 	{
-		ramd_conn_close((PGconn*) conn->connection);
+		ramd_conn_close((PGconn *)conn->connection);
 		conn->connection = NULL;
 	}
 
 	conn->is_connected = false;
-
-	ramd_log_debug("Disconnected from PostgreSQL: %s:%d", conn->host,
-	               conn->port);
+	ramd_log_debug("Disconnected from PostgreSQL: %s:%d", conn->host, conn->port);
 }
 
-
-bool ramd_postgresql_is_running(const ramd_config_t* config)
+bool
+ramd_postgresql_is_running(const ramd_config_t *config)
 {
-	char command[512];
-	int status;
+	char command[RAMD_MAX_COMMAND_LENGTH];
+	int  status;
 
 	if (!config)
 		return false;
@@ -112,18 +105,17 @@ bool ramd_postgresql_is_running(const ramd_config_t* config)
 	return false;
 }
 
-
-bool ramd_postgresql_start(const ramd_config_t* config)
+bool
+ramd_postgresql_start(const ramd_config_t *config)
 {
-	char command[512];
-	int status;
+	char command[RAMD_MAX_COMMAND_LENGTH];
+	int  status;
 
 	if (!config)
 		return false;
 
 	ramd_log_info("Starting PostgreSQL on node %d", config->node_id);
 
-	/* Execute pg_ctl start command */
 	snprintf(command, sizeof(command),
 	         "%s/pg_ctl start -D %s -l %s/postgresql.log -w -t 60",
 	         config->postgresql_bin_dir, config->postgresql_data_dir,
@@ -133,8 +125,7 @@ bool ramd_postgresql_start(const ramd_config_t* config)
 
 	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 	{
-		ramd_log_info("PostgreSQL started successfully on node %d",
-		              config->node_id);
+		ramd_log_info("PostgreSQL started successfully on node %d", config->node_id);
 		return true;
 	}
 
@@ -142,18 +133,17 @@ bool ramd_postgresql_start(const ramd_config_t* config)
 	return false;
 }
 
-
-bool ramd_postgresql_stop(const ramd_config_t* config)
+bool
+ramd_postgresql_stop(const ramd_config_t *config)
 {
-	char command[512];
-	int status;
+	char command[RAMD_MAX_COMMAND_LENGTH];
+	int  status;
 
 	if (!config)
 		return false;
 
 	ramd_log_info("Stopping PostgreSQL on node %d", config->node_id);
 
-	/* Execute pg_ctl stop command with fast mode */
 	snprintf(command, sizeof(command), "%s/pg_ctl stop -D %s -m fast -w -t 60",
 	         config->postgresql_bin_dir, config->postgresql_data_dir);
 
@@ -161,8 +151,7 @@ bool ramd_postgresql_stop(const ramd_config_t* config)
 
 	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 	{
-		ramd_log_info("PostgreSQL stopped successfully on node %d",
-		              config->node_id);
+		ramd_log_info("PostgreSQL stopped successfully on node %d", config->node_id);
 		return true;
 	}
 
@@ -170,19 +159,17 @@ bool ramd_postgresql_stop(const ramd_config_t* config)
 	return false;
 }
 
-
-bool ramd_postgresql_promote(const ramd_config_t* config)
+bool
+ramd_postgresql_promote(const ramd_config_t *config)
 {
-	char command[512];
-	int status;
+	char command[RAMD_MAX_COMMAND_LENGTH];
+	int  status;
 
 	if (!config)
 		return false;
 
-	ramd_log_info("Promoting PostgreSQL to primary on node %d",
-	              config->node_id);
+	ramd_log_info("Promoting PostgreSQL to primary on node %d", config->node_id);
 
-	/* Execute pg_ctl promote command */
 	snprintf(command, sizeof(command), "%s/pg_ctl promote -D %s -w -t 60",
 	         config->postgresql_bin_dir, config->postgresql_data_dir);
 
@@ -199,10 +186,10 @@ bool ramd_postgresql_promote(const ramd_config_t* config)
 	return false;
 }
 
-
-bool ramd_postgresql_create_basebackup(const ramd_config_t* config,
-                                       const char* primary_host,
-                                       int32_t primary_port)
+bool
+ramd_postgresql_create_basebackup(const ramd_config_t *config,
+                                 const char *primary_host,
+                                 int32_t primary_port)
 {
 	int status;
 
@@ -211,16 +198,18 @@ bool ramd_postgresql_create_basebackup(const ramd_config_t* config,
 
 	ramd_log_info("Taking base backup from %s:%d", primary_host, primary_port);
 
-	/* Use ramd_basebackup function with ramd_conn */
-	PGconn *conn = ramd_conn_get(primary_host, primary_port, config->database_name, config->replication_user, NULL);
-	if (!conn) {
+	PGconn *conn = ramd_conn_get(primary_host, primary_port, config->database_name,
+	                            config->replication_user, NULL);
+	if (!conn)
+	{
 		ramd_log_error("Failed to connect to primary for backup");
 		return false;
 	}
 
-	int result = ramd_take_basebackup(conn, config->postgresql_data_dir, "postgresql_basebackup");
+	int result = ramd_take_basebackup(conn, config->postgresql_data_dir,
+	                                 "postgresql_basebackup");
 	ramd_conn_close(conn);
-	
+
 	status = result == 0 ? 0 : -1;
 
 	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
@@ -230,44 +219,41 @@ bool ramd_postgresql_create_basebackup(const ramd_config_t* config,
 		return true;
 	}
 
-	ramd_log_error("Failed to create base backup from %s:%d", primary_host,
-	               primary_port);
+	ramd_log_error("Failed to create base backup from %s:%d",
+	               primary_host, primary_port);
 	return false;
 }
 
-
-/* Additional PostgreSQL utility functions */
-bool ramd_postgresql_is_connected(const ramd_postgresql_connection_t* conn)
+bool
+ramd_postgresql_is_connected(const ramd_postgresql_connection_t *conn)
 {
 	return conn && conn->is_connected && conn->connection != NULL;
 }
 
-
-bool ramd_postgresql_reconnect(ramd_postgresql_connection_t* conn)
+bool
+ramd_postgresql_reconnect(ramd_postgresql_connection_t *conn)
 {
 	if (!conn)
 		return false;
 
-	/* Disconnect first if connected */
 	if (conn->is_connected)
 		ramd_postgresql_disconnect(conn);
 
-	/* Reconnect using stored connection info */
 	return ramd_postgresql_connect(conn, conn->host, conn->port, conn->database,
-	                               conn->user, conn->password);
+	                             conn->user, conn->password);
 }
 
-
-bool ramd_postgresql_get_status(ramd_postgresql_connection_t* conn,
-                                ramd_postgresql_status_t* status)
+bool
+ramd_postgresql_get_status(ramd_postgresql_connection_t *conn,
+                          ramd_postgresql_status_t *status)
 {
-	PGresult* res;
+	PGresult *res;
 
 	if (!conn || !status || !conn->is_connected)
 		return false;
 
-	/* Query PostgreSQL for recovery status */
-	res = ramd_query_exec_with_result((PGconn*) conn->connection, "SELECT pg_is_in_recovery()");
+	res = ramd_query_exec_with_result((PGconn *)conn->connection,
+	                                 "SELECT pg_is_in_recovery()");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -276,19 +262,17 @@ bool ramd_postgresql_get_status(ramd_postgresql_connection_t* conn,
 	}
 
 	status->is_in_recovery = (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
-	status->is_running =
-	    true; /* If we can execute queries, PostgreSQL is running */
+	status->is_running = true;
 	status->is_primary = !status->is_in_recovery;
-	status->accepts_connections =
-	    true; /* If we connected and queried, it accepts connections */
+	status->accepts_connections = true;
 	status->last_check = time(NULL);
 
 	PQclear(res);
 	return true;
 }
 
-
-bool ramd_postgresql_is_primary(ramd_postgresql_connection_t* conn)
+bool
+ramd_postgresql_is_primary(ramd_postgresql_connection_t *conn)
 {
 	ramd_postgresql_status_t status;
 
@@ -298,8 +282,8 @@ bool ramd_postgresql_is_primary(ramd_postgresql_connection_t* conn)
 	return !status.is_in_recovery;
 }
 
-
-bool ramd_postgresql_is_standby(ramd_postgresql_connection_t* conn)
+bool
+ramd_postgresql_is_standby(ramd_postgresql_connection_t *conn)
 {
 	ramd_postgresql_status_t status;
 
@@ -309,16 +293,15 @@ bool ramd_postgresql_is_standby(ramd_postgresql_connection_t* conn)
 	return status.is_in_recovery;
 }
 
-
-bool ramd_postgresql_accepts_connections(ramd_postgresql_connection_t* conn)
+bool
+ramd_postgresql_accepts_connections(ramd_postgresql_connection_t *conn)
 {
-	PGresult* res;
+	PGresult *res;
 
 	if (!conn || !conn->is_connected)
 		return false;
 
-	/* Test connection with a simple query */
-	res = ramd_query_exec_with_result((PGconn*) conn->connection, "SELECT 1");
+	res = ramd_query_exec_with_result((PGconn *)conn->connection, "SELECT 1");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -330,38 +313,33 @@ bool ramd_postgresql_accepts_connections(ramd_postgresql_connection_t* conn)
 	return true;
 }
 
-
-bool ramd_postgresql_restart(const ramd_config_t* config)
+bool
+ramd_postgresql_restart(const ramd_config_t *config)
 {
 	if (!config)
 		return false;
 
 	ramd_log_info("Restarting PostgreSQL on node %d", config->node_id);
 
-	/* Stop PostgreSQL first */
 	if (!ramd_postgresql_stop(config))
 		return false;
 
-	/* Wait a moment */
-	sleep(2);
+	sleep(RAMD_POSTGRESQL_RESTART_DELAY);
 
-	/* Start PostgreSQL */
 	return ramd_postgresql_start(config);
 }
 
-
-bool ramd_postgresql_reload(const ramd_config_t* config)
+bool
+ramd_postgresql_reload(const ramd_config_t *config)
 {
-	char command[512];
-	int status;
+	char command[RAMD_MAX_COMMAND_LENGTH];
+	int  status;
 
 	if (!config)
 		return false;
 
-	ramd_log_info("Reloading PostgreSQL configuration on node %d",
-	              config->node_id);
+	ramd_log_info("Reloading PostgreSQL configuration on node %d", config->node_id);
 
-	/* Execute pg_ctl reload command */
 	snprintf(command, sizeof(command), "%s/pg_ctl reload -D %s",
 	         config->postgresql_bin_dir, config->postgresql_data_dir);
 
@@ -369,9 +347,8 @@ bool ramd_postgresql_reload(const ramd_config_t* config)
 
 	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 	{
-		ramd_log_info(
-		    "PostgreSQL configuration reloaded successfully on node %d",
-		    config->node_id);
+		ramd_log_info("PostgreSQL configuration reloaded successfully on node %d",
+		              config->node_id);
 		return true;
 	}
 
@@ -380,10 +357,10 @@ bool ramd_postgresql_reload(const ramd_config_t* config)
 	return false;
 }
 
-
-bool ramd_postgresql_demote_to_standby(const ramd_config_t* config,
-                                       const char* primary_host,
-                                       int32_t primary_port)
+bool
+ramd_postgresql_demote_to_standby(const ramd_config_t *config,
+                                 const char *primary_host,
+                                 int32_t primary_port)
 {
 	if (!config || !primary_host)
 		return false;
@@ -391,46 +368,38 @@ bool ramd_postgresql_demote_to_standby(const ramd_config_t* config,
 	ramd_log_info("Demoting PostgreSQL to standby, will follow %s:%d",
 	              primary_host, primary_port);
 
-	/* Stop PostgreSQL */
 	if (!ramd_postgresql_stop(config))
 		return false;
 
-	/* Create recovery configuration */
-	if (!ramd_postgresql_create_recovery_conf(config, primary_host,
-	                                          primary_port))
+	if (!ramd_postgresql_create_recovery_conf(config, primary_host, primary_port))
 		return false;
 
-	/* Start as standby */
 	return ramd_postgresql_start(config);
 }
 
-
-bool ramd_postgresql_setup_replication(const ramd_config_t* config,
-                                       const char* primary_host,
-                                       int32_t primary_port)
+bool
+ramd_postgresql_setup_replication(const ramd_config_t *config,
+                                 const char *primary_host,
+                                 int32_t primary_port)
 {
 	if (!config || !primary_host)
 		return false;
 
-	ramd_log_info("Setting up replication from %s:%d", primary_host,
-	              primary_port);
+	ramd_log_info("Setting up replication from %s:%d", primary_host, primary_port);
 
-	/* Create base backup from primary */
 	if (!ramd_postgresql_create_basebackup(config, primary_host, primary_port))
 		return false;
 
-	/* Create recovery configuration */
-	return ramd_postgresql_create_recovery_conf(config, primary_host,
-	                                            primary_port);
+	return ramd_postgresql_create_recovery_conf(config, primary_host, primary_port);
 }
 
-
-bool ramd_postgresql_create_recovery_conf(const ramd_config_t* config,
-                                          const char* primary_host,
-                                          int32_t primary_port)
+bool
+ramd_postgresql_create_recovery_conf(const ramd_config_t *config,
+                                   const char *primary_host,
+                                   int32_t primary_port)
 {
-	char recovery_conf_path[512];
-	FILE* fp;
+	char recovery_conf_path[RAMD_MAX_PATH_LENGTH];
+	FILE *fp;
 
 	if (!config || !primary_host)
 		return false;
@@ -446,8 +415,8 @@ bool ramd_postgresql_create_recovery_conf(const ramd_config_t* config,
 	}
 
 	fprintf(fp, "standby_mode = 'on'\n");
-	fprintf(fp, "primary_conninfo = 'host=%s port=%d user=%s'\n", primary_host,
-	        primary_port, config->replication_user);
+	fprintf(fp, "primary_conninfo = 'host=%s port=%d user=%s'\n",
+	        primary_host, primary_port, config->replication_user);
 	fprintf(fp, "recovery_target_timeline = 'latest'\n");
 
 	fclose(fp);
@@ -457,10 +426,10 @@ bool ramd_postgresql_create_recovery_conf(const ramd_config_t* config,
 	return true;
 }
 
-
-bool ramd_postgresql_remove_recovery_conf(const ramd_config_t* config)
+bool
+ramd_postgresql_remove_recovery_conf(const ramd_config_t *config)
 {
-	char recovery_conf_path[512];
+	char recovery_conf_path[RAMD_MAX_PATH_LENGTH];
 
 	if (!config)
 		return false;
@@ -475,25 +444,21 @@ bool ramd_postgresql_remove_recovery_conf(const ramd_config_t* config)
 	}
 
 	if (errno == ENOENT)
-	{
-		/* File doesn't exist, that's fine */
 		return true;
-	}
 
 	ramd_log_error("Failed to remove recovery.conf: %s", strerror(errno));
 	return false;
 }
 
-
-bool ramd_postgresql_validate_data_directory(const ramd_config_t* config)
+bool
+ramd_postgresql_validate_data_directory(const ramd_config_t *config)
 {
-	char pg_version_path[512];
+	char pg_version_path[RAMD_MAX_PATH_LENGTH];
 	struct stat st;
 
 	if (!config)
 		return false;
 
-	/* Check if data directory exists */
 	if (stat(config->postgresql_data_dir, &st) != 0)
 	{
 		ramd_log_error("PostgreSQL data directory does not exist: %s",
@@ -508,7 +473,6 @@ bool ramd_postgresql_validate_data_directory(const ramd_config_t* config)
 		return false;
 	}
 
-	/* Check for PG_VERSION file */
 	snprintf(pg_version_path, sizeof(pg_version_path), "%s/PG_VERSION",
 	         config->postgresql_data_dir);
 
@@ -524,13 +488,14 @@ bool ramd_postgresql_validate_data_directory(const ramd_config_t* config)
 	return true;
 }
 
-
-bool ramd_postgresql_update_config(const ramd_config_t* config,
-                                   const char* parameter, const char* value)
+bool
+ramd_postgresql_update_config(const ramd_config_t *config,
+                            const char *parameter,
+                            const char *value)
 {
-	char postgresql_conf_path[512];
-	char command[1024];
-	int status;
+	char postgresql_conf_path[RAMD_MAX_PATH_LENGTH];
+	char command[RAMD_MAX_COMMAND_LENGTH];
+	int  status;
 
 	if (!config || !parameter || !value)
 		return false;
@@ -538,16 +503,16 @@ bool ramd_postgresql_update_config(const ramd_config_t* config,
 	snprintf(postgresql_conf_path, sizeof(postgresql_conf_path),
 	         "%s/postgresql.conf", config->postgresql_data_dir);
 
-	/* Use sed to update the configuration parameter */
-	snprintf(command, sizeof(command), "sed -i.bak 's/^#\\?%s.*$/%s = %s/' %s",
+	snprintf(command, sizeof(command),
+	         "sed -i.bak 's/^#\\?%s.*$/%s = %s/' %s",
 	         parameter, parameter, value, postgresql_conf_path);
 
 	status = system(command);
 
 	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 	{
-		ramd_log_info("Updated PostgreSQL configuration: %s = %s", parameter,
-		              value);
+		ramd_log_info("Updated PostgreSQL configuration: %s = %s",
+		              parameter, value);
 		return true;
 	}
 
@@ -555,41 +520,36 @@ bool ramd_postgresql_update_config(const ramd_config_t* config,
 	return false;
 }
 
-
-bool ramd_postgresql_enable_archiving(const ramd_config_t* config)
+bool
+ramd_postgresql_enable_archiving(const ramd_config_t *config)
 {
+	char archive_command[512];
+	const char *pgarchive;
+
 	if (!config)
 		return false;
 
-	/* Enable WAL archiving */
 	if (!ramd_postgresql_update_config(config, "archive_mode", "on"))
 		return false;
 
-	/* Configure archive command using environment variable or default */
-	char archive_command[512];
-	const char* pgarchive = getenv("PGARCHIVE");
+	pgarchive = getenv("PGARCHIVE");
 	if (pgarchive && strlen(pgarchive) > 0)
-	{
-		snprintf(archive_command, sizeof(archive_command), "'cp %%p %s/%%f'",
-		         pgarchive);
-	}
+		snprintf(archive_command, sizeof(archive_command),
+		         "'cp %%p %s/%%f'", pgarchive);
 	else
-	{
-		snprintf(archive_command, sizeof(archive_command), "'cp %%p %s/%%f'",
-		         RAMD_DEFAULT_PG_ARCHIVE_DIR);
-	}
+		snprintf(archive_command, sizeof(archive_command),
+		         "'cp %%p %s/%%f'", RAMD_DEFAULT_PG_ARCHIVE_DIR);
 
-	if (!ramd_postgresql_update_config(config, "archive_command",
-	                                   archive_command))
+	if (!ramd_postgresql_update_config(config, "archive_command", archive_command))
 		return false;
 
 	ramd_log_info("Enabled WAL archiving on node %d", config->node_id);
 	return true;
 }
 
-
-bool ramd_postgresql_configure_synchronous_replication(
-    const ramd_config_t* config, const char* standby_names)
+bool
+ramd_postgresql_configure_synchronous_replication(const ramd_config_t *config,
+                                                const char *standby_names)
 {
 	char sync_names[512];
 
@@ -599,7 +559,7 @@ bool ramd_postgresql_configure_synchronous_replication(
 	snprintf(sync_names, sizeof(sync_names), "'%s'", standby_names);
 
 	if (!ramd_postgresql_update_config(config, "synchronous_standby_names",
-	                                   sync_names))
+	                                  sync_names))
 		return false;
 
 	ramd_log_info("Configured synchronous replication with standbys: %s",
@@ -607,56 +567,49 @@ bool ramd_postgresql_configure_synchronous_replication(
 	return true;
 }
 
-
-bool ramd_postgresql_health_check(ramd_postgresql_connection_t* conn,
-                                  float* health_score)
+bool
+ramd_postgresql_health_check(ramd_postgresql_connection_t *conn,
+                           float *health_score)
 {
-	PGresult* res;
-	float score = 0.0f;
+	PGresult *res;
+	float     score = 0.0f;
 
 	if (!conn || !health_score)
 		return false;
 
-	/* Basic connection check */
 	if (!ramd_postgresql_accepts_connections(conn))
 	{
 		*health_score = 0.0f;
 		return false;
 	}
 
-	score += 50.0f; /* Base score for connectivity */
+	score += RAMD_HEALTH_BASE_SCORE;
 
-	/* Check if database is accepting writes */
-	res = ramd_query_exec_with_result((PGconn*) conn->connection, "SELECT pg_is_in_recovery()");
+	res = ramd_query_exec_with_result((PGconn *)conn->connection,
+	                                 "SELECT pg_is_in_recovery()");
 	if (PQresultStatus(res) == PGRES_TUPLES_OK)
 	{
 		if (strcmp(PQgetvalue(res, 0, 0), "f") == 0)
-			score += 30.0f; /* Primary database bonus */
+			score += RAMD_HEALTH_PRIMARY_BONUS;
 		else
-			score += 20.0f; /* Standby database */
+			score += RAMD_HEALTH_STANDBY_SCORE;
 	}
 	PQclear(res);
 
-	/* Additional health metrics could be added here */
-	/* Additional health metrics */
-
-	/* Check WAL writing capability */
-	res = ramd_query_exec_with_result((PGconn*) conn->connection, "SELECT pg_current_wal_lsn()");
+	res = ramd_query_exec_with_result((PGconn *)conn->connection,
+	                                 "SELECT pg_current_wal_lsn()");
 	if (PQresultStatus(res) == PGRES_TUPLES_OK)
-	{
-		score += 15.0f; /* WAL writing works */
-	}
+		score += RAMD_HEALTH_WAL_SCORE;
 	PQclear(res);
 
-	/* Check vacuum activity */
-	res = ramd_query_exec_with_result((PGconn*) conn->connection,
-	             "SELECT count(*) FROM pg_stat_activity WHERE query LIKE "
-	             "'%autovacuum%'");
+	res = ramd_query_exec_with_result((PGconn *)conn->connection,
+	                                 "SELECT count(*) FROM pg_stat_activity "
+	                                 "WHERE query LIKE '%autovacuum%'");
 	if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
 	{
 		int vacuum_count = atoi(PQgetvalue(res, 0, 0));
-		if (vacuum_count < 5) /* Not too many vacuum processes */
-			score += 5.0f;
+		if (vacuum_count < RAMD_MAX_VACUUM_PROCESSES)
+			score += RAMD_HEALTH_VACUUM_BONUS;
 	}
 	PQclear(res);
 
@@ -664,19 +617,18 @@ bool ramd_postgresql_health_check(ramd_postgresql_connection_t* conn,
 	return true;
 }
 
-
-bool ramd_postgresql_check_connectivity(const ramd_config_t* config)
+bool
+ramd_postgresql_check_connectivity(const ramd_config_t *config)
 {
 	ramd_postgresql_connection_t conn;
-	bool result;
+	bool                        result;
 
 	if (!config)
 		return false;
 
-	/* Try to connect to PostgreSQL */
 	result = ramd_postgresql_connect(&conn, config->hostname,
-	                                 config->postgresql_port, "postgres",
-	                                 config->postgresql_user, NULL);
+	                               config->postgresql_port, "postgres",
+	                               config->postgresql_user, NULL);
 
 	if (result)
 		ramd_postgresql_disconnect(&conn);
@@ -684,20 +636,19 @@ bool ramd_postgresql_check_connectivity(const ramd_config_t* config)
 	return result;
 }
 
-
-bool ramd_postgresql_check_replication_lag(ramd_postgresql_connection_t* conn,
-                                           float* lag_seconds)
+bool
+ramd_postgresql_check_replication_lag(ramd_postgresql_connection_t *conn,
+                                    float *lag_seconds)
 {
-	PGresult* res;
-	const char* lag_str;
+	PGresult    *res;
+	const char  *lag_str;
 
 	if (!conn || !lag_seconds || !conn->is_connected)
 		return false;
 
-	/* Query replication lag */
-	res = ramd_query_exec_with_result(
-	    (PGconn*) conn->connection,
-	    "SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))");
+	res = ramd_query_exec_with_result((PGconn *)conn->connection,
+	                                 "SELECT EXTRACT(EPOCH FROM (now() - "
+	                                 "pg_last_xact_replay_timestamp()))");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -707,7 +658,7 @@ bool ramd_postgresql_check_replication_lag(ramd_postgresql_connection_t* conn,
 
 	lag_str = PQgetvalue(res, 0, 0);
 	if (lag_str && strlen(lag_str) > 0)
-		*lag_seconds = (float) atof(lag_str);
+		*lag_seconds = (float)atof(lag_str);
 	else
 		*lag_seconds = 0.0f;
 
@@ -715,13 +666,14 @@ bool ramd_postgresql_check_replication_lag(ramd_postgresql_connection_t* conn,
 	return true;
 }
 
-
-bool ramd_postgresql_execute_query(ramd_postgresql_connection_t* conn,
-                                   const char* query, char* result,
-                                   size_t result_size)
+bool
+ramd_postgresql_execute_query(ramd_postgresql_connection_t *conn,
+                            const char *query,
+                            char *result,
+                            size_t result_size)
 {
-	PGresult* res;
-	const char* value;
+	PGresult    *res;
+	const char  *value;
 
 	if (!conn || !query || !result || result_size == 0)
 		return false;
@@ -729,14 +681,12 @@ bool ramd_postgresql_execute_query(ramd_postgresql_connection_t* conn,
 	if (!conn->is_connected)
 		return false;
 
-	res = ramd_query_exec_with_result((PGconn*) conn->connection, query);
+	res = ramd_query_exec_with_result((PGconn *)conn->connection, query);
 
-	/* Accept both PGRES_TUPLES_OK (for SELECT) and PGRES_COMMAND_OK (for DDL)
-	 */
 	if (PQresultStatus(res) != PGRES_TUPLES_OK &&
 	    PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
-		strncpy(result, PQerrorMessage((PGconn*) conn->connection),
+		strncpy(result, PQerrorMessage((PGconn *)conn->connection),
 		        result_size - 1);
 		result[result_size - 1] = '\0';
 		PQclear(res);
@@ -750,17 +700,15 @@ bool ramd_postgresql_execute_query(ramd_postgresql_connection_t* conn,
 		result[result_size - 1] = '\0';
 	}
 	else
-	{
 		result[0] = '\0';
-	}
 
 	PQclear(res);
 	return true;
 }
 
-
-bool ramd_postgresql_wait_for_startup(const ramd_config_t* config,
-                                      int32_t timeout_seconds)
+bool
+ramd_postgresql_wait_for_startup(const ramd_config_t *config,
+                                int32_t timeout_seconds)
 {
 	int elapsed = 0;
 
@@ -782,14 +730,13 @@ bool ramd_postgresql_wait_for_startup(const ramd_config_t* config,
 		elapsed++;
 	}
 
-	ramd_log_error("PostgreSQL startup timeout after %d seconds",
-	               timeout_seconds);
+	ramd_log_error("PostgreSQL startup timeout after %d seconds", timeout_seconds);
 	return false;
 }
 
-
-bool ramd_postgresql_wait_for_shutdown(const ramd_config_t* config,
-                                       int32_t timeout_seconds)
+bool
+ramd_postgresql_wait_for_shutdown(const ramd_config_t *config,
+                                 int32_t timeout_seconds)
 {
 	int elapsed = 0;
 
@@ -812,54 +759,48 @@ bool ramd_postgresql_wait_for_shutdown(const ramd_config_t* config,
 		elapsed++;
 	}
 
-	ramd_log_error("PostgreSQL shutdown timeout after %d seconds",
-	               timeout_seconds);
+	ramd_log_error("PostgreSQL shutdown timeout after %d seconds", timeout_seconds);
 	return false;
 }
 
-
-const char* ramd_postgresql_get_data_directory(void)
+const char *
+ramd_postgresql_get_data_directory(void)
 {
-	/* Get actual data directory from configuration or detect installation */
-
 	static char data_dir[512];
+	char       *env_pgdata;
 
-	/* Use configured data directory or environment variable */
-	char* env_pgdata = getenv("PGDATA");
+	env_pgdata = getenv("PGDATA");
 	if (env_pgdata && strlen(env_pgdata) > 0)
-	{
 		strcpy(data_dir, env_pgdata);
-	}
 	else if (access(RAMD_DEFAULT_PG_DATA_DIR, F_OK) == 0)
-	{
 		strcpy(data_dir, RAMD_DEFAULT_PG_DATA_DIR);
-	}
 	else
-	{
-		/* Final fallback */
 		strcpy(data_dir, RAMD_FALLBACK_DATA_DIR);
-	}
 
 	ramd_log_debug("Using PostgreSQL data directory: %s", data_dir);
 
 	return data_dir;
 }
 
-
-bool ramd_postgresql_update_recovery_conf(const char* path,
-                                          const char* conninfo,
-                                          const char* slot)
+bool
+ramd_postgresql_update_recovery_conf(const char *path,
+                                   const char *conninfo,
+                                   const char *slot)
 {
-	FILE* f;
+	FILE       *f;
+	char        trigger_path[512];
+	char        archive_dir[512];
+	char       *env_archive_dir;
+	char        base_dir[512];
+	char       *last_slash;
+	size_t      dir_len;
 
 	if (!path || !conninfo)
 	{
-		ramd_log_error(
-		    "Invalid parameters for ramd_postgresql_update_recovery_conf");
+		ramd_log_error("Invalid parameters for ramd_postgresql_update_recovery_conf");
 		return false;
 	}
 
-	/* Create recovery configuration for standby setup */
 	ramd_log_info("Creating recovery configuration at %s", path);
 
 	f = fopen(path, "w");
@@ -869,44 +810,30 @@ bool ramd_postgresql_update_recovery_conf(const char* path,
 		return false;
 	}
 
-	/* Write recovery configuration */
-	fprintf(f, "# Generated by RAMD - PostgreSQL Auto-Failover Daemon\n\n");
 	fprintf(f, "standby_mode = 'on'\n");
 	fprintf(f, "primary_conninfo = '%s'\n", conninfo);
 
 	if (slot && strlen(slot) > 0)
-	{
 		fprintf(f, "primary_slot_name = '%s'\n", slot);
-	}
 
-	/* Use trigger file in the same directory as recovery.conf */
-	char trigger_path[512];
-	snprintf(trigger_path, sizeof(trigger_path), "%s/../postgresql.trigger",
-	         path);
+	snprintf(trigger_path, sizeof(trigger_path), "%s/../postgresql.trigger", path);
 	fprintf(f, "trigger_file = '%s'\n", trigger_path);
-	/* Use configurable archive directory */
-	char archive_dir[512];
-	char* env_archive_dir = getenv("PGARCHIVE");
+
+	env_archive_dir = getenv("PGARCHIVE");
 	if (env_archive_dir && strlen(env_archive_dir) > 0)
-	{
 		strcpy(archive_dir, env_archive_dir);
-	}
 	else
 	{
-		/* Extract directory from path parameter and use archive subdirectory */
-		char base_dir[512];
-		char* last_slash = strrchr(path, '/');
+		last_slash = strrchr(path, '/');
 		if (last_slash)
 		{
-			size_t dir_len = (size_t)(last_slash - path);
+			dir_len = (size_t)(last_slash - path);
 			strncpy(base_dir, path, dir_len);
 			base_dir[dir_len] = '\0';
 			snprintf(archive_dir, sizeof(archive_dir), "%s/archive", base_dir);
 		}
 		else
-		{
 			strcpy(archive_dir, RAMD_FALLBACK_ARCHIVE_DIR);
-		}
 	}
 
 	fprintf(f, "restore_command = 'cp %s/%%f %%p'\n", archive_dir);
@@ -919,63 +846,60 @@ bool ramd_postgresql_update_recovery_conf(const char* path,
 	return true;
 }
 
-
-float ramd_postgresql_get_health_score(const ramd_config_t* config)
+float
+ramd_postgresql_get_health_score(const ramd_config_t *config)
 {
+	float     health = 0.0f;
+	PGconn   *conn = NULL;
+	PGresult *res = NULL;
+	char      conninfo[512];
+	float     lag_seconds;
+	int       long_queries;
+
 	if (!config)
 		return 0.0f;
 
-	/* Calculate comprehensive health score based on multiple metrics */
-	float health = 0.0f;
-
-	/* Basic health checks */
 	if (ramd_postgresql_is_running(config))
 		health += 0.5f;
 
 	if (ramd_postgresql_validate_data_directory(config))
 		health += 0.3f;
 
-	/* Add comprehensive health metrics including connection availability,
-	 * replication lag, disk space, and performance */
-	/* Additional comprehensive health checks via database connection */
-	PGconn* conn = NULL;
-	PGresult* res = NULL;
-	char conninfo[512];
+	snprintf(conninfo, sizeof(conninfo),
+	         "host=%s port=%d dbname=%s user=%s",
+	         config->hostname, config->postgresql_port,
+	         config->database_name, config->database_user);
 
-	/* Create connection for health checks */
-	snprintf(conninfo, sizeof(conninfo), "host=%s port=%d dbname=%s user=%s",
-	         config->hostname, config->postgresql_port, config->database_name,
-	         config->database_user);
-
-	conn = ramd_conn_get(config->hostname, config->postgresql_port, "postgres",
-	                     config->database_user, "");
+	conn = ramd_conn_get(config->hostname, config->postgresql_port,
+	                    "postgres", config->database_user, "");
 	if (conn)
 	{
-		/* Check replication lag if this is a standby */
-		res = ramd_query_exec_with_result(
-		    conn, "SELECT CASE WHEN pg_is_in_recovery() THEN EXTRACT(EPOCH "
-		          "FROM (now() - pg_last_xact_replay_timestamp())) ELSE 0 END");
+		res = ramd_query_exec_with_result(conn,
+		                                 "SELECT CASE WHEN pg_is_in_recovery() "
+		                                 "THEN EXTRACT(EPOCH FROM (now() - "
+		                                 "pg_last_xact_replay_timestamp())) "
+		                                 "ELSE 0 END");
 		if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
 		{
-			float lag_seconds = (float) atof(PQgetvalue(res, 0, 0));
-			if (lag_seconds < 60.0f) /* Less than 1 minute lag */
+			lag_seconds = (float)atof(PQgetvalue(res, 0, 0));
+			if (lag_seconds < 60.0f)
 				health += 0.2f;
-			else if (lag_seconds > 300.0f) /* More than 5 minutes lag */
+			else if (lag_seconds > 300.0f)
 				health -= 0.3f;
 		}
 		PQclear(res);
 
-		/* Check for long-running transactions */
 		res = ramd_query_exec_with_result(conn,
-		             "SELECT count(*) FROM pg_stat_activity WHERE state = "
-		             "'active' AND query_start < now() - interval '1 hour'");
+		                                 "SELECT count(*) FROM pg_stat_activity "
+		                                 "WHERE state = 'active' AND "
+		                                 "query_start < now() - interval '1 hour'");
 		if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
 		{
 			int long_queries = atoi(PQgetvalue(res, 0, 0));
 			if (long_queries == 0)
 				health += 0.1f;
 			else
-				health -= (long_queries * 0.05f); /* Penalty for long queries */
+				health -= (long_queries * 0.05f); 
 		}
 		PQclear(res);
 
@@ -983,7 +907,7 @@ float ramd_postgresql_get_health_score(const ramd_config_t* config)
 	}
 	else
 	{
-		/* Connection failed, subtract from health score */
+		
 		health -= 0.2f;
 		if (conn)
 			ramd_conn_close(conn);
@@ -1005,7 +929,7 @@ bool ramd_postgresql_create_pgraft_extension(const ramd_config_t* config)
 
 	ramd_log_info("Creating pgraft extension in PostgreSQL database");
 
-	/* Connect to PostgreSQL */
+	
 	if (!ramd_postgresql_connect(&conn, config->hostname,
 	                             config->postgresql_port, "postgres",
 	                             config->postgresql_user, NULL))
@@ -1015,7 +939,7 @@ bool ramd_postgresql_create_pgraft_extension(const ramd_config_t* config)
 		return false;
 	}
 
-	/* Create the extension */
+	
 	char query_result[256];
 	if (ramd_postgresql_execute_query(&conn,
 	                                  "CREATE EXTENSION IF NOT EXISTS pgraft;",
@@ -1047,7 +971,7 @@ bool ramd_postgresql_query_pgraft_cluster_status(const ramd_config_t* config,
 	if (!config || !node_count || !is_leader || !leader_id || !has_quorum)
 		return false;
 
-	/* Connect to PostgreSQL */
+	
 	if (!ramd_postgresql_connect(&conn, config->hostname,
 	                             config->postgresql_port, "postgres",
 	                             config->postgresql_user, NULL))
@@ -1056,7 +980,7 @@ bool ramd_postgresql_query_pgraft_cluster_status(const ramd_config_t* config,
 		return false;
 	}
 
-	/* Query pgraft cluster status */
+	
 	res = ramd_query_exec_with_result((PGconn*) conn.connection,
 	             "SELECT * FROM pgraft_get_cluster_status();");
 

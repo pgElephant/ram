@@ -26,11 +26,11 @@ bool ramd_config_init(ramd_config_t* config)
 
 void ramd_config_set_defaults(ramd_config_t* config)
 {
-	char*                 pgbin;
-	char*                 pgdata;
-	char*                 pglog;
-	const char*           pgdb;
-	const char*           pguser;
+	char*       pgbin;
+	char*       pgdata;
+	char*       pglog;
+	const char* pgdb;
+	const char* pguser;
 
 	if (!config)
 		return;
@@ -63,6 +63,7 @@ void ramd_config_set_defaults(ramd_config_t* config)
 	        sizeof(config->postgresql_user) - 1);
 	strncpy(config->cluster_name, RAMD_DEFAULT_CLUSTER_NAME,
 	        sizeof(config->cluster_name) - 1);
+
 	config->cluster_size = RAMD_DEFAULT_CLUSTER_SIZE;
 	config->auto_failover_enabled = true;
 	config->synchronous_replication = false;
@@ -70,36 +71,35 @@ void ramd_config_set_defaults(ramd_config_t* config)
 	config->health_check_timeout_ms = RAMD_HEALTH_CHECK_TIMEOUT_MS;
 	config->failover_timeout_ms = RAMD_FAILOVER_TIMEOUT_MS;
 	config->recovery_timeout_ms = RAMD_DEFAULT_RECOVERY_TIMEOUT_MS;
-
 	config->log_file[0] = '\0';
 	config->log_level = RAMD_LOG_LEVEL_INFO;
 	config->log_to_syslog = false;
 	config->log_to_console = true;
-
 	config->http_api_enabled = true;
-	strncpy(config->http_bind_address, RAMD_DEFAULT_HTTP_BIND_ADDRESS,
-	        sizeof(config->http_bind_address) - 1);
 	config->http_port = RAMD_DEFAULT_HTTP_PORT;
 	config->http_auth_enabled = false;
 	config->http_auth_token[0] = '\0';
 	config->sync_standby_names[0] = '\0';
 	config->num_sync_standbys = 1;
-	config->sync_timeout_ms = 10000;
+	config->sync_timeout_ms = RAMD_DEFAULT_SYNC_TIMEOUT_MS;
 	config->enforce_sync_standbys = true;
 	config->maintenance_mode_enabled = true;
-	config->maintenance_drain_timeout_ms = 30000;
+	config->maintenance_drain_timeout_ms = RAMD_DEFAULT_MAINTENANCE_TIMEOUT_MS;
 	config->maintenance_backup_before = false;
 	config->pid_file[0] = '\0';
 	config->daemonize = false;
 	config->user[0] = '\0';
 	config->group[0] = '\0';
+
+	strncpy(config->http_bind_address, RAMD_DEFAULT_HTTP_BIND_ADDRESS,
+	        sizeof(config->http_bind_address) - 1);
 }
 
 bool ramd_config_load_file(ramd_config_t* config, const char* config_file)
 {
 	FILE* fp;
-	char line[1024];
-	int  line_number = 0;
+	char  line[RAMD_MAX_LINE_LENGTH];
+	int   line_number;
 
 	if (!config || !config_file)
 		return false;
@@ -107,24 +107,21 @@ bool ramd_config_load_file(ramd_config_t* config, const char* config_file)
 	fp = fopen(config_file, "r");
 	if (!fp)
 	{
-		fprintf(stderr, "Failed to open configuration file: %s (%s)\n",
-		        config_file, strerror(errno));
-		ramd_log_error("Failed to open configuration file: %s", config_file);
+		ramd_log_error("Failed to open configuration file: %s (%s)",
+		               config_file, strerror(errno));
 		return false;
 	}
 
+	line_number = 0;
 	while (fgets(line, sizeof(line), fp))
 	{
 		line_number++;
-
 		if (line[0] == '\0' || line[0] == '\n' || line[0] == '#')
 			continue;
 
 		if (!ramd_config_parse_line(config, line))
-		{
-			ramd_log_warning("Invalid configuration line %d: %s", line_number,
-			                 line);
-		}
+			ramd_log_warning("Invalid configuration line %d: %s",
+			                 line_number, line);
 	}
 
 	fclose(fp);
@@ -139,11 +136,16 @@ bool ramd_config_load_file(ramd_config_t* config, const char* config_file)
 	return true;
 }
 
-
 bool ramd_config_parse_line(ramd_config_t* config, const char* line)
 {
-	char *key, *value, *line_copy;
+	char* key;
+	char* value;
+	char* line_copy;
 	char* equals_pos;
+	char* newline;
+	char* key_end;
+	char* value_end;
+	bool  result;
 
 	if (!config || !line)
 		return false;
@@ -152,7 +154,7 @@ bool ramd_config_parse_line(ramd_config_t* config, const char* line)
 	if (!line_copy)
 		return false;
 
-	char* newline = strchr(line_copy, '\n');
+	newline = strchr(line_copy, '\n');
 	if (newline)
 		*newline = '\0';
 
@@ -166,34 +168,34 @@ bool ramd_config_parse_line(ramd_config_t* config, const char* line)
 	*equals_pos = '\0';
 	key = line_copy;
 	value = equals_pos + 1;
+
 	while (*key == ' ' || *key == '\t')
 		key++;
 	while (*value == ' ' || *value == '\t')
 		value++;
 
-	char* key_end = key + strlen(key) - 1;
+	key_end = key + strlen(key) - 1;
 	while (key_end > key && (*key_end == ' ' || *key_end == '\t'))
 	{
 		*key_end = '\0';
 		key_end--;
 	}
 
-	char* value_end = value + strlen(value) - 1;
+	value_end = value + strlen(value) - 1;
 	while (value_end > value && (*value_end == ' ' || *value_end == '\t'))
 	{
 		*value_end = '\0';
 		value_end--;
 	}
 
-	bool result = ramd_config_parse_key_value(config, key, value);
-
+	result = ramd_config_parse_key_value(config, key, value);
 	free(line_copy);
+
 	return result;
 }
 
-
 bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
-                                 const char* value)
+                                const char* value)
 {
 	if (!config || !key || !value)
 		return false;
@@ -201,10 +203,7 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 	if (strcmp(key, "node_id") == 0)
 		config->node_id = atoi(value);
 	else if (strcmp(key, "hostname") == 0)
-	{
 		strncpy(config->hostname, value, sizeof(config->hostname) - 1);
-		config->hostname[sizeof(config->hostname) - 1] = '\0';
-	}
 	else if (strcmp(key, "postgresql_port") == 0)
 		config->postgresql_port = atoi(value);
 	else if (strcmp(key, "rale_port") == 0)
@@ -370,7 +369,7 @@ void ramd_config_print(const ramd_config_t* config)
 }
 
 bool ramd_config_save_to_file(const char* config_file,
-                              const ramd_config_t* config)
+                             const ramd_config_t* config)
 {
 	FILE* f;
 
@@ -388,29 +387,17 @@ bool ramd_config_save_to_file(const char* config_file,
 		return false;
 	}
 
-	fprintf(f, "# RAMD Configuration File\n");
-	fprintf(f, "# Generated automatically - edit with care\n\n");
-
-	fprintf(f, "[daemon]\n");
 	fprintf(f, "node_id = %d\n", config->node_id);
 	fprintf(f, "hostname = %s\n", config->hostname);
 	fprintf(f, "cluster_name = %s\n", config->cluster_name);
 	fprintf(f, "cluster_size = %d\n", config->cluster_size);
-	fprintf(f, "\n");
-
-	fprintf(f, "[postgresql]\n");
 	fprintf(f, "postgresql_port = %d\n", config->postgresql_port);
 	fprintf(f, "postgresql_data_dir = %s\n", config->postgresql_data_dir);
-	fprintf(f, "\n");
-
-	fprintf(f, "[monitoring]\n");
 	fprintf(f, "monitor_interval_ms = %d\n", config->monitor_interval_ms);
 	fprintf(f, "auto_failover_enabled = %s\n",
 	        config->auto_failover_enabled ? "true" : "false");
-	fprintf(f, "\n");
 
 	fclose(f);
-
 	ramd_log_info("Configuration saved to: %s", config_file);
 	return true;
 }
@@ -450,6 +437,4 @@ void ramd_config_load_from_environment(ramd_config_t* config)
 		ramd_log_debug("Set postgresql_data_dir from environment: %s",
 		               config->postgresql_data_dir);
 	}
-
-	ramd_log_debug("Environment configuration loaded");
 }

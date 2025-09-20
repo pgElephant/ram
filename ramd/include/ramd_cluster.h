@@ -40,7 +40,7 @@ typedef struct ramd_node_t
 /* Cluster structure */
 typedef struct ramd_cluster_t
 {
-	char cluster_name[64];
+	char cluster_name[RAMD_MAX_HOSTNAME_LENGTH];
 	int32_t node_count;
 	ramd_node_t nodes[RAMD_MAX_NODES];
 	int32_t primary_node_id;
