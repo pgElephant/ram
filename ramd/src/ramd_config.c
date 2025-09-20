@@ -24,23 +24,26 @@ bool ramd_config_init(ramd_config_t* config)
 	return true;
 }
 
-
 void ramd_config_set_defaults(ramd_config_t* config)
 {
+	char*                 pgbin;
+	char*                 pgdata;
+	char*                 pglog;
+	const char*           pgdb;
+	const char*           pguser;
+
 	if (!config)
 		return;
 
-	/* Node identification defaults */
 	config->node_id = 1;
-	config->hostname[0] = '\0'; /* No default hostname - must be configured */
+	config->hostname[0] = '\0';
 	config->postgresql_port = RAMD_DEFAULT_PORT;
 	config->rale_port = RAMD_DEFAULT_RALE_PORT;
 	config->dstore_port = RAMD_DEFAULT_DSTORE_PORT;
 
-	/* PostgreSQL defaults - use environment variables or standard paths */
-	char* pgbin = getenv("PGBIN");
-	char* pgdata = getenv("PGDATA");
-	char* pglog = getenv("PGLOG");
+	pgbin = getenv("PGBIN");
+	pgdata = getenv("PGDATA");
+	pglog = getenv("PGLOG");
 
 	strncpy(config->postgresql_bin_dir, pgbin ? pgbin : RAMD_DEFAULT_PG_BIN_DIR,
 	        sizeof(config->postgresql_bin_dir) - 1);
@@ -49,68 +52,54 @@ void ramd_config_set_defaults(ramd_config_t* config)
 	        sizeof(config->postgresql_data_dir) - 1);
 	strncpy(config->postgresql_log_dir, pglog ? pglog : RAMD_DEFAULT_PG_LOG_DIR,
 	        sizeof(config->postgresql_log_dir) - 1);
-	/* Database defaults - use environment variables or defaults */
-	const char* pgdb = getenv("PGDATABASE");
-	const char* pguser = getenv("PGUSER");
+
+	pgdb = getenv("PGDATABASE");
+	pguser = getenv("PGUSER");
 	strncpy(config->database_name, pgdb ? pgdb : RAMD_DEFAULT_PG_DATABASE,
 	        sizeof(config->database_name) - 1);
 	strncpy(config->database_user, pguser ? pguser : RAMD_DEFAULT_PG_USER,
 	        sizeof(config->database_user) - 1);
 	strncpy(config->postgresql_user, pguser ? pguser : RAMD_DEFAULT_PG_USER,
 	        sizeof(config->postgresql_user) - 1);
-
-	/* Cluster defaults */
 	strncpy(config->cluster_name, RAMD_DEFAULT_CLUSTER_NAME,
 	        sizeof(config->cluster_name) - 1);
 	config->cluster_size = RAMD_DEFAULT_CLUSTER_SIZE;
 	config->auto_failover_enabled = true;
 	config->synchronous_replication = false;
-
-	/* Monitoring defaults */
 	config->monitor_interval_ms = RAMD_MONITOR_INTERVAL_MS;
 	config->health_check_timeout_ms = RAMD_HEALTH_CHECK_TIMEOUT_MS;
 	config->failover_timeout_ms = RAMD_FAILOVER_TIMEOUT_MS;
-	config->recovery_timeout_ms = 300000; /* 5 minutes */
+	config->recovery_timeout_ms = RAMD_DEFAULT_RECOVERY_TIMEOUT_MS;
 
-	/* Logging defaults - use stderr if not configured */
-	config->log_file[0] = '\0'; /* No default log file - use stderr */
+	config->log_file[0] = '\0';
 	config->log_level = RAMD_LOG_LEVEL_INFO;
 	config->log_to_syslog = false;
 	config->log_to_console = true;
 
-	/* HTTP API defaults */
 	config->http_api_enabled = true;
-	/* Default bind address - can be overridden via configuration */
-	strncpy(config->http_bind_address, "127.0.0.1",
+	strncpy(config->http_bind_address, RAMD_DEFAULT_HTTP_BIND_ADDRESS,
 	        sizeof(config->http_bind_address) - 1);
 	config->http_port = RAMD_DEFAULT_HTTP_PORT;
 	config->http_auth_enabled = false;
 	config->http_auth_token[0] = '\0';
-
-	/* Synchronous replication defaults */
 	config->sync_standby_names[0] = '\0';
 	config->num_sync_standbys = 1;
 	config->sync_timeout_ms = 10000;
 	config->enforce_sync_standbys = true;
-
-	/* Maintenance mode defaults */
 	config->maintenance_mode_enabled = true;
 	config->maintenance_drain_timeout_ms = 30000;
 	config->maintenance_backup_before = false;
-
-	/* Daemon defaults */
 	config->pid_file[0] = '\0';
 	config->daemonize = false;
 	config->user[0] = '\0';
 	config->group[0] = '\0';
 }
 
-
 bool ramd_config_load_file(ramd_config_t* config, const char* config_file)
 {
 	FILE* fp;
 	char line[1024];
-	int line_number = 0;
+	int  line_number = 0;
 
 	if (!config || !config_file)
 		return false;
@@ -177,13 +166,11 @@ bool ramd_config_parse_line(ramd_config_t* config, const char* line)
 	*equals_pos = '\0';
 	key = line_copy;
 	value = equals_pos + 1;
-	/* Trim leading spaces from key and value */
 	while (*key == ' ' || *key == '\t')
 		key++;
 	while (*value == ' ' || *value == '\t')
 		value++;
 
-	/* Trim trailing spaces from key */
 	char* key_end = key + strlen(key) - 1;
 	while (key_end > key && (*key_end == ' ' || *key_end == '\t'))
 	{
@@ -191,7 +178,6 @@ bool ramd_config_parse_line(ramd_config_t* config, const char* line)
 		key_end--;
 	}
 
-	/* Trim trailing spaces from value */
 	char* value_end = value + strlen(value) - 1;
 	while (value_end > value && (*value_end == ' ' || *value_end == '\t'))
 	{
@@ -307,18 +293,16 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 		config->daemonize =
 		    (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
 	else
-		return false; /* Unknown key */
+		return false;
 
 	return true;
 }
-
 
 bool ramd_config_validate(const ramd_config_t* config)
 {
 	if (!config)
 		return false;
 
-	/* Validate node ID */
 	if (config->node_id <= 0 || config->node_id > RAMD_MAX_NODES)
 	{
 		ramd_log_error("Invalid node_id: %d (must be 1-%d)", config->node_id,
@@ -326,28 +310,24 @@ bool ramd_config_validate(const ramd_config_t* config)
 		return false;
 	}
 
-	/* Validate hostname */
 	if (strlen(config->hostname) == 0)
 	{
 		ramd_log_error("hostname cannot be empty");
 		return false;
 	}
 
-	/* Validate ports */
 	if (config->postgresql_port <= 0 || config->postgresql_port > 65535)
 	{
 		ramd_log_error("Invalid postgresql_port: %d", config->postgresql_port);
 		return false;
 	}
 
-	/* Validate directories */
 	if (strlen(config->postgresql_data_dir) == 0)
 	{
 		ramd_log_error("postgresql_data_dir cannot be empty");
 		return false;
 	}
 
-	/* Validate cluster settings */
 	if (config->cluster_size < 1 || config->cluster_size > RAMD_MAX_NODES)
 	{
 		ramd_log_error("Invalid cluster_size: %d (must be 1-%d)",
@@ -355,7 +335,6 @@ bool ramd_config_validate(const ramd_config_t* config)
 		return false;
 	}
 
-	/* Validate timeouts */
 	if (config->monitor_interval_ms <= 0)
 	{
 		ramd_log_error("monitor_interval_ms must be positive");
@@ -365,16 +344,13 @@ bool ramd_config_validate(const ramd_config_t* config)
 	return true;
 }
 
-
 void ramd_config_cleanup(ramd_config_t* config)
 {
 	if (!config)
 		return;
 
-	/* Clear sensitive information */
 	memset(config->database_password, 0, sizeof(config->database_password));
 }
-
 
 void ramd_config_print(const ramd_config_t* config)
 {
@@ -392,7 +368,6 @@ void ramd_config_print(const ramd_config_t* config)
 	ramd_log_info("  monitor_interval_ms: %d", config->monitor_interval_ms);
 	ramd_log_info("  postgresql_data_dir: %s", config->postgresql_data_dir);
 }
-
 
 bool ramd_config_save_to_file(const char* config_file,
                               const ramd_config_t* config)
@@ -413,7 +388,6 @@ bool ramd_config_save_to_file(const char* config_file,
 		return false;
 	}
 
-	/* Write configuration in structured format */
 	fprintf(f, "# RAMD Configuration File\n");
 	fprintf(f, "# Generated automatically - edit with care\n\n");
 
@@ -441,7 +415,6 @@ bool ramd_config_save_to_file(const char* config_file,
 	return true;
 }
 
-
 void ramd_config_load_from_environment(ramd_config_t* config)
 {
 	const char* env_value;
@@ -449,7 +422,6 @@ void ramd_config_load_from_environment(ramd_config_t* config)
 	if (!config)
 		return;
 
-	/* Load configuration from environment variables */
 	if ((env_value = getenv("RAMD_NODE_ID")) != NULL)
 	{
 		config->node_id = atoi(env_value);

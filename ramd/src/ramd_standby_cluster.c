@@ -23,14 +23,14 @@
 #include "ramd_postgresql.h"
 #include "ramd_callbacks.h"
 
-/* Global state */
 static ramd_standby_cluster_config_t g_standby_config = {0};
 static ramd_standby_cluster_status_t g_standby_status = {0};
 static ramd_disaster_recovery_plan_t g_dr_plan = {0};
 static bool g_standby_initialized = false;
 static pthread_mutex_t g_standby_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-bool ramd_standby_cluster_init(ramd_standby_cluster_config_t* config)
+bool
+ramd_standby_cluster_init(ramd_standby_cluster_config_t* config)
 {
 	if (!config)
 	{
@@ -49,20 +49,17 @@ bool ramd_standby_cluster_init(ramd_standby_cluster_config_t* config)
 
 	memcpy(&g_standby_config, config, sizeof(ramd_standby_cluster_config_t));
 	
-	/* Initialize standby status */
 	memset(&g_standby_status, 0, sizeof(ramd_standby_cluster_status_t));
 	g_standby_status.is_initialized = true;
 	g_standby_status.initialization_time = time(NULL);
 	g_standby_status.state = RAMD_STANDBY_STATE_INITIALIZING;
 	
-	/* Initialize disaster recovery plan */
 	memset(&g_dr_plan, 0, sizeof(ramd_disaster_recovery_plan_t));
 	g_dr_plan.is_configured = true;
 	g_dr_plan.activation_timeout_seconds = config->activation_timeout_seconds;
 	g_dr_plan.data_sync_interval_seconds = config->data_sync_interval_seconds;
 	g_dr_plan.health_check_interval_seconds = config->health_check_interval_seconds;
 	
-	/* Validate configuration */
 	if (strlen(config->standby_cluster_name) == 0)
 	{
 		ramd_log_error("Standby cluster name cannot be empty");
@@ -77,7 +74,6 @@ bool ramd_standby_cluster_init(ramd_standby_cluster_config_t* config)
 		return false;
 	}
 	
-	/* Initialize standby nodes */
 	for (int i = 0; i < config->standby_nodes_count; i++)
 	{
 		ramd_standby_node_t *node = &g_standby_status.standby_nodes[i];
@@ -104,10 +100,8 @@ bool ramd_standby_cluster_init(ramd_standby_cluster_config_t* config)
 	return true;
 }
 
-/*
- * Shutdown standby cluster
- */
-bool ramd_standby_cluster_shutdown(void)
+bool
+ramd_standby_cluster_shutdown(void)
 {
 	pthread_mutex_lock(&g_standby_mutex);
 	
@@ -118,11 +112,9 @@ bool ramd_standby_cluster_shutdown(void)
 		return true;
 	}
 	
-	/* Update status */
 	g_standby_status.state = RAMD_STANDBY_STATE_SHUTTING_DOWN;
 	g_standby_status.shutdown_time = time(NULL);
 	
-	/* Disconnect from all standby nodes */
 	for (int i = 0; i < g_standby_status.standby_nodes_count; i++)
 	{
 		ramd_standby_node_t *node = &g_standby_status.standby_nodes[i];
@@ -139,10 +131,8 @@ bool ramd_standby_cluster_shutdown(void)
 	return true;
 }
 
-/*
- * Get standby cluster status
- */
-bool ramd_standby_cluster_get_status(ramd_standby_cluster_status_t* status)
+bool
+ramd_standby_cluster_get_status(ramd_standby_cluster_status_t* status)
 {
 	if (!status)
 		return false;
@@ -161,10 +151,8 @@ bool ramd_standby_cluster_get_status(ramd_standby_cluster_status_t* status)
 	return true;
 }
 
-/*
- * Check standby cluster health
- */
-bool ramd_standby_cluster_health_check(void)
+bool
+ramd_standby_cluster_health_check(void)
 {
 	if (!g_standby_initialized)
 		return false;
@@ -178,7 +166,6 @@ bool ramd_standby_cluster_health_check(void)
 	{
 		ramd_standby_node_t *node = &g_standby_status.standby_nodes[i];
 		
-		/* Check if node is reachable */
 		if (ramd_postgresql_check_connection(node->hostname, node->port))
 		{
 			node->is_online = true;
@@ -193,24 +180,17 @@ bool ramd_standby_cluster_health_check(void)
 		}
 	}
 	
-	/* Update overall status */
 	if (all_healthy)
-	{
 		g_standby_status.state = RAMD_STANDBY_STATE_READY;
-	}
 	else
-	{
 		g_standby_status.state = RAMD_STANDBY_STATE_DEGRADED;
-	}
 	
 	pthread_mutex_unlock(&g_standby_mutex);
 	return all_healthy;
 }
 
-/*
- * Activate standby cluster
- */
-bool ramd_standby_cluster_activate(void)
+bool
+ramd_standby_cluster_activate(void)
 {
 	if (!g_standby_initialized)
 		return false;
@@ -219,18 +199,15 @@ bool ramd_standby_cluster_activate(void)
 	
 	ramd_log_info("Activating standby cluster: %s", g_standby_config.standby_cluster_name);
 	
-	/* Update status */
 	g_standby_status.state = RAMD_STANDBY_STATE_ACTIVATING;
 	g_standby_status.activation_time = time(NULL);
 	
-	/* Activate each standby node */
 	for (int i = 0; i < g_standby_status.standby_nodes_count; i++)
 	{
 		ramd_standby_node_t *node = &g_standby_status.standby_nodes[i];
 		
 		if (node->is_healthy)
 		{
-			/* Promote standby to primary */
 			if (ramd_postgresql_promote_standby(node->hostname, node->port))
 			{
 				ramd_log_info("Successfully activated standby node %d (%s:%d)", 
@@ -253,10 +230,8 @@ bool ramd_standby_cluster_activate(void)
 	return true;
 }
 
-/*
- * Sync data to standby cluster
- */
-bool ramd_standby_cluster_sync_data(void)
+bool
+ramd_standby_cluster_sync_data(void)
 {
 	if (!g_standby_initialized)
 		return false;
@@ -265,18 +240,15 @@ bool ramd_standby_cluster_sync_data(void)
 	
 	ramd_log_debug("Syncing data to standby cluster");
 	
-	/* Update sync status */
 	g_standby_status.last_sync_time = time(NULL);
 	g_standby_status.sync_in_progress = true;
 	
-	/* Perform data synchronization for each standby node */
 	for (int i = 0; i < g_standby_status.standby_nodes_count; i++)
 	{
 		ramd_standby_node_t *node = &g_standby_status.standby_nodes[i];
 		
 		if (node->is_healthy)
 		{
-			/* Check replication lag */
 			if (ramd_postgresql_get_replication_lag(node->hostname, node->port, 
 			                                       &node->replication_lag_bytes,
 			                                       &node->replication_lag_seconds))
@@ -295,10 +267,8 @@ bool ramd_standby_cluster_sync_data(void)
 	return true;
 }
 
-/*
- * Get disaster recovery plan
- */
-bool ramd_standby_cluster_get_dr_plan(ramd_disaster_recovery_plan_t* plan)
+bool
+ramd_standby_cluster_get_dr_plan(ramd_disaster_recovery_plan_t* plan)
 {
 	if (!plan)
 		return false;
@@ -317,10 +287,8 @@ bool ramd_standby_cluster_get_dr_plan(ramd_disaster_recovery_plan_t* plan)
 	return true;
 }
 
-/*
- * Update disaster recovery plan
- */
-bool ramd_standby_cluster_update_dr_plan(const ramd_disaster_recovery_plan_t* plan)
+bool
+ramd_standby_cluster_update_dr_plan(const ramd_disaster_recovery_plan_t* plan)
 {
 	if (!plan)
 		return false;

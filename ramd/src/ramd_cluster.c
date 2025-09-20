@@ -13,8 +13,10 @@
 #include "ramd_pgraft.h"
 #include "ramd_conn.h"
 #include "ramd_query.h"
+#include "ramd_daemon.h"
 #include <libpq-fe.h>
-/* librale.h removed - using pgraft instead */
+
+extern ramd_daemon_t* g_ramd_daemon;
 
 bool ramd_cluster_init(ramd_cluster_t* cluster, const ramd_config_t* config)
 {
@@ -30,26 +32,17 @@ bool ramd_cluster_init(ramd_cluster_t* cluster, const ramd_config_t* config)
 	cluster->leader_node_id = -1;
 	cluster->last_topology_change = time(NULL);
 
-	/* Initialize PostgreSQL connection for pgraft integration */
-	char conn_string[512];
-	snprintf(conn_string, sizeof(conn_string),
-	         "host=%s port=%d dbname=%s user=%s password=%s",
-	         config->hostname, config->postgresql_port,
-	         config->database_name, config->database_user, config->database_password);
-
 	cluster->pg_conn = ramd_conn_get(config->hostname, config->postgresql_port,
 	                                 config->database_name, config->database_user,
 	                                 config->database_password);
 	if (!cluster->pg_conn)
 	{
 		ramd_log_error("Failed to connect to PostgreSQL for pgraft integration");
-		/* Continue without pgraft integration */
 	}
 	else
 	{
 		ramd_log_info("PostgreSQL connection established for pgraft integration");
 		
-		/* Check if pgraft extension is available */
 		if (ramd_pgraft_check_availability(cluster->pg_conn) == 1)
 		{
 			ramd_log_info("pgraft extension is available and ready");
@@ -67,14 +60,12 @@ bool ramd_cluster_init(ramd_cluster_t* cluster, const ramd_config_t* config)
 	return true;
 }
 
-
 bool ramd_cluster_bootstrap_primary(ramd_cluster_t* cluster,
                                     const ramd_config_t* config)
 {
 	if (!cluster || !config)
 		return false;
 
-	/* Ensure cluster is empty */
 	if (cluster->node_count > 0)
 	{
 		ramd_log_error("Cannot bootstrap primary: cluster already has %d nodes",
@@ -85,7 +76,6 @@ bool ramd_cluster_bootstrap_primary(ramd_cluster_t* cluster,
 	ramd_log_info("Bootstrapping primary node for cluster '%s'",
 	              cluster->cluster_name);
 
-	/* Add the local node as primary */
 	if (!ramd_cluster_add_node(cluster, config->node_id, config->hostname,
 	                           config->postgresql_port, config->rale_port,
 	                           config->dstore_port))
@@ -94,8 +84,9 @@ bool ramd_cluster_bootstrap_primary(ramd_cluster_t* cluster,
 		return false;
 	}
 
-	/* Mark this node as primary */
-	ramd_node_t* local_node = ramd_cluster_find_node(cluster, config->node_id);
+	ramd_node_t* local_node;
+
+	local_node = ramd_cluster_find_node(cluster, config->node_id);
 	if (local_node)
 	{
 		local_node->is_healthy = true;
@@ -117,7 +108,6 @@ void ramd_cluster_cleanup(ramd_cluster_t* cluster)
 
 	ramd_log_info("Cleaning up cluster: %s", cluster->cluster_name);
 	
-	/* Close PostgreSQL connection if it exists */
 	if (cluster->pg_conn)
 	{
 		ramd_conn_close(cluster->pg_conn);
@@ -186,15 +176,13 @@ bool ramd_cluster_has_quorum(const ramd_cluster_t* cluster)
 	if (!cluster)
 		return false;
 
-	/* Use pgraft consensus for quorum decisions if available */
 	if (cluster->pg_conn)
 	{
-		/* Check if we have a leader using pgraft */
 		int leader = ramd_pgraft_get_leader(cluster->pg_conn);
 		if (leader > 0)
 		{
 			ramd_log_debug("ramd_cluster_has_quorum: pgraft leader is %d", leader);
-			return true; /* If we have a leader, we have quorum */
+			return true;
 		}
 		else
 		{
@@ -207,7 +195,6 @@ bool ramd_cluster_has_quorum(const ramd_cluster_t* cluster)
 		}
 	}
 
-	/* Fall back to the original logic if pgraft is not available */
 	ramd_log_debug("ramd_cluster_has_quorum: falling back to simple quorum logic");
 	int healthy_nodes = ramd_cluster_count_healthy_nodes(cluster);
 	return healthy_nodes > (cluster->node_count / 2);
@@ -230,18 +217,15 @@ int32_t ramd_cluster_count_healthy_nodes(const ramd_cluster_t* cluster)
 }
 
 
-/* Implementation of cluster management functions */
 bool ramd_cluster_remove_node(ramd_cluster_t* cluster, int32_t node_id)
 {
 	if (!cluster || node_id <= 0 || node_id > cluster->node_count)
 		return false;
 
-	/* Find and remove the node */
 	for (int32_t i = 0; i < cluster->node_count; i++)
 	{
 		if (cluster->nodes[i].node_id == node_id)
 		{
-			/* Shift remaining nodes */
 			for (int32_t j = i; j < cluster->node_count - 1; j++)
 			{
 				cluster->nodes[j] = cluster->nodes[j + 1];
@@ -330,7 +314,7 @@ bool ramd_cluster_update_node_health(ramd_cluster_t* cluster, int32_t node_id,
 	node->health_score = health_score;
 	node->last_seen = time(NULL);
 	node->is_healthy =
-	    (health_score >= 50.0f); /* Consider healthy if score >= 50 */
+	    (health_score >= RAMD_HEALTH_SCORE_THRESHOLD); 
 	return true;
 }
 
@@ -373,14 +357,14 @@ bool ramd_cluster_detect_topology_change(ramd_cluster_t* cluster)
 	if (!cluster)
 		return false;
 
-	/* Check for changes in node states or roles */
+	
 	for (int32_t i = 0; i < cluster->node_count; i++)
 	{
 		ramd_node_t* node = &cluster->nodes[i];
 		time_t now = time(NULL);
 
-		/* Check if node has been unresponsive for too long */
-		if (difftime(now, node->last_seen) > 300) /* 5 minutes */
+		
+		if (difftime(now, node->last_seen) > RAMD_NODE_TIMEOUT_SECONDS) 
 		{
 			if (node->is_healthy)
 			{
@@ -400,7 +384,7 @@ void ramd_cluster_update_topology(ramd_cluster_t* cluster)
 	if (!cluster)
 		return;
 
-	/* Update cluster topology information */
+	
 	cluster->node_count = 0;
 	for (int32_t i = 0; i < RAMD_MAX_NODES; i++)
 	{
@@ -445,20 +429,21 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 		return false;
 	}
 
-	/* Implement RALE consensus state query */
 	
-	/* Step 1: Query pgraft extension for consensus state */
-	/* Connect to PostgreSQL and query pgraft consensus state */
-	PGconn *conn = ramd_conn_get("localhost", 5432, "postgres", "postgres", "");
+	
+	
+	
+	PGconn *conn = ramd_conn_get(g_ramd_daemon->config.hostname, g_ramd_daemon->config.postgresql_port, 
+	                             g_ramd_daemon->config.database_name, g_ramd_daemon->config.database_user, "");
 	if (!conn)
 	{
 		ramd_log_error("Failed to connect to PostgreSQL");
 		return false;
 	}
 	
-	/* Step 2: Get current leader information */
-	/* Retrieve current leader ID from consensus state */
-	PGresult *res = PQexec(conn, "SELECT pgraft_get_leader_id()");
+	
+	
+	PGresult *res = ramd_query_exec_with_result(conn, "SELECT pgraft_get_leader_id()");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		ramd_log_error("Failed to get leader ID: %s", PQerrorMessage(conn));
@@ -474,9 +459,9 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 	}
 	PQclear(res);
 	
-	/* Step 3: Get node role and status */
-	/* Determine if node is leader, follower, or candidate */
-	res = PQexec(conn, "SELECT pgraft_get_current_state()");
+	
+	
+	res = ramd_query_exec_with_result(conn, "SELECT pgraft_get_current_state()");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		ramd_log_error("Failed to get current state: %s", PQerrorMessage(conn));
@@ -492,9 +477,9 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 	}
 	PQclear(res);
 	
-	/* Step 4: Get cluster membership */
-	/* Retrieve current cluster membership */
-	res = PQexec(conn, "SELECT pgraft_get_cluster_nodes()");
+	
+	
+	res = ramd_query_exec_with_result(conn, "SELECT pgraft_get_cluster_nodes()");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		ramd_log_error("Failed to get cluster nodes: %s", PQerrorMessage(conn));
@@ -507,18 +492,18 @@ bool ramd_cluster_get_node_by_id(int32_t node_id, ramd_node_t* node)
 	PQclear(res);
 	PQfinish(conn);
 	
-	/* Update node information with consensus data */
+	
 	node->leader_id = leader_id;
 	node->state = (ramd_node_state_t)current_state;
 	node->cluster_size = node_count;
 	
-	/* Create comprehensive node representation */
+	
 	memset(node, 0, sizeof(ramd_node_t));
 	node->node_id = node_id;
 	snprintf(node->hostname, sizeof(node->hostname), "node%d.local", node_id);
-	node->postgresql_port = 5432; /* Default PostgreSQL port */
-	node->rale_port = 23000 + node_id;
-	node->dstore_port = 24000 + node_id;
+	node->postgresql_port = g_ramd_daemon->config.postgresql_port;
+	node->rale_port = RAMD_DEFAULT_RALE_PORT + node_id;
+	node->dstore_port = RAMD_DEFAULT_DSTORE_PORT + node_id;
 	node->state =
 	    (node_id == 1) ? RAMD_NODE_STATE_PRIMARY : RAMD_NODE_STATE_STANDBY;
 	node->role = (node_id == 1) ? RAMD_ROLE_PRIMARY : RAMD_ROLE_STANDBY;

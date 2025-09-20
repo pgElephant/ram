@@ -96,20 +96,12 @@ void ramd_monitor_run_cycle(ramd_monitor_t* monitor)
 
 	monitor->last_check = time(NULL);
 
-	/* Check local node health */
 	ramd_monitor_check_local_node(monitor);
-
-	/* Check remote nodes */
 	ramd_monitor_check_remote_nodes(monitor);
-
-	/* Check leadership status */
 	ramd_monitor_check_leadership(monitor);
-
-	/* Check for role changes */
 	ramd_monitor_detect_role_changes(monitor);
 }
 
-/* Real implementations for critical monitoring functions */
 bool ramd_monitor_is_running(const ramd_monitor_t* monitor)
 {
 	return monitor && monitor->running;
@@ -124,13 +116,11 @@ bool ramd_monitor_check_local_node(ramd_monitor_t* monitor)
 	ramd_postgresql_connection_t local_conn;
 	bool local_healthy = false;
 
-	/* Try to connect to local PostgreSQL */
 	if (ramd_postgresql_connect(
 	        &local_conn, monitor->config->hostname, monitor->config->postgresql_port,
 	        monitor->config->database_name, monitor->config->database_user,
 	        monitor->config->database_password))
 	{
-		/* Check PostgreSQL status */
 		if (ramd_postgresql_get_status(&local_conn, &pg_status))
 		{
 			local_healthy = true;
@@ -145,17 +135,14 @@ bool ramd_monitor_check_local_node(ramd_monitor_t* monitor)
 		return false;
 	}
 
-	/* Update local node health score */
 	float health_score = ramd_monitor_calculate_node_health(monitor, NULL);
 
-	/* Check if we're still connected to PostgreSQL */
 	if (!pg_status.is_running)
 	{
 		ramd_log_error("Local PostgreSQL database service is offline");
 		return false;
 	}
 
-	/* Check if we can accept connections */
 	if (!pg_status.accepts_connections)
 	{
 		ramd_log_warning("Local PostgreSQL is not accepting connections");
@@ -179,11 +166,9 @@ bool ramd_monitor_check_remote_nodes(ramd_monitor_t* monitor)
 	{
 		ramd_node_t* node = &monitor->cluster->nodes[i];
 
-		/* Skip self */
 		if (node->node_id == monitor->config->node_id)
 			continue;
 
-		/* Try to connect to remote node */
 		ramd_postgresql_connection_t remote_conn;
 		bool node_healthy = false;
 
@@ -198,7 +183,6 @@ bool ramd_monitor_check_remote_nodes(ramd_monitor_t* monitor)
 				node_healthy = remote_status.is_running &&
 				               remote_status.accepts_connections;
 
-				/* Update node health in cluster */
 				float health_score = remote_status.is_running ? 1.0f : 0.0f;
 				ramd_cluster_update_node_health(monitor->cluster, node->node_id,
 				                                health_score);
@@ -223,7 +207,6 @@ bool ramd_monitor_check_remote_nodes(ramd_monitor_t* monitor)
 		}
 	}
 
-	/* Calculate remote node count (excluding local node) */
 	int32_t remote_node_count =
 	    monitor->cluster->node_count > 0 ? monitor->cluster->node_count - 1 : 0;
 	ramd_log_info("Remote nodes health check: %d/%d nodes healthy",
@@ -237,7 +220,6 @@ bool ramd_monitor_check_cluster_health(ramd_monitor_t* monitor)
 	if (!monitor || !monitor->cluster)
 		return false;
 
-	/* Check if we have minimum required nodes for quorum */
 	int32_t healthy_nodes = ramd_cluster_count_healthy_nodes(monitor->cluster);
 	int32_t required_for_quorum = (monitor->cluster->node_count / 2) + 1;
 
@@ -249,7 +231,6 @@ bool ramd_monitor_check_cluster_health(ramd_monitor_t* monitor)
 		return false;
 	}
 
-	/* Check if we have a primary */
 	if (!ramd_cluster_has_primary(monitor->cluster))
 	{
 		ramd_log_warning("Cluster has no primary node");
@@ -262,15 +243,14 @@ bool ramd_monitor_check_cluster_health(ramd_monitor_t* monitor)
 
 	return true;
 }
+
 bool ramd_monitor_check_leadership(ramd_monitor_t* monitor)
 {
 	if (!monitor || !monitor->cluster)
 		return false;
 
-	/* Check if we're the leader according to consensus */
 	bool am_leader = false;
 
-	/* Query pgraft for current leader status */
 	ramd_node_t* self =
 	    ramd_cluster_find_node(monitor->cluster, monitor->config->node_id);
 	if (self && self->role == RAMD_ROLE_PRIMARY)
@@ -278,7 +258,6 @@ bool ramd_monitor_check_leadership(ramd_monitor_t* monitor)
 		am_leader = true;
 	}
 	
-	/* Additional leader validation through consensus system */
 	if (self && self->is_leader)
 	{
 		am_leader = true;
@@ -327,22 +306,18 @@ bool ramd_monitor_handle_leadership_gained(ramd_monitor_t* monitor)
 
 	ramd_log_info("Gained leadership - becoming primary");
 
-	/* Update our role in cluster state */
 	ramd_cluster_update_node_role(monitor->cluster, monitor->config->node_id,
 	                              RAMD_ROLE_PRIMARY);
 
-	/* Configure PostgreSQL as primary */
 	if (!ramd_postgresql_promote(monitor->config))
 	{
 		ramd_log_error("Failed to promote PostgreSQL to primary");
 		return false;
 	}
 
-	/* Set up synchronous replication if enabled */
 	if (monitor->config->synchronous_replication)
 	{
 		char standby_names[512];
-		/* Build standby names from cluster state */
 		standby_names[0] = '\0';
 		for (int i = 0; i < monitor->cluster->node_count; i++)
 		{
@@ -373,15 +348,12 @@ bool ramd_monitor_handle_leadership_lost(ramd_monitor_t* monitor)
 
 	ramd_log_info("Lost leadership - becoming standby");
 
-	/* Update our role in cluster state */
 	ramd_cluster_update_node_role(monitor->cluster, monitor->config->node_id,
 	                              RAMD_ROLE_STANDBY);
 
-	/* Find new primary for replication setup */
 	ramd_node_t* primary = ramd_cluster_get_primary_node(monitor->cluster);
 	if (primary)
 	{
-		/* Configure PostgreSQL as standby */
 		if (!ramd_postgresql_demote_to_standby(
 		        monitor->config, primary->hostname, primary->postgresql_port))
 		{
@@ -410,11 +382,9 @@ bool ramd_monitor_check_primary_health(ramd_monitor_t* monitor)
 		return false;
 	}
 
-	/* Skip if we are the primary */
 	if (primary->node_id == monitor->config->node_id)
 		return true;
 
-	/* Try to connect to primary */
 	ramd_postgresql_connection_t primary_conn;
 	bool primary_healthy = false;
 
@@ -451,16 +421,13 @@ bool ramd_monitor_detect_primary_failure(ramd_monitor_t* monitor)
 	static int consecutive_failures = 0;
 	static time_t last_failure_time __attribute__((unused)) = 0;
 
-	/* Define failover threshold based on health check timeout */
-	const int failover_threshold = 3; /* Require 3 consecutive failures */
+	const int failover_threshold = 3;
 
 	if (!ramd_monitor_check_primary_health(monitor))
 	{
 		consecutive_failures++;
 		last_failure_time = time(NULL);
 
-		/* Require multiple consecutive failures before declaring primary failed
-		 */
 		if (consecutive_failures >= failover_threshold)
 		{
 			ramd_log_error(
@@ -476,7 +443,6 @@ bool ramd_monitor_detect_primary_failure(ramd_monitor_t* monitor)
 	}
 	else
 	{
-		/* Reset failure count on successful check */
 		if (consecutive_failures > 0)
 		{
 			ramd_log_info("Primary health restored after %d failures",
@@ -487,16 +453,19 @@ bool ramd_monitor_detect_primary_failure(ramd_monitor_t* monitor)
 
 	return false;
 }
+
 bool ramd_monitor_handle_primary_failure(ramd_monitor_t* monitor)
 {
 	(void) monitor;
 	return true;
 }
+
 bool ramd_monitor_detect_role_changes(ramd_monitor_t* monitor)
 {
 	(void) monitor;
 	return false;
 }
+
 bool ramd_monitor_handle_role_change(ramd_monitor_t* monitor,
                                      ramd_role_t old_role, ramd_role_t new_role)
 {
@@ -505,16 +474,19 @@ bool ramd_monitor_handle_role_change(ramd_monitor_t* monitor,
 	(void) new_role;
 	return true;
 }
+
 bool ramd_monitor_sync_cluster_state(ramd_monitor_t* monitor)
 {
 	(void) monitor;
 	return true;
 }
+
 bool ramd_monitor_update_node_states(ramd_monitor_t* monitor)
 {
 	(void) monitor;
 	return true;
 }
+
 bool ramd_monitor_broadcast_state_change(ramd_monitor_t* monitor,
                                          int32_t node_id,
                                          ramd_node_state_t new_state)
@@ -524,6 +496,7 @@ bool ramd_monitor_broadcast_state_change(ramd_monitor_t* monitor,
 	(void) new_state;
 	return true;
 }
+
 float ramd_monitor_calculate_node_health(ramd_monitor_t* monitor,
                                          ramd_node_t* node)
 {
@@ -531,6 +504,7 @@ float ramd_monitor_calculate_node_health(ramd_monitor_t* monitor,
 	(void) node;
 	return 1.0f;
 }
+
 bool ramd_monitor_is_node_healthy(const ramd_monitor_t* monitor,
                                   const ramd_node_t* node)
 {

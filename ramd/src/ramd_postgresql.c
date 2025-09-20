@@ -212,7 +212,7 @@ bool ramd_postgresql_create_basebackup(const ramd_config_t* config,
 	ramd_log_info("Taking base backup from %s:%d", primary_host, primary_port);
 
 	/* Use ramd_basebackup function with ramd_conn */
-	PGconn *conn = ramd_conn_get(primary_host, primary_port, "postgres", config->replication_user, NULL);
+	PGconn *conn = ramd_conn_get(primary_host, primary_port, config->database_name, config->replication_user, NULL);
 	if (!conn) {
 		ramd_log_error("Failed to connect to primary for backup");
 		return false;
@@ -267,7 +267,7 @@ bool ramd_postgresql_get_status(ramd_postgresql_connection_t* conn,
 		return false;
 
 	/* Query PostgreSQL for recovery status */
-	res = PQexec((PGconn*) conn->connection, "SELECT pg_is_in_recovery()");
+	res = ramd_query_exec_with_result((PGconn*) conn->connection, "SELECT pg_is_in_recovery()");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -318,7 +318,7 @@ bool ramd_postgresql_accepts_connections(ramd_postgresql_connection_t* conn)
 		return false;
 
 	/* Test connection with a simple query */
-	res = PQexec((PGconn*) conn->connection, "SELECT 1");
+	res = ramd_query_exec_with_result((PGconn*) conn->connection, "SELECT 1");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -627,7 +627,7 @@ bool ramd_postgresql_health_check(ramd_postgresql_connection_t* conn,
 	score += 50.0f; /* Base score for connectivity */
 
 	/* Check if database is accepting writes */
-	res = PQexec((PGconn*) conn->connection, "SELECT pg_is_in_recovery()");
+	res = ramd_query_exec_with_result((PGconn*) conn->connection, "SELECT pg_is_in_recovery()");
 	if (PQresultStatus(res) == PGRES_TUPLES_OK)
 	{
 		if (strcmp(PQgetvalue(res, 0, 0), "f") == 0)
@@ -641,7 +641,7 @@ bool ramd_postgresql_health_check(ramd_postgresql_connection_t* conn,
 	/* Additional health metrics */
 
 	/* Check WAL writing capability */
-	res = PQexec((PGconn*) conn->connection, "SELECT pg_current_wal_lsn()");
+	res = ramd_query_exec_with_result((PGconn*) conn->connection, "SELECT pg_current_wal_lsn()");
 	if (PQresultStatus(res) == PGRES_TUPLES_OK)
 	{
 		score += 15.0f; /* WAL writing works */
@@ -649,7 +649,7 @@ bool ramd_postgresql_health_check(ramd_postgresql_connection_t* conn,
 	PQclear(res);
 
 	/* Check vacuum activity */
-	res = PQexec((PGconn*) conn->connection,
+	res = ramd_query_exec_with_result((PGconn*) conn->connection,
 	             "SELECT count(*) FROM pg_stat_activity WHERE query LIKE "
 	             "'%autovacuum%'");
 	if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
@@ -695,7 +695,7 @@ bool ramd_postgresql_check_replication_lag(ramd_postgresql_connection_t* conn,
 		return false;
 
 	/* Query replication lag */
-	res = PQexec(
+	res = ramd_query_exec_with_result(
 	    (PGconn*) conn->connection,
 	    "SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))");
 
@@ -729,7 +729,7 @@ bool ramd_postgresql_execute_query(ramd_postgresql_connection_t* conn,
 	if (!conn->is_connected)
 		return false;
 
-	res = PQexec((PGconn*) conn->connection, query);
+	res = ramd_query_exec_with_result((PGconn*) conn->connection, query);
 
 	/* Accept both PGRES_TUPLES_OK (for SELECT) and PGRES_COMMAND_OK (for DDL)
 	 */
@@ -952,7 +952,7 @@ float ramd_postgresql_get_health_score(const ramd_config_t* config)
 	if (conn)
 	{
 		/* Check replication lag if this is a standby */
-		res = PQexec(
+		res = ramd_query_exec_with_result(
 		    conn, "SELECT CASE WHEN pg_is_in_recovery() THEN EXTRACT(EPOCH "
 		          "FROM (now() - pg_last_xact_replay_timestamp())) ELSE 0 END");
 		if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
@@ -966,7 +966,7 @@ float ramd_postgresql_get_health_score(const ramd_config_t* config)
 		PQclear(res);
 
 		/* Check for long-running transactions */
-		res = PQexec(conn,
+		res = ramd_query_exec_with_result(conn,
 		             "SELECT count(*) FROM pg_stat_activity WHERE state = "
 		             "'active' AND query_start < now() - interval '1 hour'");
 		if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
@@ -1057,7 +1057,7 @@ bool ramd_postgresql_query_pgraft_cluster_status(const ramd_config_t* config,
 	}
 
 	/* Query pgraft cluster status */
-	res = PQexec((PGconn*) conn.connection,
+	res = ramd_query_exec_with_result((PGconn*) conn.connection,
 	             "SELECT * FROM pgraft_get_cluster_status();");
 
 	if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)

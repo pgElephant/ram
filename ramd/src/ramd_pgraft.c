@@ -21,12 +21,12 @@
 #include "ramd_logging.h"
 #include "ramd_basebackup.h"
 #include "ramd_conn.h"
+#include "ramd_query.h"
 
-/* Static error message buffer */
 static char g_last_error[512] = {0};
 
-/* Helper function to set error message */
-static void set_last_error(const char* format, ...)
+static void
+set_last_error(const char* format, ...)
 {
 	va_list args;
 	va_start(args, format);
@@ -34,8 +34,8 @@ static void set_last_error(const char* format, ...)
 	va_end(args);
 }
 
-/* Helper function to execute a simple SQL query that returns a single value */
-static char* execute_simple_query(PGconn* conn, const char* query)
+static char*
+execute_simple_query(PGconn* conn, const char* query)
 {
 	PGresult* result;
 	char* value = NULL;
@@ -46,7 +46,7 @@ static char* execute_simple_query(PGconn* conn, const char* query)
 		return NULL;
 	}
 
-	result = PQexec(conn, query);
+	result = ramd_query_exec_with_result(conn, query);
 	if (!result)
 	{
 		set_last_error("Failed to execute query: %s", PQerrorMessage(conn));
@@ -70,8 +70,8 @@ static char* execute_simple_query(PGconn* conn, const char* query)
 	return value;
 }
 
-/* Helper function to execute a boolean SQL query */
-static int execute_boolean_query(PGconn* conn, const char* query)
+static int
+execute_boolean_query(PGconn* conn, const char* query)
 {
 	char* result = execute_simple_query(conn, query);
 	if (!result)
@@ -82,8 +82,8 @@ static int execute_boolean_query(PGconn* conn, const char* query)
 	return value;
 }
 
-/* Helper function to execute an integer SQL query */
-static long long execute_int_query(PGconn* conn, const char* query)
+static long long
+execute_int_query(PGconn* conn, const char* query)
 {
 	char* result = execute_simple_query(conn, query);
 	if (!result)
@@ -94,10 +94,8 @@ static long long execute_int_query(PGconn* conn, const char* query)
 	return value;
 }
 
-/*
- * Initialize the pgraft system
- */
-int ramd_pgraft_init(PGconn* conn, int node_id, const char* hostname, int port)
+int
+ramd_pgraft_init(PGconn* conn, int node_id, const char* hostname, int port)
 {
 	char query[512];
 	PGresult* result;
@@ -117,7 +115,7 @@ int ramd_pgraft_init(PGconn* conn, int node_id, const char* hostname, int port)
 	snprintf(query, sizeof(query),
 	         "SELECT pgraft_init(%d, '%s', %d)", node_id, hostname, port);
 
-	result = PQexec(conn, query);
+	result = ramd_query_exec_with_result(conn, query);
 	if (!result)
 	{
 		set_last_error("Failed to execute pgraft_init: %s", PQerrorMessage(conn));
@@ -137,16 +135,13 @@ int ramd_pgraft_init(PGconn* conn, int node_id, const char* hostname, int port)
 	return RAMD_PGRAFT_SUCCESS;
 }
 
-/*
- * Start the pgraft system
- */
-int ramd_pgraft_start(PGconn* conn)
+int
+ramd_pgraft_start(PGconn* conn)
 {
 	char* result = execute_simple_query(conn, "SELECT pgraft_start()");
 	if (!result)
 		return RAMD_PGRAFT_ERROR;
 
-	/* pgraft_start returns a boolean, but we're checking for success */
 	int success = (strcmp(result, "t") == 0) ? RAMD_PGRAFT_SUCCESS : RAMD_PGRAFT_ERROR;
 	free(result);
 
@@ -162,10 +157,8 @@ int ramd_pgraft_start(PGconn* conn)
 	return success;
 }
 
-/*
- * Stop the pgraft system
- */
-int ramd_pgraft_stop(PGconn* conn)
+int
+ramd_pgraft_stop(PGconn* conn)
 {
 	char* result = execute_simple_query(conn, "SELECT pgraft_stop()");
 	if (!result)
@@ -186,51 +179,39 @@ int ramd_pgraft_stop(PGconn* conn)
 	return success;
 }
 
-/*
- * Get the current state of the pgraft system
- */
-char* ramd_pgraft_get_state(PGconn* conn)
+char*
+ramd_pgraft_get_state(PGconn* conn)
 {
 	return execute_simple_query(conn, "SELECT pgraft_get_state()");
 }
 
-/*
- * Check if the current node is the Raft leader
- */
-int ramd_pgraft_is_leader(PGconn* conn)
+int
+ramd_pgraft_is_leader(PGconn* conn)
 {
 	return execute_boolean_query(conn, "SELECT pgraft_is_leader()");
 }
 
-/*
- * Get the current Raft leader node ID
- */
-int ramd_pgraft_get_leader(PGconn* conn)
+int
+ramd_pgraft_get_leader(PGconn* conn)
 {
 	long long leader = execute_int_query(conn, "SELECT pgraft_get_leader()");
 	return (int)leader;
 }
 
-/*
- * Get the current Raft term
- */
-long long ramd_pgraft_get_term(PGconn* conn)
+long long
+ramd_pgraft_get_term(PGconn* conn)
 {
 	return execute_int_query(conn, "SELECT pgraft_get_term()");
 }
 
-/*
- * Get the list of nodes in the Raft cluster
- */
-char* ramd_pgraft_get_nodes(PGconn* conn)
+char*
+ramd_pgraft_get_nodes(PGconn* conn)
 {
 	return execute_simple_query(conn, "SELECT pgraft_get_nodes()");
 }
 
-/*
- * Add a node to the Raft cluster
- */
-int ramd_pgraft_add_node(PGconn* conn, int node_id, const char* hostname, int port)
+int
+ramd_pgraft_add_node(PGconn* conn, int node_id, const char* hostname, int port)
 {
 	char query[512];
 	PGresult* result;
@@ -250,7 +231,7 @@ int ramd_pgraft_add_node(PGconn* conn, int node_id, const char* hostname, int po
 	snprintf(query, sizeof(query),
 	         "SELECT pgraft_add_node(%d, '%s', %d)", node_id, hostname, port);
 
-	result = PQexec(conn, query);
+	result = ramd_query_exec_with_result(conn, query);
 	if (!result)
 	{
 		set_last_error("Failed to execute pgraft_add_node: %s", PQerrorMessage(conn));
@@ -270,10 +251,8 @@ int ramd_pgraft_add_node(PGconn* conn, int node_id, const char* hostname, int po
 	return RAMD_PGRAFT_SUCCESS;
 }
 
-/*
- * Remove a node from the Raft cluster
- */
-int ramd_pgraft_remove_node(PGconn* conn, int node_id)
+int
+ramd_pgraft_remove_node(PGconn* conn, int node_id)
 {
 	char query[256];
 	PGresult* result;
@@ -286,7 +265,7 @@ int ramd_pgraft_remove_node(PGconn* conn, int node_id)
 
 	snprintf(query, sizeof(query), "SELECT pgraft_remove_node(%d)", node_id);
 
-	result = PQexec(conn, query);
+	result = ramd_query_exec_with_result(conn, query);
 	if (!result)
 	{
 		set_last_error("Failed to execute pgraft_remove_node: %s", PQerrorMessage(conn));
@@ -305,34 +284,26 @@ int ramd_pgraft_remove_node(PGconn* conn, int node_id)
 	return RAMD_PGRAFT_SUCCESS;
 }
 
-/*
- * Get cluster health information
- */
-char* ramd_pgraft_get_cluster_health(PGconn* conn)
+char*
+ramd_pgraft_get_cluster_health(PGconn* conn)
 {
 	return execute_simple_query(conn, "SELECT pgraft_get_cluster_health()");
 }
 
-/*
- * Check if the cluster is healthy
- */
-int ramd_pgraft_is_cluster_healthy(PGconn* conn)
+int
+ramd_pgraft_is_cluster_healthy(PGconn* conn)
 {
 	return execute_boolean_query(conn, "SELECT pgraft_is_cluster_healthy()");
 }
 
-/*
- * Get cluster performance metrics
- */
-char* ramd_pgraft_get_performance_metrics(PGconn* conn)
+char*
+ramd_pgraft_get_performance_metrics(PGconn* conn)
 {
 	return execute_simple_query(conn, "SELECT pgraft_get_performance_metrics()");
 }
 
-/*
- * Append a log entry to the Raft log
- */
-int ramd_pgraft_append_log(PGconn* conn, const char* log_data)
+int
+ramd_pgraft_append_log(PGconn* conn, const char* log_data)
 {
 	char query[1024];
 	PGresult* result;
@@ -349,7 +320,6 @@ int ramd_pgraft_append_log(PGconn* conn, const char* log_data)
 		return RAMD_PGRAFT_ERROR;
 	}
 
-	/* Escape single quotes in log_data */
 	char escaped_data[512];
 	size_t j = 0;
 	for (int i = 0; log_data[i] && j < sizeof(escaped_data) - 2; i++)
@@ -368,7 +338,7 @@ int ramd_pgraft_append_log(PGconn* conn, const char* log_data)
 
 	snprintf(query, sizeof(query), "SELECT pgraft_append_log('%s')", escaped_data);
 
-	result = PQexec(conn, query);
+	result = ramd_query_exec_with_result(conn, query);
 	if (!result)
 	{
 		set_last_error("Failed to execute pgraft_append_log: %s", PQerrorMessage(conn));
@@ -386,66 +356,52 @@ int ramd_pgraft_append_log(PGconn* conn, const char* log_data)
 	return RAMD_PGRAFT_SUCCESS;
 }
 
-/*
- * Get Raft log entries
- */
-char* ramd_pgraft_get_log(PGconn* conn)
+char*
+ramd_pgraft_get_log(PGconn* conn)
 {
 	return execute_simple_query(conn, "SELECT pgraft_get_log()");
 }
 
-/*
- * Get Raft statistics
- */
-char* ramd_pgraft_get_stats(PGconn* conn)
+char*
+ramd_pgraft_get_stats(PGconn* conn)
 {
 	return execute_simple_query(conn, "SELECT pgraft_get_stats()");
 }
 
-/*
- * Get the pgraft extension version
- */
-char* ramd_pgraft_get_version(PGconn* conn)
+char*
+ramd_pgraft_get_version(PGconn* conn)
 {
 	return execute_simple_query(conn, "SELECT pgraft_version()");
 }
 
-/*
- * Test the pgraft system (for debugging)
- */
-int ramd_pgraft_test(PGconn* conn)
+int
+ramd_pgraft_test(PGconn* conn)
 {
 	long long result = execute_int_query(conn, "SELECT pgraft_test()");
 	return (int)result;
 }
 
-/*
- * Get the last error message from pgraft operations
- */
-const char* ramd_pgraft_get_last_error(void)
+const char*
+ramd_pgraft_get_last_error(void)
 {
 	return g_last_error[0] ? g_last_error : NULL;
 }
 
-/*
- * Check if pgraft extension is available and properly configured
- */
-int ramd_pgraft_check_availability(PGconn* conn)
+int
+ramd_pgraft_check_availability(PGconn* conn)
 {
 	char* result = execute_simple_query(conn, "SELECT pgraft_version()");
 	if (!result)
-		return 0; /* Extension not available */
+		return 0;
 
 	free(result);
-	return 1; /* Extension is available */
+	return 1;
 }
 
-/*
- * Set up a new replica node using base backup and add to Raft cluster
- */
-int ramd_pgraft_setup_replica(PGconn* conn, int replica_node_id, 
-                             const char* replica_hostname, int replica_port,
-                             const char* backup_dir)
+int
+ramd_pgraft_setup_replica(PGconn* conn, int replica_node_id, 
+                         const char* replica_hostname, int replica_port,
+                         const char* backup_dir)
 {
 	char backup_label[256];
 	char replica_backup_dir[512];
@@ -463,16 +419,13 @@ int ramd_pgraft_setup_replica(PGconn* conn, int replica_node_id,
 		return RAMD_PGRAFT_ERROR;
 	}
 
-	/* Create backup label */
 	snprintf(backup_label, sizeof(backup_label), "replica_%d_setup", replica_node_id);
 
-	/* Create backup directory path */
 	snprintf(replica_backup_dir, sizeof(replica_backup_dir), "%s/replica_%d", backup_dir, replica_node_id);
 
 	ramd_log_info("Setting up replica node %d at %s:%d", replica_node_id, replica_hostname, replica_port);
 	ramd_log_info("Taking base backup to directory: %s", replica_backup_dir);
 
-	/* Take base backup */
 	result = ramd_take_basebackup(conn, replica_backup_dir, backup_label);
 	if (result != 0)
 	{
@@ -482,7 +435,6 @@ int ramd_pgraft_setup_replica(PGconn* conn, int replica_node_id,
 
 	ramd_log_info("Base backup completed successfully for replica %d", replica_node_id);
 
-	/* Add node to Raft cluster */
 	result = ramd_pgraft_add_node(conn, replica_node_id, replica_hostname, replica_port);
 	if (result != RAMD_PGRAFT_SUCCESS)
 	{

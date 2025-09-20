@@ -1,5 +1,3 @@
-
-
 /*-------------------------------------------------------------------------
  *
  * ramd_basebackup.c
@@ -20,30 +18,24 @@
 #include "ramd_basebackup.h"
 #include "ramd_logging.h"
 
-/* Base backup options */
 typedef struct BaseBackupOptions
 {
-    char *label;              /* Backup label */
-    char *target_dir;         /* Target directory */
-    bool progress;            /* Show progress */
-    bool verbose;             /* Verbose output */
-    bool write_recovery_conf; /* Write recovery.conf */
-    bool verify_checksums;    /* Verify checksums */
-    int compression_level;    /* Compression level (0-9) */
-    int max_rate;            /* Maximum transfer rate in KB/s */
-    int wal_method;          /* WAL method (fetch/stream) */
-    int nthreads;           /* Number of parallel threads */
+    char *label;
+    char *target_dir;
+    bool progress;
+    bool verbose;
+    bool write_recovery_conf;
+    bool verify_checksums;
+    int compression_level;
+    int max_rate;
+    int wal_method;
+    int nthreads;
 } BaseBackupOptions;
 
-/* Function declarations */
 static int execute_pg_basebackup(const char *conninfo, BaseBackupOptions *options);
 static void validate_backup_options(BaseBackupOptions *options);
 static char* build_basebackup_command(const char *conninfo, BaseBackupOptions *options);
 
-/*
- * Take a base backup using pg_basebackup
- * Returns: 0 on success, -1 on failure
- */
 int 
 ramd_take_basebackup(PGconn *conn, const char *target_dir, const char *label)
 {
@@ -51,7 +43,6 @@ ramd_take_basebackup(PGconn *conn, const char *target_dir, const char *label)
     char *conninfo;
     int ret;
 
-    /* Initialize options with defaults */
     memset(&options, 0, sizeof(BaseBackupOptions));
     options.label = (char *)label;
     options.target_dir = (char *)target_dir;
@@ -60,29 +51,23 @@ ramd_take_basebackup(PGconn *conn, const char *target_dir, const char *label)
     options.write_recovery_conf = true;
     options.verify_checksums = true;
     options.compression_level = 9;
-    options.max_rate = 0;  /* No limit */
-    options.wal_method = 1; /* stream */
+    options.max_rate = 0;
+    options.wal_method = 1;
     options.nthreads = 4;
 
-    /* Build connection info string from connection parameters */
     char conninfo_buffer[512];
     snprintf(conninfo_buffer, sizeof(conninfo_buffer), "host=%s port=%s dbname=%s user=%s",
              PQhost(conn), PQport(conn), PQdb(conn), PQuser(conn));
     conninfo = conninfo_buffer;
 
-    /* Validate options */
     validate_backup_options(&options);
 
-    /* Execute pg_basebackup */
     ret = execute_pg_basebackup(conninfo, &options);
 
     PQfreemem(conninfo);
     return ret;
 }
 
-/*
- * Validate backup options
- */
 static void
 validate_backup_options(BaseBackupOptions *options)
 {
@@ -111,14 +96,11 @@ validate_backup_options(BaseBackupOptions *options)
     }
 }
 
-/*
- * Build pg_basebackup command string
- */
 static char*
 build_basebackup_command(const char *conninfo, BaseBackupOptions *options)
 {
     char *cmd;
-    size_t cmd_len = 1024; /* Initial buffer size */
+    size_t cmd_len = 1024;
     size_t pos = 0;
     
     cmd = malloc(cmd_len);
@@ -161,9 +143,6 @@ build_basebackup_command(const char *conninfo, BaseBackupOptions *options)
     return cmd;
 }
 
-/*
- * Execute pg_basebackup command
- */
 static int
 execute_pg_basebackup(const char *conninfo, BaseBackupOptions *options)
 {

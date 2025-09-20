@@ -31,14 +31,15 @@
 #include "ramd_sync_replication.h"
 #include "ramd_maintenance.h"
 #include "ramd_metrics.h"
+#include "ramd_daemon.h"
+
+extern ramd_daemon_t* g_ramd_daemon;
 
 #include "ramd_daemon.h"
 #include "ramd_failover.h"
 
-/* Global HTTP server instance */
 static ramd_http_server_t* g_http_server = NULL;
 
-/* Forward declarations */
 static void* ramd_http_server_thread(void* arg);
 static void* ramd_http_connection_handler(void* arg);
 static void ramd_http_route_request(ramd_http_request_t* request,
@@ -61,7 +62,6 @@ bool ramd_http_server_init(ramd_http_server_t* server, const char* bind_address,
 	}
 	else
 	{
-		/* No default bind address - must be configured for security */
 		server->bind_address[0] = '\0';
 	}
 
@@ -88,7 +88,6 @@ bool ramd_http_server_start(ramd_http_server_t* server)
 	if (!server)
 		return false;
 
-	/* Create socket */
 	server->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (server->listen_fd < 0)
 	{
@@ -97,14 +96,12 @@ bool ramd_http_server_start(ramd_http_server_t* server)
 		return false;
 	}
 
-	/* Set socket options */
 	if (setsockopt(server->listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt,
 	               sizeof(opt)) < 0)
 	{
 		ramd_log_warning("Failed to set SO_REUSEADDR: %s", strerror(errno));
 	}
 
-	/* Bind socket */
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons((uint16_t) server->port);
@@ -125,7 +122,6 @@ bool ramd_http_server_start(ramd_http_server_t* server)
 		return false;
 	}
 
-	/* Listen */
 	if (listen(server->listen_fd, RAMD_HTTP_MAX_CONNECTIONS) < 0)
 	{
 		ramd_log_error("Failed to listen on HTTP server socket: %s",
@@ -134,7 +130,6 @@ bool ramd_http_server_start(ramd_http_server_t* server)
 		return false;
 	}
 
-	/* Start server thread */
 	server->running = true;
 	if (pthread_create(&server->server_thread, NULL, ramd_http_server_thread,
 	                   server) != 0)
@@ -162,14 +157,12 @@ void ramd_http_server_stop(ramd_http_server_t* server)
 	server->running = false;
 	pthread_mutex_unlock(&server->mutex);
 
-	/* Close listen socket to break accept() */
 	if (server->listen_fd >= 0)
 	{
 		close(server->listen_fd);
 		server->listen_fd = -1;
 	}
 
-	/* Wait for server thread to finish */
 	pthread_join(server->server_thread, NULL);
 
 	g_http_server = NULL;
@@ -207,7 +200,6 @@ static void* ramd_http_server_thread(void* arg)
 			continue;
 		}
 
-		/* Create connection structure */
 		connection = malloc(sizeof(ramd_http_connection_t));
 		if (!connection)
 		{
@@ -220,7 +212,6 @@ static void* ramd_http_server_thread(void* arg)
 		connection->client_addr = client_addr;
 		connection->server = server;
 
-		/* Handle connection in separate thread */
 		if (pthread_create(&connection_thread, NULL,
 		                   ramd_http_connection_handler, connection) != 0)
 		{
@@ -230,7 +221,6 @@ static void* ramd_http_server_thread(void* arg)
 			continue;
 		}
 
-		/* Detach thread so it cleans up automatically */
 		pthread_detach(connection_thread);
 	}
 
@@ -246,7 +236,6 @@ static void* ramd_http_connection_handler(void* arg)
 	ramd_http_request_t request;
 	ramd_http_response_t response;
 
-	/* Read request */
 	bytes_read = recv(connection->client_fd, buffer, sizeof(buffer) - 1, 0);
 	if (bytes_read <= 0)
 	{
@@ -257,7 +246,6 @@ static void* ramd_http_connection_handler(void* arg)
 
 	buffer[bytes_read] = '\0';
 
-	/* Parse request */
 	if (!ramd_http_parse_request(buffer, &request))
 	{
 		ramd_http_set_error_response(&response, RAMD_HTTP_400_BAD_REQUEST,
@@ -265,14 +253,11 @@ static void* ramd_http_connection_handler(void* arg)
 	}
 	else
 	{
-		/* Handle request */
 		ramd_http_route_request(&request, &response);
 	}
 
-	/* Send response */
 	ramd_http_send_response(connection->client_fd, &response);
 
-	/* Cleanup */
 	close(connection->client_fd);
 	free(connection);
 	return NULL;
@@ -290,12 +275,10 @@ bool ramd_http_parse_request(const char* raw_request,
 
 	memset(request, 0, sizeof(ramd_http_request_t));
 
-	/* Copy request for parsing */
 	request_copy = strdup(raw_request);
 	if (!request_copy)
 		return false;
 
-	/* Parse request line */
 	line = strtok_r(request_copy, "\r\n", &saveptr);
 	if (!line)
 	{
@@ -303,7 +286,6 @@ bool ramd_http_parse_request(const char* raw_request,
 		return false;
 	}
 
-	/* Parse method, path, version */
 	method_str = strtok(line, " ");
 	path_str = strtok(NULL, " ");
 	version_str = strtok(NULL, " ");
@@ -314,7 +296,6 @@ bool ramd_http_parse_request(const char* raw_request,
 		return false;
 	}
 
-	/* Parse method */
 	if (strcmp(method_str, "GET") == 0)
 		request->method = RAMD_HTTP_GET;
 	else if (strcmp(method_str, "POST") == 0)
@@ -331,7 +312,6 @@ bool ramd_http_parse_request(const char* raw_request,
 		return false;
 	}
 
-	/* Parse path and query string */
 	char* query = strchr(path_str, '?');
 	if (query)
 	{
@@ -343,17 +323,15 @@ bool ramd_http_parse_request(const char* raw_request,
 
 	strncpy(request->path, path_str, sizeof(request->path) - 1);
 
-	/* Parse headers */
 	while ((line = strtok_r(NULL, "\r\n", &saveptr)) != NULL)
 	{
 		if (strlen(line) == 0)
-			break; /* End of headers */
+			break;
 
 		if (strncasecmp(line, "Authorization:", 14) == 0)
 		{
 			strncpy(request->authorization, line + 14,
 			        sizeof(request->authorization) - 1);
-			/* Trim leading whitespace */
 			char* auth = request->authorization;
 			while (*auth == ' ' || *auth == '\t')
 				auth++;
@@ -361,10 +339,9 @@ bool ramd_http_parse_request(const char* raw_request,
 		}
 	}
 
-	/* Body is remaining content */
 	if (line)
 	{
-		char* body_start = line + strlen(line) + 2; /* Skip \r\n */
+		char* body_start = line + strlen(line) + 2;
 		if (body_start < raw_request + strlen(raw_request))
 		{
 			size_t body_len = strlen(body_start);
@@ -383,7 +360,6 @@ bool ramd_http_parse_request(const char* raw_request,
 static void ramd_http_route_request(ramd_http_request_t* request,
                                     ramd_http_response_t* response)
 {
-	/* API Routes */
 	if (strcmp(request->path, "/api/v1/cluster/status") == 0)
 		ramd_http_handle_cluster_status(request, response);
 	else if (strcmp(request->path, "/api/v1/nodes") == 0)
@@ -420,9 +396,8 @@ void ramd_http_handle_cluster_status(ramd_http_request_t* request,
 	int32_t pgraft_node_count, pgraft_leader_id;
 	bool pgraft_is_leader, pgraft_has_quorum;
 
-	(void) request; /* Unused parameter */
+	(void) request;
 
-	/* Get cluster status from pgraft extension (authoritative source) */
 	if (!ramd_postgresql_query_pgraft_cluster_status(
 	        &g_ramd_daemon->config, &pgraft_node_count, &pgraft_is_leader,
 	        &pgraft_leader_id, &pgraft_has_quorum))
@@ -430,7 +405,6 @@ void ramd_http_handle_cluster_status(ramd_http_request_t* request,
 		ramd_log_warning("Failed to query pgraft cluster status, falling back "
 		                 "to internal state");
 
-		/* Fallback to internal cluster state */
 		ramd_cluster_t* cluster = &g_ramd_daemon->cluster;
 		if (!cluster)
 		{
@@ -447,7 +421,6 @@ void ramd_http_handle_cluster_status(ramd_http_request_t* request,
 		pgraft_has_quorum = ramd_cluster_has_quorum(cluster);
 	}
 
-	/* Build comprehensive cluster status using pgraft data */
 	snprintf(
 	    json_buffer, sizeof(json_buffer),
 	    "{\n"
@@ -465,7 +438,7 @@ void ramd_http_handle_cluster_status(ramd_http_request_t* request,
 	    g_ramd_daemon->cluster.cluster_name,
 	    pgraft_has_quorum ? "operational" : "degraded", pgraft_leader_id,
 	    pgraft_node_count,
-	    get_healthy_nodes_count(), /* Get actual healthy node count */
+	    get_healthy_nodes_count(),
 	    pgraft_has_quorum ? "true" : "false", pgraft_is_leader ? "true" : "false",
 	    time(NULL),
 	    (g_ramd_daemon->failover_context.state == RAMD_FAILOVER_STATE_NORMAL)
@@ -535,7 +508,6 @@ bool ramd_http_send_response(int client_fd, ramd_http_response_t* response)
 	if (!response)
 		return false;
 
-	/* Build HTTP response */
 	response_len =
 	    snprintf(response_buffer, sizeof(response_buffer),
 	             "HTTP/1.1 %d %s\r\n"
@@ -601,7 +573,6 @@ void ramd_http_set_error_response(ramd_http_response_t* response,
 	ramd_http_set_json_response(response, status, json_buffer);
 }
 
-/* Enhanced nodes list endpoint */
 void ramd_http_handle_nodes_list(ramd_http_request_t* request __attribute__((unused)),
                                  ramd_http_response_t* response)
 {
@@ -615,7 +586,6 @@ void ramd_http_handle_nodes_list(ramd_http_request_t* request __attribute__((unu
 		return;
 	}
 
-	/* Build nodes array */
 	char nodes_array[4096] = "";
 	for (int i = 0; i < cluster->node_count; i++)
 	{
@@ -661,7 +631,6 @@ void ramd_http_handle_nodes_list(ramd_http_request_t* request __attribute__((unu
 	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_buffer);
 }
 
-/* Enhanced failover endpoint */
 void ramd_http_handle_failover(ramd_http_request_t* request,
                                ramd_http_response_t* response)
 {
@@ -674,7 +643,6 @@ void ramd_http_handle_failover(ramd_http_request_t* request,
 		return;
 	}
 
-	/* Parse request body for failover parameters */
 	ramd_cluster_t* cluster = &g_ramd_daemon->cluster;
 	if (!cluster)
 	{
@@ -683,7 +651,6 @@ void ramd_http_handle_failover(ramd_http_request_t* request,
 		return;
 	}
 
-	/* Check if failover should be triggered */
 	if (!ramd_failover_should_trigger(cluster, &g_ramd_daemon->config))
 	{
 		snprintf(json_buffer, sizeof(json_buffer),
@@ -695,7 +662,6 @@ void ramd_http_handle_failover(ramd_http_request_t* request,
 		return;
 	}
 
-	/* Execute failover */
 	ramd_failover_context_t failover_context;
 	ramd_failover_context_init(&failover_context);
 
@@ -729,7 +695,6 @@ void ramd_http_handle_failover(ramd_http_request_t* request,
 	ramd_failover_context_cleanup(&failover_context);
 }
 
-/* Enhanced replication status endpoint */
 void ramd_http_handle_sync_replication(ramd_http_request_t* request,
                                        ramd_http_response_t* response)
 {
@@ -737,7 +702,6 @@ void ramd_http_handle_sync_replication(ramd_http_request_t* request,
 
 	if (request->method == RAMD_HTTP_GET)
 	{
-		/* Get replication status */
 		ramd_sync_status_t sync_status;
 		if (ramd_sync_replication_get_status(&sync_status))
 		{
@@ -768,16 +732,12 @@ void ramd_http_handle_sync_replication(ramd_http_request_t* request,
 	}
 	else if (request->method == RAMD_HTTP_POST)
 	{
-		/* Update replication configuration */
-		/* Parse request body for configuration updates */
 		if (request->body_length > 0)
 		{
-			/* Simple JSON parsing for mode and num_sync_standbys */
 			char* body = request->body;
 			char mode_str[32] = "";
 			int num_sync = -1;
 
-			/* Look for "mode" field */
 			char* mode_pos = strstr(body, "\"mode\"");
 			if (mode_pos)
 			{
@@ -1299,7 +1259,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 {
 	char json_buffer[2048];
 	char hostname[256] = {0};
-	int32_t port = 5432;
+	int32_t port = g_ramd_daemon->config.postgresql_port;
 	int32_t new_node_id;
 
 	if (request->method != RAMD_HTTP_POST)
@@ -1412,10 +1372,12 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	/* Establish connection to replica PostgreSQL */
 	char conn_string[512];
 	snprintf(conn_string, sizeof(conn_string), 
-	         "host=%s port=%d dbname=postgres user=postgres", 
-	         hostname, new_node_id + 5432);
+	         "host=%s port=%d dbname=%s user=%s", 
+	         hostname, new_node_id + g_ramd_daemon->config.postgresql_port,
+	         g_ramd_daemon->config.database_name, g_ramd_daemon->config.database_user);
 	
-	PGconn *conn = ramd_conn_get(hostname, new_node_id + 5432, "postgres", "postgres", "");
+	PGconn *conn = ramd_conn_get(hostname, new_node_id + g_ramd_daemon->config.postgresql_port, 
+	                             g_ramd_daemon->config.database_name, g_ramd_daemon->config.database_user, "");
 	if (!conn)
 	{
 		ramd_log_error("Failed to connect to replica PostgreSQL");
@@ -1424,7 +1386,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	
 	/* Step 3b: Check if pgraft extension is already installed */
 	/* Query pg_extension for existing pgraft installation */
-	PGresult *res = PQexec(conn, "SELECT 1 FROM pg_extension WHERE extname = 'pgraft'");
+	PGresult *res = ramd_query_exec_with_result(conn, "SELECT 1 FROM pg_extension WHERE extname = 'pgraft'");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		ramd_log_error("Failed to check pgraft extension: %s", PQerrorMessage(conn));
@@ -1440,7 +1402,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	/* Execute CREATE EXTENSION pgraft; */
 	if (!extension_exists)
 	{
-		res = PQexec(conn, "CREATE EXTENSION IF NOT EXISTS pgraft");
+		res = ramd_query_exec_with_result(conn, "CREATE EXTENSION IF NOT EXISTS pgraft");
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
 			ramd_log_error("Failed to create pgraft extension: %s", PQerrorMessage(conn));
@@ -1458,14 +1420,14 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	
 	/* Step 3d: Configure pgraft extension */
 	/* Set pgraft configuration parameters */
-	res = PQexec(conn, "ALTER SYSTEM SET pgraft.node_id = '1'");
+		res = ramd_query_exec_with_result(conn, "ALTER SYSTEM SET pgraft.node_id = '1'");
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
 		ramd_log_warning("Failed to set pgraft.node_id: %s", PQerrorMessage(conn));
 	}
 	PQclear(res);
 	
-	res = PQexec(conn, "ALTER SYSTEM SET pgraft.cluster_name = 'test_cluster'");
+		res = ramd_query_exec_with_result(conn, "ALTER SYSTEM SET pgraft.cluster_name = 'test_cluster'");
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
 		ramd_log_warning("Failed to set pgraft.cluster_name: %s", PQerrorMessage(conn));
@@ -1474,7 +1436,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	
 	/* Step 3e: Verify installation */
 	/* Verify pgraft extension is working correctly */
-	res = PQexec(conn, "SELECT pgraft_get_version()");
+		res = ramd_query_exec_with_result(conn, "SELECT pgraft_get_version()");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		ramd_log_error("Failed to verify pgraft extension: %s", PQerrorMessage(conn));
@@ -1498,7 +1460,8 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	
 	/* Step 4a: Get current cluster configuration */
 	/* Retrieve current cluster state and configuration */
-	PGconn *consensus_conn = ramd_conn_get(hostname, new_node_id + 5432, "postgres", "postgres", "");
+	PGconn *consensus_conn = ramd_conn_get(hostname, new_node_id + g_ramd_daemon->config.postgresql_port, 
+	                                       g_ramd_daemon->config.database_name, g_ramd_daemon->config.database_user, "");
 	if (!consensus_conn)
 	{
 		ramd_log_error("Failed to connect for consensus");
@@ -1507,7 +1470,10 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	
 	/* Step 4b: Add node to consensus group */
 	/* Add node to Raft consensus group */
-	PGresult *consensus_res = PQexec(consensus_conn, "SELECT pgraft_add_node(1, 'localhost', 5432)");
+	char pgraft_query[256];
+	snprintf(pgraft_query, sizeof(pgraft_query), "SELECT pgraft_add_node(1, '%s', %d)", 
+	         g_ramd_daemon->config.hostname, g_ramd_daemon->config.postgresql_port);
+	PGresult *consensus_res = ramd_query_exec_with_result(consensus_conn, pgraft_query);
 	if (PQresultStatus(consensus_res) != PGRES_TUPLES_OK)
 	{
 		ramd_log_error("Failed to add node to consensus: %s", PQerrorMessage(consensus_conn));
@@ -1519,7 +1485,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	
 	/* Step 4c: Update cluster membership */
 	/* Update cluster membership in all nodes */
-	consensus_res = PQexec(consensus_conn, "SELECT pgraft_update_cluster_membership()");
+	consensus_res = ramd_query_exec_with_result(consensus_conn, "SELECT pgraft_update_cluster_membership()");
 	if (PQresultStatus(consensus_res) != PGRES_TUPLES_OK)
 	{
 		ramd_log_warning("Failed to update cluster membership: %s", PQerrorMessage(consensus_conn));
@@ -1528,7 +1494,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	
 	/* Step 4d: Start consensus participation */
 	/* Start consensus participation for new node */
-	consensus_res = PQexec(consensus_conn, "SELECT pgraft_start_consensus()");
+	consensus_res = ramd_query_exec_with_result(consensus_conn, "SELECT pgraft_start_consensus()");
 	if (PQresultStatus(consensus_res) != PGRES_TUPLES_OK)
 	{
 		ramd_log_warning("Failed to start consensus: %s", PQerrorMessage(consensus_conn));
@@ -1537,7 +1503,7 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 	
 	/* Step 4e: Verify consensus integration */
 	/* Verify node is participating in consensus */
-	consensus_res = PQexec(consensus_conn, "SELECT pgraft_get_cluster_status()");
+	consensus_res = ramd_query_exec_with_result(consensus_conn, "SELECT pgraft_get_cluster_status()");
 	if (PQresultStatus(consensus_res) == PGRES_TUPLES_OK && PQntuples(consensus_res) > 0)
 	{
 		ramd_log_info("Node %d successfully added to consensus, status: %s", 

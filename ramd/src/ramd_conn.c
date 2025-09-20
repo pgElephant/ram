@@ -16,11 +16,9 @@
 #include "ramd_conn.h"
 #include "ramd_logging.h"
 
-/* Connection cache to avoid repeated connections */
 static PGconn* g_conn_cache[RAMD_MAX_NODES] = {NULL};
 static pthread_mutex_t g_conn_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/* Initialize connection subsystem */
 bool
 ramd_conn_init(void)
 {
@@ -32,7 +30,6 @@ ramd_conn_init(void)
 	return true;
 }
 
-/* Cleanup connection subsystem */
 void
 ramd_conn_cleanup(void)
 {
@@ -50,7 +47,6 @@ ramd_conn_cleanup(void)
 	ramd_log_info("Connection subsystem cleaned up");
 }
 
-/* Get a connection to PostgreSQL */
 PGconn*
 ramd_conn_get(const char* host, int32_t port, const char* dbname,
               const char* user, const char* password)
@@ -58,14 +54,12 @@ ramd_conn_get(const char* host, int32_t port, const char* dbname,
 	char conninfo[512];
 	PGconn* conn;
 	
-	/* Build connection string */
 	snprintf(conninfo, sizeof(conninfo),
 	         "host=%s port=%d dbname=%s user=%s password=%s",
 	         host, port, dbname ? dbname : "postgres",
 	         user ? user : "postgres",
 	         password ? password : "");
 	
-	/* Attempt connection */
 	conn = PQconnectdb(conninfo);
 	if (PQstatus(conn) != CONNECTION_OK)
 	{
@@ -78,7 +72,6 @@ ramd_conn_get(const char* host, int32_t port, const char* dbname,
 	return conn;
 }
 
-/* Get a cached connection to PostgreSQL */
 PGconn*
 ramd_conn_get_cached(int32_t node_id, const char* host, int32_t port,
                      const char* dbname, const char* user, const char* password)
@@ -90,10 +83,8 @@ ramd_conn_get_cached(int32_t node_id, const char* host, int32_t port,
 	
 	pthread_mutex_lock(&g_conn_mutex);
 	
-	/* Check if we have a cached connection */
 	if (g_conn_cache[node_id - 1])
 	{
-		/* Check if connection is still valid */
 		if (PQstatus(g_conn_cache[node_id - 1]) == CONNECTION_OK)
 		{
 			conn = g_conn_cache[node_id - 1];
@@ -101,12 +92,10 @@ ramd_conn_get_cached(int32_t node_id, const char* host, int32_t port,
 			return conn;
 		}
 		
-		/* Connection is bad, close it */
 		PQfinish(g_conn_cache[node_id - 1]);
 		g_conn_cache[node_id - 1] = NULL;
 	}
 	
-	/* Get new connection */
 	conn = ramd_conn_get(host, port, dbname, user, password);
 	if (conn)
 		g_conn_cache[node_id - 1] = conn;
@@ -115,7 +104,6 @@ ramd_conn_get_cached(int32_t node_id, const char* host, int32_t port,
 	return conn;
 }
 
-/* Execute a query and return result */
 PGresult*
 ramd_conn_exec(PGconn* conn, const char* query)
 {
@@ -136,7 +124,6 @@ ramd_conn_exec(PGconn* conn, const char* query)
 	return res;
 }
 
-/* Close a connection */
 void
 ramd_conn_close(PGconn* conn)
 {

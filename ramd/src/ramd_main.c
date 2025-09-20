@@ -25,21 +25,15 @@
 #include "ramd_maintenance.h"
 #include "ramd_conn.h"
 
-/* Global daemon instance */
 ramd_daemon_t* g_ramd_daemon = NULL;
-
-
-/* Signal handling */
+PGconn* g_global_conn = NULL;
 static volatile sig_atomic_t g_shutdown_requested = 0;
 
-/* Structure definition is in ramd_daemon.h */
-
-/*
- * Establish PostgreSQL connection with retry logic using ramd_conn.c
- * Keeps trying every 1 minute until successful connection
- */
-static bool ramd_establish_postgres_connection(void)
+static bool
+ramd_establish_postgres_connection(void)
 {
+	PGconn* conn;
+
 	if (!g_ramd_daemon)
 		return false;
 	
@@ -47,8 +41,7 @@ static bool ramd_establish_postgres_connection(void)
 	              g_ramd_daemon->config.hostname,
 	              g_ramd_daemon->config.postgresql_port);
 	
-	/* Use ramd_conn.c to get cached connection */
-	PGconn* conn = ramd_conn_get_cached(
+	conn = ramd_conn_get_cached(
 		g_ramd_daemon->config.node_id,
 		g_ramd_daemon->config.hostname,
 		g_ramd_daemon->config.postgresql_port,
@@ -63,53 +56,38 @@ static bool ramd_establish_postgres_connection(void)
 		return false;
 	}
 	
+	g_global_conn = conn;
 	ramd_log_info("Successfully connected to PostgreSQL at %s:%d",
 	              g_ramd_daemon->config.hostname,
 	              g_ramd_daemon->config.postgresql_port);
 	return true;
 }
 
-/*
- * Get the global PostgreSQL connection using ramd_conn.c
- * Returns NULL if no connection available
- */
-PGconn* ramd_get_postgres_connection(void)
+PGconn*
+ramd_get_postgres_connection(void)
 {
-	if (!g_ramd_daemon)
-		return NULL;
-	
-	/* Use ramd_conn.c to get cached connection */
-	return ramd_conn_get_cached(
-		g_ramd_daemon->config.node_id,
-		g_ramd_daemon->config.hostname,
-		g_ramd_daemon->config.postgresql_port,
-		g_ramd_daemon->config.database_name,
-		g_ramd_daemon->config.database_user,
-		g_ramd_daemon->config.database_password
-	);
+	return g_global_conn;
 }
 
-/*
- * Connection monitoring thread
- * Checks connection every minute and reconnects if needed
- */
-static void* ramd_connection_monitor_thread(void* arg)
+static void*
+ramd_connection_monitor_thread(void* arg)
 {
-	(void)arg; /* Unused parameter */
+	(void)arg;
 	
 	while (!g_shutdown_requested)
 	{
-		sleep(60); /* Wait 1 minute */
+		PGconn* conn;
+
+		sleep(60);
 		
 		if (g_shutdown_requested)
 			break;
 		
-		PGconn* conn = ramd_get_postgres_connection();
+		conn = ramd_get_postgres_connection();
 		if (!conn)
 		{
 			ramd_log_warning("PostgreSQL connection lost, attempting to reconnect...");
 			
-			/* Keep trying to reconnect every minute */
 			while (!g_shutdown_requested && !ramd_establish_postgres_connection())
 			{
 				ramd_log_error("Failed to reconnect to PostgreSQL, retrying in 60 seconds...");
@@ -126,7 +104,8 @@ static void* ramd_connection_monitor_thread(void* arg)
 	return NULL;
 }
 
-static void ramd_signal_handler(int sig)
+static void
+ramd_signal_handler(int sig)
 {
 	switch (sig)
 	{
@@ -137,7 +116,6 @@ static void ramd_signal_handler(int sig)
 			g_ramd_daemon->shutdown_requested = true;
 		break;
 	case SIGHUP:
-		/* Reload configuration */
 		ramd_log_info("Configuration reload requested: Received SIGHUP signal "
 		              "- reloading daemon configuration");
 		break;
@@ -146,8 +124,8 @@ static void ramd_signal_handler(int sig)
 	}
 }
 
-
-static void ramd_setup_signal_handlers(void)
+static void
+ramd_setup_signal_handlers(void)
 {
 	struct sigaction sa;
 
@@ -160,12 +138,11 @@ static void ramd_setup_signal_handlers(void)
 	sigaction(SIGINT, &sa, NULL);
 	sigaction(SIGHUP, &sa, NULL);
 
-	/* Ignore SIGPIPE */
 	signal(SIGPIPE, SIG_IGN);
 }
 
-
-static void ramd_usage(const char* progname)
+static void
+ramd_usage(const char* progname)
 {
 	printf("PostgreSQL Auto-Failover Daemon (RAMD) %s\n\n",
 	       RAMD_VERSION_STRING);
@@ -191,8 +168,8 @@ static void ramd_usage(const char* progname)
 	printf("Project homepage: https://www.pgelephant.com/ramd\n");
 }
 
-
-static void ramd_version(void)
+static void
+ramd_version(void)
 {
 	printf("RAMD (PostgreSQL Auto-Failover Daemon) %s\n", RAMD_VERSION_STRING);
 	printf("Enterprise PostgreSQL High Availability Management System\n");
@@ -206,10 +183,9 @@ static void ramd_version(void)
 	printf("  - Real-time cluster monitoring\n");
 }
 
-
-bool ramd_init(const char* config_file)
+bool
+ramd_init(const char* config_file)
 {
-	/* Allocate daemon structure */
 	g_ramd_daemon = malloc(sizeof(ramd_daemon_t));
 	if (!g_ramd_daemon)
 	{
@@ -220,7 +196,6 @@ bool ramd_init(const char* config_file)
 
 	memset(g_ramd_daemon, 0, sizeof(ramd_daemon_t));
 
-	/* Initialize mutex */
 	if (pthread_mutex_init(&g_ramd_daemon->mutex, NULL) != 0)
 	{
 		fprintf(stderr, "Critical error - Failed to initialize thread "
@@ -230,7 +205,6 @@ bool ramd_init(const char* config_file)
 		return false;
 	}
 
-	/* Initialize configuration */
 	if (!ramd_config_init(&g_ramd_daemon->config))
 	{
 		fprintf(stderr, "Initialization failure: Unable to initialize daemon "
@@ -239,7 +213,6 @@ bool ramd_init(const char* config_file)
 		return false;
 	}
 
-	/* Load configuration file */
 	if (config_file &&
 	    !ramd_config_load_file(&g_ramd_daemon->config, config_file))
 	{
@@ -251,9 +224,6 @@ bool ramd_init(const char* config_file)
 		return false;
 	}
 
-	/* Logging will be initialized after command line overrides */
-
-	/* Initialize connection subsystem */
 	if (!ramd_conn_init())
 	{
 		fprintf(stderr, "Failed to initialize connection subsystem\n");
@@ -261,7 +231,6 @@ bool ramd_init(const char* config_file)
 		return false;
 	}
 
-	/* Establish PostgreSQL connection - BLOCK until successful */
 	fprintf(stderr, "Establishing PostgreSQL connection...\n");
 	while (!ramd_establish_postgres_connection())
 	{
@@ -270,7 +239,6 @@ bool ramd_init(const char* config_file)
 	}
 	fprintf(stderr, "PostgreSQL connection established successfully\n");
 
-	/* Initialize cluster */
 	if (!ramd_cluster_init(&g_ramd_daemon->cluster, &g_ramd_daemon->config))
 	{
 		fprintf(stderr, "Cluster initialization failure: Unable to initialize "
@@ -279,7 +247,6 @@ bool ramd_init(const char* config_file)
 		return false;
 	}
 
-	/* Initialize monitor */
 	if (!ramd_monitor_init(&g_ramd_daemon->monitor, &g_ramd_daemon->cluster,
 	                       &g_ramd_daemon->config))
 	{
@@ -289,10 +256,8 @@ bool ramd_init(const char* config_file)
 		return false;
 	}
 
-	/* Initialize failover context */
 	ramd_failover_context_init(&g_ramd_daemon->failover_context);
 
-	/* Initialize HTTP API server */
 	if (g_ramd_daemon->config.http_api_enabled)
 	{
 		if (!ramd_http_server_init(&g_ramd_daemon->http_server,
@@ -307,7 +272,6 @@ bool ramd_init(const char* config_file)
 			return false;
 		}
 
-		/* Set authentication if enabled */
 		if (g_ramd_daemon->config.http_auth_enabled)
 		{
 			g_ramd_daemon->http_server.auth_enabled = true;
@@ -317,7 +281,6 @@ bool ramd_init(const char* config_file)
 		}
 	}
 
-	/* Initialize synchronous replication */
 	ramd_sync_config_t sync_config;
 	memset(&sync_config, 0, sizeof(sync_config));
 	sync_config.mode = g_ramd_daemon->config.synchronous_replication
@@ -336,7 +299,6 @@ bool ramd_init(const char* config_file)
 		return false;
 	}
 
-	/* Initialize configuration reload system */
 	if (!ramd_config_reload_init())
 	{
 		ramd_log_error("Failed to initialize configuration reload system");
@@ -344,7 +306,6 @@ bool ramd_init(const char* config_file)
 		return false;
 	}
 
-	/* Initialize maintenance mode system */
 	if (g_ramd_daemon->config.maintenance_mode_enabled)
 	{
 		if (!ramd_maintenance_init())
@@ -360,8 +321,8 @@ bool ramd_init(const char* config_file)
 	return true;
 }
 
-
-void ramd_cleanup(void)
+void
+ramd_cleanup(void)
 {
 	if (!g_ramd_daemon)
 		return;
@@ -369,57 +330,38 @@ void ramd_cleanup(void)
 	ramd_log_info("Initiating RAMD daemon shutdown procedure - cleaning up all "
 	              "subsystems");
 
-	/* Cleanup maintenance mode system */
 	if (g_ramd_daemon->config.maintenance_mode_enabled)
 	{
 		ramd_maintenance_cleanup();
 	}
 
-	/* Cleanup configuration reload system */
 	ramd_config_reload_cleanup();
-
-	/* Cleanup synchronous replication */
 	ramd_sync_replication_cleanup();
 
-	/* Cleanup HTTP API server */
 	if (g_ramd_daemon->config.http_api_enabled)
 	{
 		ramd_http_server_cleanup(&g_ramd_daemon->http_server);
 	}
 
-	/* Stop monitor */
 	ramd_monitor_stop(&g_ramd_daemon->monitor);
 	ramd_monitor_cleanup(&g_ramd_daemon->monitor);
-
-	/* Cleanup failover context */
 	ramd_failover_context_cleanup(&g_ramd_daemon->failover_context);
-
-	/* Cleanup cluster */
 	ramd_cluster_cleanup(&g_ramd_daemon->cluster);
-
-	/* Cleanup configuration */
 	ramd_config_cleanup(&g_ramd_daemon->config);
 
-	/* Remove PID file */
 	if (strlen(g_ramd_daemon->config.pid_file) > 0)
 		ramd_remove_pidfile(g_ramd_daemon->config.pid_file);
 
-	/* Destroy mutex */
 	pthread_mutex_destroy(&g_ramd_daemon->mutex);
-
-	/* Cleanup PostgreSQL connections using ramd_conn.c */
 	ramd_conn_cleanup();
-
-	/* Cleanup logging */
 	ramd_logging_cleanup();
 
-	/* Free daemon structure */
 	free(g_ramd_daemon);
 	g_ramd_daemon = NULL;
 }
 
-
-void ramd_run(void)
+void
+ramd_run(void)
 {
 	if (!g_ramd_daemon)
 	{
@@ -433,7 +375,6 @@ void ramd_run(void)
 	              g_ramd_daemon->config.node_id,
 	              g_ramd_daemon->config.cluster_name);
 
-	/* Start HTTP API server if enabled */
 	if (g_ramd_daemon->config.http_api_enabled)
 	{
 		if (!ramd_http_server_start(&g_ramd_daemon->http_server))
@@ -450,7 +391,6 @@ void ramd_run(void)
 		              g_ramd_daemon->config.http_port);
 	}
 
-	/* Daemonize if requested */
 	if (g_ramd_daemon->config.daemonize)
 	{
 		if (!ramd_daemonize())
@@ -461,7 +401,6 @@ void ramd_run(void)
 		}
 	}
 
-	/* Write PID file */
 	if (strlen(g_ramd_daemon->config.pid_file) > 0)
 	{
 		if (!ramd_write_pidfile(g_ramd_daemon->config.pid_file))
@@ -472,7 +411,6 @@ void ramd_run(void)
 		}
 	}
 
-	/* Start monitor */
 	if (!ramd_monitor_start(&g_ramd_daemon->monitor))
 	{
 		ramd_log_fatal("Monitor startup failure: Critical error - unable to "
@@ -480,7 +418,6 @@ void ramd_run(void)
 		return;
 	}
 
-	/* Start PostgreSQL connection monitoring thread */
 	pthread_t conn_monitor_thread;
 	if (pthread_create(&conn_monitor_thread, NULL, ramd_connection_monitor_thread, NULL) != 0)
 	{
@@ -489,18 +426,15 @@ void ramd_run(void)
 	else
 	{
 		ramd_log_info("PostgreSQL connection monitoring thread started");
-		/* Detach the thread so it cleans up automatically */
 		pthread_detach(conn_monitor_thread);
 	}
 
 	g_ramd_daemon->running = true;
 
-	/* Main daemon loop */
 	while (!g_shutdown_requested && !g_ramd_daemon->shutdown_requested)
 	{
 		sleep(1);
 
-		/* Check for failover conditions */
 		if (ramd_failover_should_trigger(&g_ramd_daemon->cluster,
 		                                 &g_ramd_daemon->config))
 		{
@@ -523,47 +457,42 @@ void ramd_run(void)
 	              "shutting down gracefully");
 }
 
-
-void ramd_stop(void)
+void
+ramd_stop(void)
 {
 	if (g_ramd_daemon)
 		g_ramd_daemon->shutdown_requested = true;
 }
 
-
-bool ramd_is_running(void)
+bool
+ramd_is_running(void)
 {
 	return g_ramd_daemon && g_ramd_daemon->running;
 }
 
-
-bool ramd_daemonize(void)
+bool
+ramd_daemonize(void)
 {
 	pid_t pid;
 
-	/* Fork first time */
 	pid = fork();
 	if (pid < 0)
 		return false;
 	if (pid > 0)
-		exit(0); /* Parent exits */
+		exit(0);
 
-	/* Create new session */
 	if (setsid() < 0)
 		return false;
 
-	/* Fork second time */
 	pid = fork();
 	if (pid < 0)
 		return false;
 	if (pid > 0)
-		exit(0); /* Parent exits */
+		exit(0);
 
-	/* Change working directory */
 	if (chdir("/") < 0)
 		return false;
 
-	/* Close file descriptors */
 	close(STDIN_FILENO);
 	close(STDOUT_FILENO);
 	close(STDERR_FILENO);
@@ -571,8 +500,8 @@ bool ramd_daemonize(void)
 	return true;
 }
 
-
-bool ramd_write_pidfile(const char* pidfile_path)
+bool
+ramd_write_pidfile(const char* pidfile_path)
 {
 	FILE* fp;
 	pid_t pid = getpid();
@@ -587,21 +516,21 @@ bool ramd_write_pidfile(const char* pidfile_path)
 	return true;
 }
 
-
-void ramd_remove_pidfile(const char* pidfile_path)
+void
+ramd_remove_pidfile(const char* pidfile_path)
 {
 	unlink(pidfile_path);
 }
 
-
-int main(int argc, char* argv[])
+int
+main(int argc, char* argv[])
 {
-	const char* config_file = NULL;
-	const char* log_file = NULL;
-	const char* pid_file = NULL;
-	const char* log_level_str = NULL;
-	bool daemonize_flag = false;
-	int c;
+	const char*           config_file = NULL;
+	const char*           log_file = NULL;
+	const char*           pid_file = NULL;
+	const char*           log_level_str = NULL;
+	bool                  daemonize_flag = false;
+	int                   c;
 
 	static struct option long_options[] = {
 	    {"config", required_argument, 0, 'c'},
@@ -612,8 +541,6 @@ int main(int argc, char* argv[])
 	    {"help", no_argument, 0, 'h'},
 	    {"version", no_argument, 0, 'V'},
 	    {0, 0, 0, 0}};
-
-	/* Parse command line arguments */
 	while ((c = getopt_long(argc, argv, "c:Dl:L:p:hV", long_options, NULL)) !=
 	       -1)
 	{
@@ -646,10 +573,8 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	/* Setup signal handlers */
 	ramd_setup_signal_handlers();
 
-	/* Initialize daemon */
 	if (!ramd_init(config_file))
 	{
 		fprintf(stderr, "Fatal initialization error - Unable to initialize "
@@ -657,8 +582,6 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
-	/* Override configuration with command line options BEFORE initializing
-	 * logging */
 	if (daemonize_flag)
 		g_ramd_daemon->config.daemonize = true;
 	if (log_file)
@@ -671,7 +594,6 @@ int main(int argc, char* argv[])
 		g_ramd_daemon->config.log_level =
 		    ramd_logging_string_to_level(log_level_str);
 
-	/* Now initialize logging with final configuration */
 	if (!ramd_logging_init(g_ramd_daemon->config.log_file,
 	                       g_ramd_daemon->config.log_level,
 	                       strlen(g_ramd_daemon->config.log_file) > 0,
@@ -684,21 +606,14 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
-	/* Run daemon */
 	ramd_run();
-
-	/* Cleanup */
 	ramd_cleanup();
 
 	return 0;
 }
 
-/*
- * Implementation for pgraft_get_cluster_state_file_path()
- * This function provides cluster state file path for consensus libraries.
- * In the standalone ramd daemon context, returns NULL to use fallback methods.
- */
-const char* pgraft_get_cluster_state_file_path(void)
+const char*
+pgraft_get_cluster_state_file_path(void)
 {
 	return NULL;
 }

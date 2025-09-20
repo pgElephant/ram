@@ -23,11 +23,14 @@
 #include "ramd_maintenance.h"
 #include "ramd_logging.h"
 #include "ramd_defaults.h"
+#include "ramd_query.h"
 #include "ramd_postgresql.h"
 #include "ramd_daemon.h"
 #include "ramd_cluster.h"
 #include "ramd_basebackup.h"
 #include "ramd_conn.h"
+
+extern ramd_daemon_t* g_ramd_daemon;
 #include "ramd_query.h"
 
 /* Global maintenance state */
@@ -430,8 +433,8 @@ bool ramd_maintenance_get_connection_count(int32_t node_id
 	conn = (PGconn*) pg_conn.connection;
 
 	/* Query active connections */
-	res = PQexec(conn, "SELECT count(*) FROM pg_stat_activity "
-	                   "WHERE state = 'active' AND datname IS NOT NULL");
+	res = ramd_query_exec_with_result(conn, "SELECT count(*) FROM pg_stat_activity "
+	                                       "WHERE state = 'active' AND datname IS NOT NULL");
 
 	if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
 	{
@@ -475,7 +478,7 @@ bool ramd_maintenance_prevent_new_connections(int32_t node_id, bool prevent)
 		snprintf(sql, sizeof(sql), "ALTER SYSTEM RESET max_connections");
 	}
 
-	res = PQexec(conn, sql);
+	res = ramd_query_exec_with_result(conn, sql);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
 		ramd_log_error("Failed to %s connections for node %d: %s",
@@ -489,7 +492,7 @@ bool ramd_maintenance_prevent_new_connections(int32_t node_id, bool prevent)
 	PQclear(res);
 
 	/* Reload configuration */
-	res = PQexec(conn, "SELECT pg_reload_conf()");
+	res = ramd_query_exec_with_result(conn, "SELECT pg_reload_conf()");
 	PQclear(res);
 
 	ramd_postgresql_disconnect(&pg_conn);
@@ -569,7 +572,8 @@ bool ramd_maintenance_create_backup(int32_t node_id, char* backup_id,
 	system(backup_cmd);
 	
 	/* Use ramd_basebackup function with ramd_conn */
-	PGconn *conn = ramd_conn_get("localhost", 5432, "postgres", "postgres", NULL);
+	PGconn *conn = ramd_conn_get(g_ramd_daemon->config.hostname, g_ramd_daemon->config.postgresql_port, 
+	                             g_ramd_daemon->config.database_name, g_ramd_daemon->config.database_user, NULL);
 	if (!conn) {
 		ramd_log_error("Failed to connect to PostgreSQL for backup");
 		return false;
@@ -691,7 +695,7 @@ bool ramd_maintenance_verify_backup(const char* backup_id)
 	bool backup_valid = false;
 
 	/* Query backup information from pg_stat_archiver or backup history */
-	res = PQexec(conn, "SELECT last_archived_wal FROM pg_stat_archiver");
+	res = ramd_query_exec_with_result(conn, "SELECT last_archived_wal FROM pg_stat_archiver");
 	if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
 	{
 		const char* last_wal = PQgetvalue(res, 0, 0);
@@ -1293,7 +1297,7 @@ bool ramd_maintenance_verify_node_health(const char* host, int32_t port)
 	}
 
 	/* Check if PostgreSQL is running */
-	PGresult* res = PQexec((PGconn*) conn.connection, "SELECT version()");
+	PGresult* res = ramd_query_exec_with_result((PGconn*) conn.connection, "SELECT version()");
 	if (!res || PQntuples(res) == 0)
 	{
 		ramd_log_error("Failed to get version from node %s:%d", host, port);
@@ -1305,7 +1309,7 @@ bool ramd_maintenance_verify_node_health(const char* host, int32_t port)
 	PQclear(res);
 
 	/* Check if node is accepting connections */
-	res = PQexec((PGconn*) conn.connection, "SELECT pg_is_in_recovery()");
+	res = ramd_query_exec_with_result((PGconn*) conn.connection, "SELECT pg_is_in_recovery()");
 	if (!res || PQntuples(res) == 0)
 	{
 		ramd_log_error("Failed to check recovery status from node %s:%d", host,
@@ -1341,7 +1345,7 @@ bool ramd_maintenance_verify_replication_status(const char* host, int32_t port)
 
 	/* Check if node is in recovery mode */
 	PGresult* res =
-	    PQexec((PGconn*) conn.connection, "SELECT pg_is_in_recovery()");
+	    ramd_query_exec_with_result((PGconn*) conn.connection, "SELECT pg_is_in_recovery()");
 	if (!res || PQntuples(res) == 0)
 	{
 		ramd_log_error("Failed to check recovery status from node %s:%d", host,
@@ -1362,9 +1366,9 @@ bool ramd_maintenance_verify_replication_status(const char* host, int32_t port)
 	}
 
 	/* Check replication lag */
-	res = PQexec((PGconn*) conn.connection,
-	             "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn(), "
-	             "pg_last_xact_replay_timestamp()");
+	res = ramd_query_exec_with_result((PGconn*) conn.connection,
+	                                  "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn(), "
+	                                  "pg_last_xact_replay_timestamp()");
 	if (!res || PQntuples(res) == 0)
 	{
 		ramd_log_error("Failed to get replication status from node %s:%d", host,
