@@ -30,7 +30,7 @@ typedef struct ramd_metrics_t
 	
 	/* Node metrics */
 	int32_t node_id;
-	char node_hostname[256];
+	char node_hostname[RAMD_MAX_HOSTNAME_LENGTH];
 	ramd_node_state_t node_state;
 	ramd_role_t node_role;
 	bool node_is_healthy;

@@ -413,7 +413,6 @@ bool ramd_config_reload_postgresql(const ramd_config_t* old_config,
 {
 	bool port_changed;
 	bool data_dir_changed;
-	char result[RAMD_MAX_COMMAND_LENGTH];
 
 	if (!old_config || !new_config)
 		return false;

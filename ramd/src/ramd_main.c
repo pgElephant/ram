@@ -76,7 +76,7 @@ ramd_connection_monitor_thread(void *arg)
 	{
 		PGconn *conn;
 
-		sleep(60);
+		sleep(RAMD_MONITOR_INTERVAL_MS / 1000);
 
 		if (g_shutdown_requested)
 			break;
@@ -89,7 +89,7 @@ ramd_connection_monitor_thread(void *arg)
 			while (!g_shutdown_requested && !ramd_establish_postgres_connection())
 			{
 				ramd_log_error("Failed to reconnect to PostgreSQL, retrying in 60 seconds...");
-				sleep(60);
+				sleep(RAMD_MONITOR_INTERVAL_MS / 1000);
 			}
 
 			if (!g_shutdown_requested)
@@ -217,7 +217,7 @@ ramd_init(const char *config_file)
 	while (!ramd_establish_postgres_connection())
 	{
 		fprintf(stderr, "Failed to connect to PostgreSQL, retrying in 60 seconds...\n");
-		sleep(60);
+		sleep(RAMD_MONITOR_INTERVAL_MS / 1000);
 	}
 	fprintf(stderr, "PostgreSQL connection established successfully\n");
 
@@ -257,6 +257,7 @@ ramd_init(const char *config_file)
 			strncpy(g_ramd_daemon->http_server.auth_token,
 					g_ramd_daemon->config.http_auth_token,
 					sizeof(g_ramd_daemon->http_server.auth_token) - 1);
+			g_ramd_daemon->http_server.auth_token[sizeof(g_ramd_daemon->http_server.auth_token) - 1] = '\0';
 		}
 	}
 

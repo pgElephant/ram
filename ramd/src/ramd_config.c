@@ -47,22 +47,29 @@ void ramd_config_set_defaults(ramd_config_t* config)
 
 	strncpy(config->postgresql_bin_dir, pgbin ? pgbin : RAMD_DEFAULT_PG_BIN_DIR,
 	        sizeof(config->postgresql_bin_dir) - 1);
+	config->postgresql_bin_dir[sizeof(config->postgresql_bin_dir) - 1] = '\0';
 	strncpy(config->postgresql_data_dir,
 	        pgdata ? pgdata : RAMD_DEFAULT_PG_DATA_DIR,
 	        sizeof(config->postgresql_data_dir) - 1);
+	config->postgresql_data_dir[sizeof(config->postgresql_data_dir) - 1] = '\0';
 	strncpy(config->postgresql_log_dir, pglog ? pglog : RAMD_DEFAULT_PG_LOG_DIR,
 	        sizeof(config->postgresql_log_dir) - 1);
+	config->postgresql_log_dir[sizeof(config->postgresql_log_dir) - 1] = '\0';
 
 	pgdb = getenv("PGDATABASE");
 	pguser = getenv("PGUSER");
 	strncpy(config->database_name, pgdb ? pgdb : RAMD_DEFAULT_PG_DATABASE,
 	        sizeof(config->database_name) - 1);
+	config->database_name[sizeof(config->database_name) - 1] = '\0';
 	strncpy(config->database_user, pguser ? pguser : RAMD_DEFAULT_PG_USER,
 	        sizeof(config->database_user) - 1);
+	config->database_user[sizeof(config->database_user) - 1] = '\0';
 	strncpy(config->postgresql_user, pguser ? pguser : RAMD_DEFAULT_PG_USER,
 	        sizeof(config->postgresql_user) - 1);
+	config->postgresql_user[sizeof(config->postgresql_user) - 1] = '\0';
 	strncpy(config->cluster_name, RAMD_DEFAULT_CLUSTER_NAME,
 	        sizeof(config->cluster_name) - 1);
+	config->cluster_name[sizeof(config->cluster_name) - 1] = '\0';
 
 	config->cluster_size = RAMD_DEFAULT_CLUSTER_SIZE;
 	config->auto_failover_enabled = true;
@@ -93,6 +100,7 @@ void ramd_config_set_defaults(ramd_config_t* config)
 
 	strncpy(config->http_bind_address, RAMD_DEFAULT_HTTP_BIND_ADDRESS,
 	        sizeof(config->http_bind_address) - 1);
+	config->http_bind_address[sizeof(config->http_bind_address) - 1] = '\0';
 }
 
 bool ramd_config_load_file(ramd_config_t* config, const char* config_file)
@@ -203,7 +211,10 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 	if (strcmp(key, "node_id") == 0)
 		config->node_id = atoi(value);
 	else if (strcmp(key, "hostname") == 0)
+	{
 		strncpy(config->hostname, value, sizeof(config->hostname) - 1);
+		config->hostname[sizeof(config->hostname) - 1] = '\0';
+	}
 	else if (strcmp(key, "postgresql_port") == 0)
 		config->postgresql_port = atoi(value);
 	else if (strcmp(key, "rale_port") == 0)
@@ -211,25 +222,46 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 	else if (strcmp(key, "dstore_port") == 0)
 		config->dstore_port = atoi(value);
 	else if (strcmp(key, "postgresql_bin_dir") == 0)
+	{
 		strncpy(config->postgresql_bin_dir, value,
 		        sizeof(config->postgresql_bin_dir) - 1);
+		config->postgresql_bin_dir[sizeof(config->postgresql_bin_dir) - 1] = '\0';
+	}
 	else if (strcmp(key, "postgresql_data_dir") == 0)
+	{
 		strncpy(config->postgresql_data_dir, value,
 		        sizeof(config->postgresql_data_dir) - 1);
+		config->postgresql_data_dir[sizeof(config->postgresql_data_dir) - 1] = '\0';
+	}
 	else if (strcmp(key, "database_name") == 0)
+	{
 		strncpy(config->database_name, value,
 		        sizeof(config->database_name) - 1);
+		config->database_name[sizeof(config->database_name) - 1] = '\0';
+	}
 	else if (strcmp(key, "database_user") == 0)
+	{
 		strncpy(config->database_user, value,
 		        sizeof(config->database_user) - 1);
+		config->database_user[sizeof(config->database_user) - 1] = '\0';
+	}
 	else if (strcmp(key, "postgresql_user") == 0)
+	{
 		strncpy(config->postgresql_user, value,
 		        sizeof(config->postgresql_user) - 1);
+		config->postgresql_user[sizeof(config->postgresql_user) - 1] = '\0';
+	}
 	else if (strcmp(key, "database_password") == 0)
+	{
 		strncpy(config->database_password, value,
 		        sizeof(config->database_password) - 1);
+		config->database_password[sizeof(config->database_password) - 1] = '\0';
+	}
 	else if (strcmp(key, "cluster_name") == 0)
+	{
 		strncpy(config->cluster_name, value, sizeof(config->cluster_name) - 1);
+		config->cluster_name[sizeof(config->cluster_name) - 1] = '\0';
+	}
 	else if (strcmp(key, "cluster_size") == 0)
 		config->cluster_size = atoi(value);
 	else if (strcmp(key, "auto_failover_enabled") == 0)
@@ -245,7 +277,10 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 	else if (strcmp(key, "failover_timeout_ms") == 0)
 		config->failover_timeout_ms = atoi(value);
 	else if (strcmp(key, "log_file") == 0)
+	{
 		strncpy(config->log_file, value, sizeof(config->log_file) - 1);
+		config->log_file[sizeof(config->log_file) - 1] = '\0';
+	}
 	else if (strcmp(key, "log_level") == 0)
 		config->log_level = ramd_logging_string_to_level(value);
 	else if (strcmp(key, "log_to_syslog") == 0)
@@ -258,19 +293,28 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 		config->http_api_enabled =
 		    (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
 	else if (strcmp(key, "http_bind_address") == 0)
+	{
 		strncpy(config->http_bind_address, value,
 		        sizeof(config->http_bind_address) - 1);
+		config->http_bind_address[sizeof(config->http_bind_address) - 1] = '\0';
+	}
 	else if (strcmp(key, "http_port") == 0)
 		config->http_port = atoi(value);
 	else if (strcmp(key, "http_auth_enabled") == 0)
 		config->http_auth_enabled =
 		    (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
 	else if (strcmp(key, "http_auth_token") == 0)
+	{
 		strncpy(config->http_auth_token, value,
 		        sizeof(config->http_auth_token) - 1);
+		config->http_auth_token[sizeof(config->http_auth_token) - 1] = '\0';
+	}
 	else if (strcmp(key, "sync_standby_names") == 0)
+	{
 		strncpy(config->sync_standby_names, value,
 		        sizeof(config->sync_standby_names) - 1);
+		config->sync_standby_names[sizeof(config->sync_standby_names) - 1] = '\0';
+	}
 	else if (strcmp(key, "num_sync_standbys") == 0)
 		config->num_sync_standbys = atoi(value);
 	else if (strcmp(key, "sync_timeout_ms") == 0)
@@ -287,7 +331,10 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 		config->maintenance_backup_before =
 		    (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
 	else if (strcmp(key, "pid_file") == 0)
+	{
 		strncpy(config->pid_file, value, sizeof(config->pid_file) - 1);
+		config->pid_file[sizeof(config->pid_file) - 1] = '\0';
+	}
 	else if (strcmp(key, "daemonize") == 0)
 		config->daemonize =
 		    (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
@@ -419,6 +466,7 @@ void ramd_config_load_from_environment(ramd_config_t* config)
 	{
 		strncpy(config->cluster_name, env_value,
 		        sizeof(config->cluster_name) - 1);
+		config->cluster_name[sizeof(config->cluster_name) - 1] = '\0';
 		ramd_log_debug("Set cluster_name from environment: %s",
 		               config->cluster_name);
 	}
@@ -434,6 +482,7 @@ void ramd_config_load_from_environment(ramd_config_t* config)
 	{
 		strncpy(config->postgresql_data_dir, env_value,
 		        sizeof(config->postgresql_data_dir) - 1);
+		config->postgresql_data_dir[sizeof(config->postgresql_data_dir) - 1] = '\0';
 		ramd_log_debug("Set postgresql_data_dir from environment: %s",
 		               config->postgresql_data_dir);
 	}

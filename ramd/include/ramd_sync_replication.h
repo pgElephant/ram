@@ -38,20 +38,20 @@ typedef enum
 typedef struct ramd_sync_config_t
 {
 	ramd_sync_mode_t mode;
-	char synchronous_standby_names[512];
+	char synchronous_standby_names[RAMD_MAX_COMMAND_LENGTH];
 	int32_t num_sync_standbys;
 	int32_t sync_timeout_ms;
 	bool enforce_sync_standbys;
-	char application_name_pattern[128];
+	char application_name_pattern[RAMD_MAX_HOSTNAME_LENGTH];
 } ramd_sync_config_t;
 
 /* Synchronous Standby Information */
 typedef struct ramd_sync_standby_t
 {
 	int32_t node_id;
-	char hostname[64];
+	char hostname[RAMD_MAX_HOSTNAME_LENGTH];
 	int32_t port;
-	char application_name[64];
+	char application_name[RAMD_MAX_HOSTNAME_LENGTH];
 	bool is_sync;
 	bool is_connected;
 	int64_t flush_lag_bytes;

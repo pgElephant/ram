@@ -44,8 +44,8 @@ typedef struct ramd_config_reload_result_t
 	ramd_config_change_flags_t changes_detected;
 	ramd_config_change_flags_t changes_applied;
 	time_t reload_time;
-	char error_message[256];
-	char warnings[512];
+	char error_message[RAMD_MAX_HOSTNAME_LENGTH];
+	char warnings[RAMD_MAX_COMMAND_LENGTH];
 } ramd_config_reload_result_t;
 
 /* Function prototypes */

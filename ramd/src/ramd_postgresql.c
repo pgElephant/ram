@@ -854,7 +854,6 @@ ramd_postgresql_get_health_score(const ramd_config_t *config)
 	PGresult *res = NULL;
 	char      conninfo[512];
 	float     lag_seconds;
-	int       long_queries;
 
 	if (!config)
 		return 0.0f;

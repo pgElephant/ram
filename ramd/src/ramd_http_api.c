@@ -681,8 +681,6 @@ ramd_http_handle_sync_replication(ramd_http_request_t *request, ramd_http_respon
 	char               mode_str[32] = "";
 	int                num_sync = -1;
 	size_t             len;
-	ramd_sync_mode_t   new_mode;
-	ramd_sync_config_t sync_config;
 
 	if (request->method == RAMD_HTTP_GET)
 	{

@@ -46,8 +46,8 @@ typedef struct ramd_maintenance_config_t
 	int32_t drain_timeout_ms;
 	bool prevent_writes;
 	bool backup_before_maintenance;
-	char reason[256];
-	char contact_info[128];
+	char reason[RAMD_MAX_HOSTNAME_LENGTH];
+	char contact_info[RAMD_MAX_HOSTNAME_LENGTH];
 	time_t scheduled_start;
 	time_t scheduled_end;
 	int32_t max_duration_ms;
@@ -63,14 +63,14 @@ typedef struct ramd_maintenance_state_t
 	time_t start_time;
 	time_t end_time;
 	time_t scheduled_end;
-	char reason[256];
-	char contact_info[128];
-	char initiated_by[64];
+	char reason[RAMD_MAX_HOSTNAME_LENGTH];
+	char contact_info[RAMD_MAX_HOSTNAME_LENGTH];
+	char initiated_by[RAMD_MAX_HOSTNAME_LENGTH];
 	bool auto_failover_disabled;
 	bool connections_drained;
 	int32_t active_connections;
-	char backup_id[64];
-	char status_message[256];
+	char backup_id[RAMD_MAX_HOSTNAME_LENGTH];
+	char status_message[RAMD_MAX_HOSTNAME_LENGTH];
 } ramd_maintenance_state_t;
 
 /* Pre-maintenance checks */
@@ -83,7 +83,7 @@ typedef struct ramd_maintenance_check_t
 	bool backup_available;
 	bool sufficient_standbys;
 	int32_t active_connections;
-	char check_details[512];
+	char check_details[RAMD_MAX_COMMAND_LENGTH];
 } ramd_maintenance_check_t;
 
 /* Function prototypes */
