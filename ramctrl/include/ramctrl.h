@@ -38,11 +38,8 @@
 #define RAMCTRL_EXIT_TIMEOUT 6     /* Operation timed out */
 #define RAMCTRL_EXIT_UNAVAILABLE 7 /* Service unavailable */
 
-/* Configuration constants */
-#define RAMCTRL_MAX_HOSTNAME_LENGTH 256
-#define RAMCTRL_MAX_PATH_LENGTH 512
-#define RAMCTRL_MAX_COMMAND_LENGTH 1024
-#define RAMCTRL_MAX_NODES 16
+/* Use centralized defaults from ramctrl_defaults.h */
+#include "ramctrl_defaults.h"
 
 /* Main command types */
 typedef enum ramctrl_command
@@ -166,8 +163,8 @@ typedef struct ramctrl_node_info
 {
 	int32_t node_id;
 	char hostname[RAMCTRL_MAX_HOSTNAME_LENGTH];
-	char node_address[256];
-	char node_name[256];
+	char node_address[RAMCTRL_MAX_HOSTNAME_LENGTH];
+	char node_name[RAMCTRL_MAX_HOSTNAME_LENGTH];
 	int32_t port;
 	int32_t node_port;
 	ramctrl_node_status_t status;
@@ -186,7 +183,7 @@ typedef struct ramctrl_node_info
 typedef struct ramctrl_cluster_info
 {
 	int32_t cluster_id;
-	char cluster_name[64];
+	char cluster_name[RAMCTRL_MAX_HOSTNAME_LENGTH];
 	int32_t total_nodes;
 	int32_t active_nodes;
 	int32_t node_count;
@@ -201,16 +198,15 @@ typedef struct ramctrl_cluster_info
 /* Control context */
 typedef struct ramctrl_context
 {
-	char hostname[256];
-	int port;
-	char database[256];
-	char user[256];
-	char password[256];
-	char config_file[512];
+	char api_url[RAMCTRL_MAX_PATH_LENGTH];
+	char config_file[RAMCTRL_MAX_PATH_LENGTH];
 	int timeout_seconds;
 	bool verbose;
 	bool json_output;
 	bool table_output;
+	bool quiet;
+	bool force;
+	bool dry_run;
 	ramctrl_command_t command;
 	/* Subcommands */
 	ramctrl_show_command_t show_command;
@@ -220,9 +216,9 @@ typedef struct ramctrl_context
 	ramctrl_replica_command_t replica_command;
 	ramctrl_backup_command_t backup_command;
 	ramctrl_bootstrap_command_t bootstrap_command;
-	char command_args[16][256];
+	char command_args[RAMCTRL_MAX_NODES][RAMCTRL_MAX_HOSTNAME_LENGTH];
 	int command_argc;
-	char postgresql_data_dir[256];
+	char postgresql_data_dir[RAMCTRL_MAX_PATH_LENGTH];
 } ramctrl_context_t;
 
 /* Function prototypes */

@@ -14,121 +14,140 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <signal.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+#include <termios.h>
 
 #include "ramctrl.h"
-#include "ramctrl_database.h"
 #include "ramctrl_daemon.h"
 #include "ramctrl_defaults.h"
 #include "ramctrl_watch.h"
 #include "ramctrl_help.h"
 #include "ramctrl_show.h"
 
+/* Professional CLI utilities */
+static void ramctrl_print_banner(void);
+static void ramctrl_print_success(const char* message);
+static void ramctrl_print_error(const char* message);
+static void ramctrl_print_warning(const char* message);
+static void ramctrl_print_info(const char* message);
+static void ramctrl_print_progress(const char* message);
+static void ramctrl_print_separator(void);
+static int ramctrl_get_terminal_width(void);
+static void ramctrl_print_centered(const char* text);
+static bool ramctrl_confirm_action(const char* message);
+static void ramctrl_print_table_header(const char* headers[], int count);
+static void ramctrl_print_table_row(const char* values[], int count);
+static void ramctrl_clear_screen(void);
+static void ramctrl_print_loading(const char* message, int duration);
+
+/* Enhanced error handling */
+static void ramctrl_handle_error(const char* function, int error_code, const char* message);
+static void ramctrl_validate_api_url(ramctrl_context_t* ctx);
+static void ramctrl_validate_node_id(const char* node_id_str, int* node_id);
+
 void ramctrl_usage(const char* progname)
 {
-	fprintf(stdout, "PostgreSQL RAM Control Utility (ramctrl) %s\n\n",
-	        RAMCTRL_VERSION_STRING);
-	fprintf(stdout, "Usage: %s [OPTIONS] COMMAND [ARGS...]\n\n", progname);
+	ramctrl_print_banner();
+	
+	printf("USAGE:\n");
+	printf("  %s [OPTIONS] COMMAND [ARGS...]\n\n", progname);
+	
+	printf("GLOBAL OPTIONS:\n");
+	printf("  Connection Options:\n");
+	printf("    -u, --api-url URL       ramd API endpoint (default: http://127.0.0.1:8008)\n");
+	printf("    -c, --config FILE       Configuration file path\n");
+	printf("\n");
+	printf("  Output Options:\n");
+	printf("    -v, --verbose           Verbose output with detailed information\n");
+	printf("    -j, --json              JSON output format for scripting\n");
+	printf("    --table                 Table output format (overrides --json)\n");
+	printf("    --quiet                 Suppress non-error output\n");
+	printf("\n");
+	printf("  Behavior Options:\n");
+	printf("    -t, --timeout SEC       Timeout in seconds (default: 30)\n");
+	printf("    --force                 Skip confirmation prompts\n");
+	printf("    --dry-run               Show what would be done without executing\n");
+	printf("\n");
+	printf("  Information Options:\n");
+	printf("    --help                  Show this help message\n");
+	printf("    --version               Show version information\n");
+	printf("    --help-commands         Show detailed command help\n");
+	printf("\n");
 
-	fprintf(stdout, "Global Options:\n");
-	fprintf(stdout,
-	        "  -h, --host HOST       PostgreSQL host (default: from config)\n");
-	fprintf(stdout,
-	        "  -p, --port PORT       PostgreSQL port (default: from config)\n");
-	fprintf(stdout,
-	        "  -d, --database DB     Database name (default: postgres)\n");
-	fprintf(stdout,
-	        "  -U, --user USER       Database user (default: postgres)\n");
-	fprintf(stdout, "  -W, --password PASS   Database password\n");
-	fprintf(stdout, "  -c, --config FILE     Configuration file path\n");
-	fprintf(stdout, "  -v, --verbose         Verbose output\n");
-	fprintf(stdout, "  -j, --json            JSON output format\n");
-	fprintf(stdout,
-	        "  -t, --timeout SEC     Timeout in seconds (default: 30)\n");
-	fprintf(
-	    stdout,
-	    "      --table            Table output format (overrides --json)\n");
-	fprintf(stdout, "      --help            Show this help message\n");
-	fprintf(stdout, "      --version         Show version information\n");
-	fprintf(stdout, "\n");
-
-	fprintf(stdout, "Commands:\n");
-	fprintf(stdout, "  status                        Show cluster status\n");
-	fprintf(stdout, "  start [NODE_ID]               Start ramd daemon "
-	                "(optionally on specific node)\n");
-	fprintf(stdout, "  stop [NODE_ID]                Stop ramd daemon "
-	                "(optionally on specific node)\n");
-	fprintf(stdout, "  restart [NODE_ID]             Restart ramd daemon "
-	                "(optionally on specific node)\n");
-	fprintf(stdout,
-	        "  promote NODE_ID               Promote node to primary\n");
-	fprintf(stdout, "  demote NODE_ID                Demote node from primary "
-	                "to standby\n");
-	fprintf(stdout, "  failover [NODE_ID]            Trigger manual failover "
-	                "(optionally to specific node)\n");
-	fprintf(stdout,
-	        "  show cluster                  Show cluster information\n");
-	fprintf(stdout, "  show nodes                    Show all nodes status\n");
-	fprintf(stdout, "  add-node NODE_ID HOST PORT    Add node to cluster\n");
-	fprintf(stdout,
-	        "  remove-node NODE_ID           Remove node from cluster\n");
-	fprintf(stdout,
-	        "  enable-maintenance NODE_ID    Enable maintenance mode\n");
-	fprintf(stdout,
-	        "  disable-maintenance NODE_ID   Disable maintenance mode\n");
-	fprintf(stdout, "  logs [NODE_ID]                Show daemon logs\n");
-	fprintf(stdout, "  watch [cluster|nodes|replication] Watch mode for "
-	                "real-time monitoring\n");
-	fprintf(stdout, "\n");
-	fprintf(stdout, "Replication Management:\n");
-	fprintf(
-	    stdout,
-	    "  show replication              Show replication status and lag\n");
-	fprintf(stdout, "  set replication-mode MODE     Set replication mode "
-	                "(async/sync_remote_write/sync_remote_apply/auto)\n");
-	fprintf(stdout, "  set lag-threshold BYTES       Set maximum lag threshold "
-	                "for failover\n");
-	fprintf(stdout, "  wal-e backup                  Create WAL-E backup\n");
-	fprintf(stdout,
-	        "  wal-e restore BACKUP_NAME     Restore from WAL-E backup\n");
-	fprintf(stdout,
-	        "  wal-e list                    List available WAL-E backups\n");
-	fprintf(stdout, "  wal-e delete BACKUP_NAME      Delete WAL-E backup\n");
-	fprintf(stdout, "  bootstrap run NODE_TYPE       Run bootstrap script "
-	                "(primary/standby)\n");
-	fprintf(stdout,
-	        "  bootstrap validate            Validate bootstrap script\n");
+	printf("COMMANDS:\n");
+	printf("  Cluster Management:\n");
+	printf("    status                        Show cluster status and health\n");
+	printf("    show cluster                  Show detailed cluster information\n");
+	printf("    show nodes                    Show all nodes status\n");
+	printf("    show replication              Show replication status and lag\n");
+	printf("\n");
+	printf("  Node Management:\n");
+	printf("    add-node NODE_ID HOST PORT    Add node to cluster\n");
+	printf("    remove-node NODE_ID           Remove node from cluster\n");
+	printf("    promote NODE_ID               Promote node to primary\n");
+	printf("    demote NODE_ID                Demote node from primary to standby\n");
+	printf("    enable-maintenance NODE_ID    Enable maintenance mode\n");
+	printf("    disable-maintenance NODE_ID   Disable maintenance mode\n");
+	printf("\n");
+	printf("  Daemon Control:\n");
+	printf("    start [NODE_ID]               Start ramd daemon (optionally on specific node)\n");
+	printf("    stop [NODE_ID]                Stop ramd daemon (optionally on specific node)\n");
+	printf("    restart [NODE_ID]             Restart ramd daemon (optionally on specific node)\n");
+	printf("    logs [NODE_ID]                Show daemon logs\n");
+	printf("\n");
+	printf("  Failover & Recovery:\n");
+	printf("    failover [NODE_ID]            Trigger manual failover (optionally to specific node)\n");
+	printf("    wal-e backup                  Create WAL-E backup\n");
+	printf("    wal-e restore BACKUP_NAME     Restore from WAL-E backup\n");
+	printf("    wal-e list                    List available WAL-E backups\n");
+	printf("    wal-e delete BACKUP_NAME      Delete WAL-E backup\n");
+	printf("\n");
+	printf("  Configuration:\n");
+	printf("    set replication-mode MODE     Set replication mode (async/sync_remote_write/sync_remote_apply/auto)\n");
+	printf("    set lag-threshold BYTES       Set maximum lag threshold for failover\n");
+	printf("    bootstrap run NODE_TYPE       Run bootstrap script (primary/standby)\n");
+	printf("    bootstrap validate            Validate bootstrap script\n");
+	printf("\n");
+	printf("  Monitoring:\n");
+	printf("    watch [cluster|nodes|replication] Watch mode for real-time monitoring\n");
 	fprintf(stdout, "\n");
 
-	fprintf(stdout, "Examples:\n");
-	fprintf(stdout, "  %s status                      # Show cluster status\n",
-	        progname);
-	fprintf(stdout,
-	        "  %s show cluster                # Show detailed cluster info\n",
-	        progname);
-	fprintf(stdout,
-	        "  %s show nodes                  # Show all nodes status\n",
-	        progname);
-	fprintf(stdout,
-	        "  %s promote 2                   # Promote node 2 to primary\n",
-	        progname);
-	fprintf(stdout,
-	        "  %s failover                    # Trigger automatic failover\n",
-	        progname);
-	fprintf(stdout,
-	        "  %s add-node 4 host4 PORT       # Add node 4 to cluster\n",
-	        progname);
-	fprintf(stdout,
-	        "  %s start                       # Start local ramd daemon\n",
-	        progname);
-	fprintf(stdout, "  %s logs 1                      # Show logs for node 1\n",
-	        progname);
-	fprintf(stdout, "\n");
-	fprintf(stdout, "Output Formats:\n");
-	fprintf(stdout, "  Default: Human-readable text\n");
-	fprintf(stdout, "  --json:  JSON format for scripting\n");
-	fprintf(stdout, "  --table: Professional table format\n");
-	fprintf(stdout, "\n");
-	fprintf(stdout, "Report bugs to <support@pgelephant.com>\n");
+	printf("EXAMPLES:\n");
+	printf("  # Basic cluster operations\n");
+	printf("  %s status                              # Show cluster status\n", progname);
+	printf("  %s show nodes                          # Show all nodes\n", progname);
+	printf("  %s show cluster                        # Show cluster details\n", progname);
+	printf("\n");
+	printf("  # Node management\n");
+	printf("  %s add-node 2 192.168.1.100 5432      # Add node 2\n", progname);
+	printf("  %s remove-node 2                       # Remove node 2\n", progname);
+	printf("  %s promote 2                           # Promote node 2 to primary\n", progname);
+	printf("  %s demote 1                            # Demote node 1 to standby\n", progname);
+	printf("\n");
+	printf("  # Daemon control\n");
+	printf("  %s start                               # Start ramd daemon\n", progname);
+	printf("  %s stop 2                              # Stop daemon on node 2\n", progname);
+	printf("  %s restart                             # Restart daemon\n", progname);
+	printf("\n");
+	printf("  # Advanced operations\n");
+	printf("  %s --json show nodes                   # JSON output for scripting\n", progname);
+	printf("  %s --verbose failover 2                # Verbose failover to node 2\n", progname);
+	printf("  %s watch cluster                       # Real-time cluster monitoring\n", progname);
+	printf("  %s --force remove-node 3               # Skip confirmation\n", progname);
+	printf("\n");
+	printf("  # Configuration\n");
+	printf("  %s -u http://ramd.example.com:8008 status    # Connect to remote ramd\n", progname);
+	printf("  %s -c /etc/ramctrl.conf status               # Use custom config\n", progname);
+	printf("\n");
+	printf("OUTPUT FORMATS:\n");
+	printf("  Default: Human-readable text with colors and formatting\n");
+	printf("  --json:  JSON format for scripting and automation\n");
+	printf("  --table: Professional table format for reports\n");
+	printf("  --quiet: Minimal output (errors only)\n");
+	printf("\n");
+	printf("For more information, see the ramctrl manual page or use --help-commands.\n");
+	printf("Report bugs to <support@pgelephant.com>\n");
 }
 
 
@@ -148,15 +167,15 @@ bool ramctrl_init(ramctrl_context_t* ctx)
 	memset(ctx, 0, sizeof(ramctrl_context_t));
 
 	/* Set defaults */
-	ctx->hostname[0] = '\0'; /* No default hostname */
-	ctx->port = 0;           /* No default port */
-	strncpy(ctx->database, RAMCTRL_DEFAULT_PG_DATABASE,
-	        sizeof(ctx->database) - 1);
-	strncpy(ctx->user, RAMCTRL_DEFAULT_PG_USER, sizeof(ctx->user) - 1);
+	strncpy(ctx->api_url, "http://127.0.0.1:8008", sizeof(ctx->api_url) - 1);
+	ctx->api_url[sizeof(ctx->api_url) - 1] = '\0';
 	ctx->timeout_seconds = RAMCTRL_DEFAULT_TIMEOUT_SECONDS;
 	ctx->verbose = false;
 	ctx->json_output = false;
 	ctx->table_output = false;
+	ctx->quiet = false;
+	ctx->force = false;
+	ctx->dry_run = false;
 	ctx->command = RAMCTRL_CMD_UNKNOWN;
 	/* Initialize subcommands */
 	ctx->show_command = RAMCTRL_SHOW_UNKNOWN;
@@ -176,7 +195,7 @@ void ramctrl_cleanup(ramctrl_context_t* ctx)
 	if (!ctx)
 		return;
 
-	memset(ctx->password, 0, sizeof(ctx->password));
+	/* No sensitive data to clear in HTTP-only mode */
 }
 
 
@@ -186,48 +205,28 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 	int option_index = 0;
 
 	static struct option long_options[] = {
-	    {"host", required_argument, 0, 'h'},
-	    {"port", required_argument, 0, 'p'},
-	    {"database", required_argument, 0, 'd'},
-	    {"user", required_argument, 0, 'U'},
-	    {"password", required_argument, 0, 'W'},
+	    {"api-url", required_argument, 0, 'u'},
 	    {"config", required_argument, 0, 'c'},
 	    {"verbose", no_argument, 0, 'v'},
 	    {"json", no_argument, 0, 'j'},
 	    {"timeout", required_argument, 0, 't'},
 	    {"table", no_argument, 0, 'T'},
+	    {"quiet", no_argument, 0, 'q'},
+	    {"force", no_argument, 0, 'f'},
+	    {"dry-run", no_argument, 0, 'n'},
 	    {"help", no_argument, 0, 1000},
 	    {"version", no_argument, 0, 1001},
+	    {"help-commands", no_argument, 0, 1002},
 	    {0, 0, 0, 0}};
 
-	while ((c = getopt_long(argc, argv, "h:p:d:U:W:c:vjt:T", long_options,
+	while ((c = getopt_long(argc, argv, "u:c:vjt:Tqfn", long_options,
 	                        &option_index)) != -1)
 	{
 		switch (c)
 		{
-		case 'h':
-			strncpy(ctx->hostname, optarg, sizeof(ctx->hostname) - 1);
-			ctx->hostname[sizeof(ctx->hostname) - 1] = '\0';
-			break;
-		case 'p':
-			ctx->port = atoi(optarg);
-			if (ctx->port <= 0 || ctx->port > 65535)
-			{
-				fprintf(stderr, "ramctrl: invalid port number: %s\n", optarg);
-				return false;
-			}
-			break;
-		case 'd':
-			strncpy(ctx->database, optarg, sizeof(ctx->database) - 1);
-			ctx->database[sizeof(ctx->database) - 1] = '\0';
-			break;
-		case 'U':
-			strncpy(ctx->user, optarg, sizeof(ctx->user) - 1);
-			ctx->user[sizeof(ctx->user) - 1] = '\0';
-			break;
-		case 'W':
-			strncpy(ctx->password, optarg, sizeof(ctx->password) - 1);
-			ctx->password[sizeof(ctx->password) - 1] = '\0';
+		case 'u':
+			strncpy(ctx->api_url, optarg, sizeof(ctx->api_url) - 1);
+			ctx->api_url[sizeof(ctx->api_url) - 1] = '\0';
 			break;
 		case 'c':
 			strncpy(ctx->config_file, optarg, sizeof(ctx->config_file) - 1);
@@ -251,6 +250,15 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 			ctx->table_output = true;
 			ctx->json_output = false;
 			break;
+		case 'q':
+			ctx->quiet = true;
+			break;
+		case 'f':
+			ctx->force = true;
+			break;
+		case 'n':
+			ctx->dry_run = true;
+			break;
 		case 1000:
 			if (ctx->command == RAMCTRL_CMD_UNKNOWN)
 				ctx->command = RAMCTRL_CMD_HELP;
@@ -258,6 +266,10 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 		case 1001:
 			if (ctx->command == RAMCTRL_CMD_UNKNOWN)
 				ctx->command = RAMCTRL_CMD_VERSION;
+			return true;
+		case 1002:
+			if (ctx->command == RAMCTRL_CMD_UNKNOWN)
+				ctx->command = RAMCTRL_CMD_HELP;
 			return true;
 		default:
 			fprintf(stderr, "ramctrl: invalid option: %c\n", c);
@@ -520,8 +532,23 @@ bool ramctrl_parse_args(ramctrl_context_t* ctx, int argc, char* argv[])
 int ramctrl_execute_command(ramctrl_context_t* ctx)
 {
 	if (!ctx)
+	{
+		ramctrl_print_error("Context is null");
 		return RAMCTRL_EXIT_FAILURE;
+	}
 
+	/* Validate API URL */
+	ramctrl_validate_api_url(ctx);
+
+	/* Show banner for interactive commands */
+	if (!ctx->quiet && ctx->command != RAMCTRL_CMD_HELP && ctx->command != RAMCTRL_CMD_VERSION)
+	{
+		ramctrl_print_banner();
+	}
+
+	/* Execute command with professional feedback */
+	ramctrl_print_progress("Executing command");
+	
 	switch (ctx->command)
 	{
 	case RAMCTRL_CMD_STATUS:
@@ -606,3 +633,217 @@ int main(int argc, char* argv[])
 
 	return result;
 }
+
+/* Professional CLI utilities implementation */
+
+static void
+ramctrl_print_banner(void)
+{
+	printf("\n");
+	printf("╔══════════════════════════════════════════════════════════════╗\n");
+	printf("║                PostgreSQL RAM Control Utility               ║\n");
+	printf("║                    Professional CLI v%s                    ║\n", RAMCTRL_VERSION_STRING);
+	printf("╚══════════════════════════════════════════════════════════════╝\n");
+	printf("\n");
+}
+
+static void
+ramctrl_print_success(const char* message)
+{
+	printf("✅ %s\n", message);
+}
+
+static void
+ramctrl_print_error(const char* message)
+{
+	fprintf(stderr, "❌ Error: %s\n", message);
+}
+
+static void
+ramctrl_print_warning(const char* message)
+{
+	printf("⚠️  Warning: %s\n", message);
+}
+
+static void
+ramctrl_print_info(const char* message)
+{
+	printf("ℹ️  %s\n", message);
+}
+
+static void
+ramctrl_print_progress(const char* message)
+{
+	printf("🔄 %s...\n", message);
+	fflush(stdout);
+}
+
+static void
+ramctrl_print_separator(void)
+{
+	int width = ramctrl_get_terminal_width();
+	for (int i = 0; i < width; i++)
+	{
+		printf("─");
+	}
+	printf("\n");
+}
+
+static int
+ramctrl_get_terminal_width(void)
+{
+	struct winsize w;
+	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0)
+	{
+		return w.ws_col;
+	}
+	return 80; /* Default width */
+}
+
+static void
+ramctrl_print_centered(const char* text)
+{
+	int width = ramctrl_get_terminal_width();
+	int text_len = strlen(text);
+	int padding = (width - text_len) / 2;
+	
+	for (int i = 0; i < padding; i++)
+	{
+		printf(" ");
+	}
+	printf("%s\n", text);
+}
+
+static bool
+ramctrl_confirm_action(const char* message)
+{
+	char response[10];
+	printf("❓ %s (y/N): ", message);
+	fflush(stdout);
+	
+	if (fgets(response, sizeof(response), stdin) == NULL)
+	{
+		return false;
+	}
+	
+	return (response[0] == 'y' || response[0] == 'Y');
+}
+
+static void
+ramctrl_print_table_header(const char* headers[], int count)
+{
+	printf("\n");
+	ramctrl_print_separator();
+	for (int i = 0; i < count; i++)
+	{
+		printf("│ %-15s ", headers[i]);
+	}
+	printf("│\n");
+	ramctrl_print_separator();
+}
+
+static void
+ramctrl_print_table_row(const char* values[], int count)
+{
+	for (int i = 0; i < count; i++)
+	{
+		printf("│ %-15s ", values[i] ? values[i] : "N/A");
+	}
+	printf("│\n");
+}
+
+static void
+ramctrl_clear_screen(void)
+{
+	printf("\033[2J\033[H");
+}
+
+static void
+ramctrl_print_loading(const char* message, int duration)
+{
+	const char* spinner[] = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
+	int spinner_count = sizeof(spinner) / sizeof(spinner[0]);
+	
+	printf("🔄 %s ", message);
+	fflush(stdout);
+	
+	for (int i = 0; i < duration; i++)
+	{
+		printf("\b\b%s ", spinner[i % spinner_count]);
+		fflush(stdout);
+		usleep(100000); /* 100ms */
+	}
+	printf("\b\b  \b\b\n");
+}
+
+/* Enhanced error handling implementation */
+
+static void
+ramctrl_handle_error(const char* function, int error_code, const char* message)
+{
+	ramctrl_print_error(message);
+	if (errno != 0)
+	{
+		fprintf(stderr, "   System error: %s (errno: %d)\n", strerror(errno), errno);
+	}
+	if (function)
+	{
+		fprintf(stderr, "   Function: %s\n", function);
+	}
+	if (error_code != 0)
+	{
+		fprintf(stderr, "   Error code: %d\n", error_code);
+	}
+}
+
+static void
+ramctrl_validate_api_url(ramctrl_context_t* ctx)
+{
+	if (!ctx)
+	{
+		ramctrl_print_error("Context is null");
+		return;
+	}
+	
+	if (strlen(ctx->api_url) == 0)
+	{
+		ramctrl_print_error("API URL not specified");
+		return;
+	}
+	
+	/* Basic URL validation */
+	if (strncmp(ctx->api_url, "http://", 7) != 0 && 
+	    strncmp(ctx->api_url, "https://", 8) != 0)
+	{
+		ramctrl_print_error("API URL must start with http:// or https://");
+		return;
+	}
+}
+
+static void
+ramctrl_validate_node_id(const char* node_id_str, int* node_id)
+{
+	if (!node_id_str || !node_id)
+	{
+		ramctrl_print_error("Invalid node ID parameter");
+		return;
+	}
+	
+	char* endptr;
+	long val = strtol(node_id_str, &endptr, 10);
+	
+	if (endptr == node_id_str || *endptr != '\0')
+	{
+		ramctrl_print_error("Node ID must be a valid integer");
+		return;
+	}
+	
+	if (val < 1 || val > 9999)
+	{
+		ramctrl_print_error("Node ID must be between 1 and 9999");
+		return;
+	}
+	
+	*node_id = (int)val;
+}
+

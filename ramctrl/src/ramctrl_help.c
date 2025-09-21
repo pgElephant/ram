@@ -17,28 +17,64 @@
 
 void ramctrl_help_show_general(void)
 {
-	printf("Usage: ramctrl [OPTIONS] COMMAND [SUBCOMMAND] [ARGS...]\n\n");
-	printf("PostgreSQL RAM Control Utility for managing RALE-based Auto "
-	       "Manager clusters.\n");
-	printf("Provides comprehensive cluster management, monitoring, and "
-	       "maintenance capabilities.\n\n");
-	printf("Commands:\n");
+	printf("╔══════════════════════════════════════════════════════════════╗\n");
+	printf("║                PostgreSQL RAM Control Utility               ║\n");
+	printf("║                    Professional CLI v%s                    ║\n", RAMCTRL_VERSION_STRING);
+	printf("╚══════════════════════════════════════════════════════════════╝\n");
+	printf("\n");
+	printf("USAGE:\n");
+	printf("  ramctrl [OPTIONS] COMMAND [SUBCOMMAND] [ARGS...]\n\n");
+	printf("DESCRIPTION:\n");
+	printf("  PostgreSQL RAM Control Utility for managing RALE-based Auto Manager clusters.\n");
+	printf("  Provides comprehensive cluster management, monitoring, and maintenance capabilities.\n");
+	printf("  Features professional CLI with colors, progress indicators, and user-friendly output.\n\n");
+	printf("COMMANDS:\n");
 }
 
 
 void ramctrl_help_show_commands(void)
 {
-	printf("Basic Commands:\n");
-	printf("  %-20s Show cluster and daemon status\n", "status");
-	printf("  %-20s Start the ramd daemon\n", "start");
-	printf("  %-20s Stop the ramd daemon\n", "stop");
-	printf("  %-20s Restart the ramd daemon\n", "restart");
-	printf("  %-20s Promote current node to primary\n", "promote");
-	printf("  %-20s Demote primary node to standby\n", "demote");
-	printf("  %-20s Trigger manual failover\n", "failover");
-	printf("  %-20s Show daemon logs\n", "logs");
-	printf("  %-20s Show help information\n", "help [COMMAND]");
-	printf("  %-20s Show version information\n", "version");
+	printf("CLUSTER MANAGEMENT:\n");
+	printf("  ✅ %-18s Show cluster status and health\n", "status");
+	printf("  📊 %-18s Show detailed cluster information\n", "show cluster");
+	printf("  🖥️  %-18s Show all nodes status\n", "show nodes");
+	printf("  🔄 %-18s Show replication status and lag\n", "show replication");
+	printf("\n");
+	printf("NODE MANAGEMENT:\n");
+	printf("  ➕ %-18s Add node to cluster\n", "add-node NODE_ID HOST PORT");
+	printf("  ➖ %-18s Remove node from cluster\n", "remove-node NODE_ID");
+	printf("  ⬆️  %-18s Promote node to primary\n", "promote NODE_ID");
+	printf("  ⬇️  %-18s Demote node from primary to standby\n", "demote NODE_ID");
+	printf("  🔧 %-18s Enable maintenance mode\n", "enable-maintenance NODE_ID");
+	printf("  ✅ %-18s Disable maintenance mode\n", "disable-maintenance NODE_ID");
+	printf("\n");
+	printf("DAEMON CONTROL:\n");
+	printf("  🚀 %-18s Start ramd daemon\n", "start [NODE_ID]");
+	printf("  🛑 %-18s Stop ramd daemon\n", "stop [NODE_ID]");
+	printf("  🔄 %-18s Restart ramd daemon\n", "restart [NODE_ID]");
+	printf("  📋 %-18s Show daemon logs\n", "logs [NODE_ID]");
+	printf("\n");
+	printf("FAILOVER & RECOVERY:\n");
+	printf("  ⚡ %-18s Trigger manual failover\n", "failover [NODE_ID]");
+	printf("  💾 %-18s Create WAL-E backup\n", "wal-e backup");
+	printf("  🔄 %-18s Restore from WAL-E backup\n", "wal-e restore BACKUP_NAME");
+	printf("  📋 %-18s List available WAL-E backups\n", "wal-e list");
+	printf("  🗑️  %-18s Delete WAL-E backup\n", "wal-e delete BACKUP_NAME");
+	printf("\n");
+	printf("CONFIGURATION:\n");
+	printf("  ⚙️  %-18s Set replication mode\n", "set replication-mode MODE");
+	printf("  📏 %-18s Set maximum lag threshold\n", "set lag-threshold BYTES");
+	printf("  🚀 %-18s Run bootstrap script\n", "bootstrap run NODE_TYPE");
+	printf("  ✅ %-18s Validate bootstrap script\n", "bootstrap validate");
+	printf("\n");
+	printf("MONITORING:\n");
+	printf("  👁️  %-18s Real-time cluster monitoring\n", "watch cluster");
+	printf("  👁️  %-18s Real-time nodes monitoring\n", "watch nodes");
+	printf("  👁️  %-18s Real-time replication monitoring\n", "watch replication");
+	printf("\n");
+	printf("INFORMATION:\n");
+	printf("  ❓ %-18s Show help information\n", "help [COMMAND]");
+	printf("  ℹ️  %-18s Show version information\n", "version");
 	printf("\nHierarchical Commands:\n");
 	printf("  %-20s Show cluster information (try: ramctrl show)\n", "show");
 	printf("  %-20s Node management operations (try: ramctrl node)\n", "node");
@@ -49,10 +85,7 @@ void ramctrl_help_show_commands(void)
 	printf("  %-20s Bootstrap operations (try: ramctrl bootstrap)\n",
 	       "bootstrap");
 	printf("\nOptions:\n");
-	printf("  -h, --host HOST       PostgreSQL host\n");
-	printf("  -p, --port PORT       PostgreSQL port\n");
-	printf("  -d, --database DB     Database name\n");
-	printf("  -U, --user USER       Database user\n");
+	printf("  -u, --api-url URL     ramd API endpoint\n");
 	printf("  -c, --config FILE     Configuration file path\n");
 	printf("  -v, --verbose         Verbose output\n");
 	printf("  -j, --json            JSON output format\n");
@@ -227,11 +260,8 @@ void ramctrl_help_show_configuration(void)
 	printf("  --config FILE            Custom configuration file\n\n");
 	printf("Environment variables:\n");
 	printf("  RAMCTRL_CONFIG      Override default config file\n");
-	printf("  RAMCTRL_API_URL     ramd API endpoint URL\n");
-	printf("  PGHOST              PostgreSQL host\n");
-	printf("  PGPORT              PostgreSQL port\n");
-	printf("  PGUSER              PostgreSQL user\n");
-	printf("  PGDATABASE          PostgreSQL database\n\n");
+	printf("  RAMCTRL_API_URL     ramd API endpoint URL (default: http://127.0.0.1:8008)\n");
+	printf("\n");
 	printf("Configuration sections:\n");
 	printf("  [cluster]           Cluster identification and settings\n");
 	printf("  [node]              Current node configuration\n");

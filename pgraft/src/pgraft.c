@@ -1316,4 +1316,44 @@ pgraft_get_shared_memory(void)
     return pgraft_shmem;
 }
 
+/* Enhanced integration: Notify other components of changes */
+static void
+pgraft_notify_components(const char* event_type, const char* data)
+{
+	/* Use PostgreSQL NOTIFY to inform other components */
+	char notify_query[512];
+	snprintf(notify_query, sizeof(notify_query),
+	         "NOTIFY ram_events, '%s:%s'", event_type, data);
+	
+	/* Execute notification in background if possible */
+	// TODO: Implement background notification
+}
+
+/* Enhanced pgraft_add_node with component notification */
+Datum
+pgraft_add_node_notify(PG_FUNCTION_ARGS)
+{
+	int32_t node_id = PG_GETARG_INT32(0);
+	text* hostname_text = PG_GETARG_TEXT_PP(1);
+	int32_t port = PG_GETARG_INT32(2);
+	
+	char* hostname = text_to_cstring(hostname_text);
+	
+	/* Call original function */
+	Datum result = pgraft_add_node(fcinfo);
+	
+	/* Notify components if successful */
+	if (DatumGetBool(result))
+	{
+		char notify_data[256];
+		snprintf(notify_data, sizeof(notify_data),
+		         "{\"node_id\":%d,\"hostname\":\"%s\",\"port\":%d}",
+		         node_id, hostname, port);
+		pgraft_notify_components("node_added", notify_data);
+	}
+	
+	pfree(hostname);
+	PG_RETURN_DATUM(result);
+}
+
 

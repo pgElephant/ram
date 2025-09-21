@@ -27,6 +27,8 @@
 #include "ramd_cluster.h"
 #include "ramd_conn.h"
 #include "ramd_query.h"
+#include "ramd_pgraft.h"
+#include <jansson.h>
 #include "ramd_config_reload.h"
 #include "ramd_sync_replication.h"
 #include "ramd_maintenance.h"
@@ -365,6 +367,14 @@ ramd_http_route_request(ramd_http_request_t *request, ramd_http_response_t *resp
 		ramd_http_handle_bootstrap_primary(request, response);
 	else if (strcmp(request->path, "/api/v1/replica/add") == 0)
 		ramd_http_handle_add_replica(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/add-node") == 0)
+		ramd_http_handle_add_node(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/remove-node") == 0)
+		ramd_http_handle_remove_node(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/health") == 0)
+		ramd_http_handle_cluster_health(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/notify") == 0)
+		ramd_http_handle_cluster_notify(request, response);
 	else if (strcmp(request->path, "/metrics") == 0)
 		ramd_http_handle_metrics(request, response);
 	else
@@ -1568,4 +1578,197 @@ get_healthy_nodes_count(void)
 		return g_ramd_daemon->cluster.node_count;
 	}
 	return 1; 
+}
+
+/* Enhanced integration: New HTTP API handlers for ramctrl communication */
+
+void
+ramd_http_handle_add_node(ramd_http_request_t* request, ramd_http_response_t* response)
+{
+	if (request->method != RAMD_HTTP_POST)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED, "Method not allowed");
+		return;
+	}
+
+	/* Parse JSON request */
+	json_t* json = json_loads(request->body, 0, NULL);
+	if (!json)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_400_BAD_REQUEST, "Invalid JSON");
+		return;
+	}
+
+	/* Extract parameters */
+	json_t* node_id_json = json_object_get(json, "node_id");
+	json_t* hostname_json = json_object_get(json, "hostname");
+	json_t* address_json = json_object_get(json, "address");
+	json_t* port_json = json_object_get(json, "port");
+
+	if (!node_id_json || !hostname_json || !address_json || !port_json)
+	{
+		json_decref(json);
+		ramd_http_set_error_response(response, RAMD_HTTP_400_BAD_REQUEST, "Missing required parameters");
+		return;
+	}
+
+	int node_id = (int)json_integer_value(node_id_json);
+	const char* hostname = json_string_value(hostname_json);
+	const char* address = json_string_value(address_json);
+	int port = (int)json_integer_value(port_json);
+	
+	/* Suppress unused variable warning */
+	(void)address;
+
+	/* Get PostgreSQL connection */
+	PGconn* conn = ramd_conn_get_cached(0, "localhost", 5432, "postgres", "postgres", "");
+	if (!conn)
+	{
+		json_decref(json);
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Database connection failed");
+		return;
+	}
+
+	/* Add node to pgraft */
+	int result = ramd_pgraft_add_node(conn, node_id, hostname, port);
+	json_decref(json);
+
+	if (result != RAMD_PGRAFT_SUCCESS)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Failed to add node to consensus");
+		return;
+	}
+
+	/* Return success response */
+	char json_response[512];
+	snprintf(json_response, sizeof(json_response),
+		"{\"success\":true,\"message\":\"Node %d added successfully\",\"node_id\":%d}",
+		node_id, node_id);
+	
+	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_response);
+}
+
+void
+ramd_http_handle_remove_node(ramd_http_request_t* request, ramd_http_response_t* response)
+{
+	if (request->method != RAMD_HTTP_POST)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED, "Method not allowed");
+		return;
+	}
+
+	/* Parse JSON request */
+	json_t* json = json_loads(request->body, 0, NULL);
+	if (!json)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_400_BAD_REQUEST, "Invalid JSON");
+		return;
+	}
+
+	/* Extract node_id */
+	json_t* node_id_json = json_object_get(json, "node_id");
+	if (!node_id_json)
+	{
+		json_decref(json);
+		ramd_http_set_error_response(response, RAMD_HTTP_400_BAD_REQUEST, "Missing node_id parameter");
+		return;
+	}
+
+	int node_id = (int)json_integer_value(node_id_json);
+	json_decref(json);
+
+	/* Get PostgreSQL connection */
+	PGconn* conn = ramd_conn_get_cached(0, "localhost", 5432, "postgres", "postgres", "");
+	if (!conn)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Database connection failed");
+		return;
+	}
+
+	/* Remove node from pgraft */
+	int result = ramd_pgraft_remove_node(conn, node_id);
+	if (result != RAMD_PGRAFT_SUCCESS)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Failed to remove node from consensus");
+		return;
+	}
+
+	/* Return success response */
+	char json_response[512];
+	snprintf(json_response, sizeof(json_response),
+		"{\"success\":true,\"message\":\"Node %d removed successfully\",\"node_id\":%d}",
+		node_id, node_id);
+	
+	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_response);
+}
+
+void
+ramd_http_handle_cluster_health(ramd_http_request_t* request, ramd_http_response_t* response)
+{
+	if (request->method != RAMD_HTTP_GET)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED, "Method not allowed");
+		return;
+	}
+
+	/* Get PostgreSQL connection */
+	PGconn* conn = ramd_conn_get_cached(0, "localhost", 5432, "postgres", "postgres", "");
+	if (!conn)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Database connection failed");
+		return;
+	}
+
+	/* Get cluster health from pgraft */
+	char* health_json = ramd_pgraft_get_cluster_health(conn);
+	if (!health_json)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Failed to get cluster health");
+		return;
+	}
+
+	/* Return health information */
+	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, health_json);
+	free(health_json);
+}
+
+void
+ramd_http_handle_cluster_notify(ramd_http_request_t* request, ramd_http_response_t* response)
+{
+	if (request->method != RAMD_HTTP_POST)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED, "Method not allowed");
+		return;
+	}
+
+	/* Parse JSON request */
+	json_t* json = json_loads(request->body, 0, NULL);
+	if (!json)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_400_BAD_REQUEST, "Invalid JSON");
+		return;
+	}
+
+	/* Extract action */
+	json_t* action_json = json_object_get(json, "action");
+	if (!action_json)
+	{
+		json_decref(json);
+		ramd_http_set_error_response(response, RAMD_HTTP_400_BAD_REQUEST, "Missing action parameter");
+		return;
+	}
+
+	const char* action = json_string_value(action_json);
+	json_decref(json);
+
+	/* Log notification */
+	ramd_log_info("Received cluster notification: %s", action);
+
+	/* Return success response */
+	char json_response[512];
+	snprintf(json_response, sizeof(json_response),
+		"{\"success\":true,\"message\":\"Notification received\",\"action\":\"%s\"}",
+		action);
+	
+	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_response);
 }

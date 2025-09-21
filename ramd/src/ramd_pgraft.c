@@ -25,6 +25,22 @@
 
 static char g_last_error[512] = {0};
 
+/* Enhanced integration helper functions */
+static void
+ramd_pgraft_update_cluster_state(PGconn* conn)
+{
+	/* Update cluster health status */
+	ramd_pgraft_is_cluster_healthy(conn);
+	
+	/* Update leader information */
+	ramd_pgraft_get_leader(conn);
+	
+	/* Update node list */
+	ramd_pgraft_get_nodes(conn);
+	
+	ramd_log_debug("Updated cluster state from pgraft");
+}
+
 static void
 set_last_error(const char* format, ...)
 {
@@ -248,6 +264,10 @@ ramd_pgraft_add_node(PGconn* conn, int node_id, const char* hostname, int port)
 	PQclear(result);
 	ramd_log_info("Successfully added node %d at %s:%d to Raft cluster",
 	              node_id, hostname, port);
+	
+	/* Enhanced integration: Update cluster state */
+	ramd_pgraft_update_cluster_state(conn);
+	
 	return RAMD_PGRAFT_SUCCESS;
 }
 

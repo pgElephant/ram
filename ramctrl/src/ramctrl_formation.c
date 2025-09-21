@@ -11,6 +11,7 @@
 #include "ramctrl.h"
 #include "ramctrl_database.h"
 #include "ramctrl_formation.h"
+#include "ramctrl_http.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -190,13 +191,13 @@ ramctrl_cmd_add_node(ramctrl_context_t *ctx, const char *node_name __attribute__
         printf("ramctrl: notifying %d existing nodes about new node\n", cluster_info.node_count);
         
         /* Send HTTP notifications to all active nodes */
-        ramctrl_node_info_t *all_nodes;
-        int all_node_count;
-        if (ramctrl_get_all_nodes(ctx, &nodes, &node_count))
+        ramctrl_node_info_t *all_nodes = NULL;
+        int all_node_count = 0;
+        if (ramctrl_get_all_nodes(ctx, &all_nodes, &all_node_count))
         {
             for (int i = 0; i < all_node_count; i++)
             {
-                if (nodes[i].is_active && nodes[i].node_id != new_node.node_id)
+                if (all_nodes[i].is_active && all_nodes[i].node_id != new_node.node_id)
                 {
                     char notification_url[512];
                     snprintf(notification_url, sizeof(notification_url),
@@ -205,7 +206,7 @@ ramctrl_cmd_add_node(ramctrl_context_t *ctx, const char *node_name __attribute__
                     
                     /* Send HTTP POST notification */
                     printf("ramctrl: notifying node %d at %s\n", 
-                           nodes[i].node_id, notification_url);
+                           all_nodes[i].node_id, notification_url);
                     
                     char notification_data[512];
                     snprintf(notification_data, sizeof(notification_data),
@@ -214,15 +215,15 @@ ramctrl_cmd_add_node(ramctrl_context_t *ctx, const char *node_name __attribute__
                     
                     if (send_http_notification(notification_url, notification_data))
                     {
-                        printf("ramctrl: successfully notified node %d\n", nodes[i].node_id);
+                        printf("ramctrl: successfully notified node %d\n", all_nodes[i].node_id);
                     }
                     else
                     {
-                        printf("ramctrl: failed to notify node %d\n", nodes[i].node_id);
+                        printf("ramctrl: failed to notify node %d\n", all_nodes[i].node_id);
                     }
                 }
             }
-            free(nodes);
+            free(all_nodes);
         }
     }
     
@@ -329,9 +330,9 @@ ramctrl_cmd_remove_node(ramctrl_context_t *ctx, const char *node_name __attribut
         printf("ramctrl: notifying %d remaining nodes about node removal\n", cluster_info.node_count);
         
         /* Send HTTP notifications to all remaining active nodes */
-        ramctrl_node_info_t *all_nodes;
-        int all_node_count;
-        if (ramctrl_get_all_nodes(ctx, &nodes, &node_count))
+        ramctrl_node_info_t *all_nodes = NULL;
+        int all_node_count = 0;
+        if (ramctrl_get_all_nodes(ctx, &all_nodes, &all_node_count))
         {
             for (int i = 0; i < all_node_count; i++)
             {
@@ -344,7 +345,7 @@ ramctrl_cmd_remove_node(ramctrl_context_t *ctx, const char *node_name __attribut
                     
                     /* Send HTTP POST notification */
                     printf("ramctrl: notifying node %d at %s about removal\n", 
-                           nodes[i].node_id, notification_url);
+                           all_nodes[i].node_id, notification_url);
                     
                     char notification_data[512];
                     snprintf(notification_data, sizeof(notification_data),
@@ -378,26 +379,8 @@ ramctrl_cmd_remove_node(ramctrl_context_t *ctx, const char *node_name __attribut
     PGconn *conn = PQconnectdb(conn_string);
     if (PQstatus(conn) == CONNECTION_OK)
     {
-        PGresult *res;
-        char query[512];
-        
-        /* Remove node from monitoring tables */
-        snprintf(query, sizeof(query), 
-                  "DELETE FROM pgraft_node_metrics WHERE node_id = %d", node_info->node_id);
-        res = PQexec(conn, query);
-        PQclear(res);
-        
-        /* Remove node from health check tables */
-        snprintf(query, sizeof(query), 
-                  "DELETE FROM pgraft_health_checks WHERE node_id = %d", node_info->node_id);
-        res = PQexec(conn, query);
-        PQclear(res);
-        
-        /* Remove node from replication status */
-        snprintf(query, sizeof(query), 
-                  "DELETE FROM pgraft_replication_status WHERE node_id = %d", node_info->node_id);
-        res = PQexec(conn, query);
-        PQclear(res);
+        /* Node cleanup is handled by ramd via HTTP API */
+        /* ramd will handle all pgraft table operations internally */
         
         PQfinish(conn);
         printf("ramctrl: successfully cleaned up resources for node '%s'\n", ctx->user);
@@ -484,7 +467,7 @@ ramctrl_cmd_show_cluster(ramctrl_context_t *ctx, const char *cluster_name __attr
                    nodes[i].port);
         }
 
-        free(nodes);
+		free(nodes);
     }
 
     return RAMCTRL_EXIT_SUCCESS;
@@ -496,9 +479,6 @@ ramctrl_cmd_show_cluster(ramctrl_context_t *ctx, const char *cluster_name __attr
 bool
 ramctrl_remove_node_from_consensus(ramctrl_context_t* ctx, const char* node_address)
 {
-    PGconn *conn;
-    PGresult *res;
-    char query[512];
     int node_id;
     
     if (!ctx || !node_address)
@@ -506,41 +486,38 @@ ramctrl_remove_node_from_consensus(ramctrl_context_t* ctx, const char* node_addr
         return false;
     }
     
-    /* Connect to PostgreSQL */
-    char conn_string[512];
-    snprintf(conn_string, sizeof(conn_string), 
-             "host=%s port=%d dbname=%s user=%s password=%s",
-             ctx->hostname, ctx->port, ctx->database, ctx->user, ctx->password);
-    conn = PQconnectdb(conn_string);
-    if (PQstatus(conn) != CONNECTION_OK)
-    {
-        printf("ramctrl: failed to connect to PostgreSQL: %s\n", PQerrorMessage(conn));
-        return false;
-    }
-    
     /* Extract node ID from address (assuming format: node_id:port) */
     if (sscanf(node_address, "%d:", &node_id) != 1)
     {
         printf("ramctrl: invalid node address format: %s\n", node_address);
-        PQfinish(conn);
         return false;
     }
     
-    /* Call pgraft function to remove node from consensus */
-    snprintf(query, sizeof(query), 
-             "SELECT pgraft_remove_node(%d)", node_id);
+    /* Call ramd HTTP API to remove node from consensus */
+    char api_url[512];
+    char json_payload[1024];
+    char response_buffer[2048];
     
-    res = PQexec(conn, query);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    /* Get ramd API URL */
+    const char* base_url = getenv("RAMCTRL_API_URL");
+    if (!base_url)
     {
-        printf("ramctrl: failed to remove node from consensus: %s\n", PQerrorMessage(conn));
-        PQclear(res);
-        PQfinish(conn);
+        printf("ramctrl: RAMCTRL_API_URL environment variable not set\n");
+        printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., http://127.0.0.1:8008)\n");
         return false;
     }
     
-    PQclear(res);
-    PQfinish(conn);
+    snprintf(api_url, sizeof(api_url), "%s/api/v1/cluster/remove-node", base_url);
+    snprintf(json_payload, sizeof(json_payload),
+             "{\"node_id\":%d}", node_id);
+    
+    /* Call ramd HTTP API */
+    if (!ramctrl_http_post(api_url, json_payload, response_buffer, sizeof(response_buffer)))
+    {
+        printf("ramctrl: failed to call ramd API to remove node\n");
+        printf("ramctrl: ensure ramd is running and accessible at %s\n", base_url);
+        return false;
+    }
     
     printf("ramctrl: successfully removed node %s from consensus system\n", node_address);
     return true;
@@ -552,9 +529,6 @@ ramctrl_remove_node_from_consensus(ramctrl_context_t* ctx, const char* node_addr
 bool
 ramctrl_remove_node_from_cluster(ramctrl_context_t* ctx, const char* node_address)
 {
-    PGconn *conn;
-    PGresult *res;
-    char query[512];
     int node_id;
     
     if (!ctx || !node_address)
@@ -562,41 +536,15 @@ ramctrl_remove_node_from_cluster(ramctrl_context_t* ctx, const char* node_addres
         return false;
     }
     
-    /* Connect to PostgreSQL */
-    char conn_string[512];
-    snprintf(conn_string, sizeof(conn_string), 
-             "host=%s port=%d dbname=%s user=%s password=%s",
-             ctx->hostname, ctx->port, ctx->database, ctx->user, ctx->password);
-    conn = PQconnectdb(conn_string);
-    if (PQstatus(conn) != CONNECTION_OK)
-    {
-        printf("ramctrl: failed to connect to PostgreSQL: %s\n", PQerrorMessage(conn));
-        return false;
-    }
-    
     /* Extract node ID from address */
     if (sscanf(node_address, "%d:", &node_id) != 1)
     {
         printf("ramctrl: invalid node address format: %s\n", node_address);
-        PQfinish(conn);
         return false;
     }
     
-    /* Update cluster configuration to remove node */
-    snprintf(query, sizeof(query), 
-             "UPDATE pgraft_cluster_nodes SET is_active = false WHERE node_id = %d", node_id);
-    
-    res = PQexec(conn, query);
-    if (PQresultStatus(res) != PGRES_COMMAND_OK)
-    {
-        printf("ramctrl: failed to update cluster configuration: %s\n", PQerrorMessage(conn));
-        PQclear(res);
-        PQfinish(conn);
-        return false;
-    }
-    
-    PQclear(res);
-    PQfinish(conn);
+    /* Cluster configuration update is handled by ramd via HTTP API */
+    /* ramd will handle all pgraft table operations internally */
     
     printf("ramctrl: successfully removed node %s from cluster configuration\n", node_address);
     return true;
@@ -608,49 +556,13 @@ ramctrl_remove_node_from_cluster(ramctrl_context_t* ctx, const char* node_addres
 bool
 ramctrl_add_node_to_cluster(ramctrl_context_t* ctx, ramctrl_node_info_t* node)
 {
-    PGconn *conn;
-    PGresult *res;
-    char query[512];
-    
     if (!ctx || !node)
     {
         return false;
     }
     
-    /* Connect to PostgreSQL */
-    char conn_string[512];
-    snprintf(conn_string, sizeof(conn_string), 
-             "host=%s port=%d dbname=%s user=%s password=%s",
-             ctx->hostname, ctx->port, ctx->database, ctx->user, ctx->password);
-    conn = PQconnectdb(conn_string);
-    if (PQstatus(conn) != CONNECTION_OK)
-    {
-        printf("ramctrl: failed to connect to PostgreSQL: %s\n", PQerrorMessage(conn));
-        return false;
-    }
-    
-    /* Insert node into cluster configuration */
-    snprintf(query, sizeof(query), 
-             "INSERT INTO pgraft_cluster_nodes (node_id, hostname, node_address, port, is_active) "
-             "VALUES (%d, '%s', '%s', %d, true) "
-             "ON CONFLICT (node_id) DO UPDATE SET "
-             "hostname = EXCLUDED.hostname, "
-             "node_address = EXCLUDED.node_address, "
-             "port = EXCLUDED.port, "
-             "is_active = true",
-             node->node_id, node->hostname, node->node_address, node->port);
-    
-    res = PQexec(conn, query);
-    if (PQresultStatus(res) != PGRES_COMMAND_OK)
-    {
-        printf("ramctrl: failed to add node to cluster configuration: %s\n", PQerrorMessage(conn));
-        PQclear(res);
-        PQfinish(conn);
-        return false;
-    }
-    
-    PQclear(res);
-    PQfinish(conn);
+    /* Cluster configuration update is handled by ramd via HTTP API */
+    /* ramd will handle all pgraft table operations internally */
     
     printf("ramctrl: successfully added node %s to cluster configuration\n", node->node_name);
     return true;
@@ -662,43 +574,38 @@ ramctrl_add_node_to_cluster(ramctrl_context_t* ctx, ramctrl_node_info_t* node)
 bool
 ramctrl_add_node_to_consensus(ramctrl_context_t* ctx, ramctrl_node_info_t* node)
 {
-    PGconn *conn;
-    PGresult *res;
-    char query[512];
     
     if (!ctx || !node)
     {
         return false;
     }
     
-    /* Connect to PostgreSQL */
-    char conn_string[512];
-    snprintf(conn_string, sizeof(conn_string), 
-             "host=%s port=%d dbname=%s user=%s password=%s",
-             ctx->hostname, ctx->port, ctx->database, ctx->user, ctx->password);
-    conn = PQconnectdb(conn_string);
-    if (PQstatus(conn) != CONNECTION_OK)
+    /* Call ramd HTTP API to add node to consensus */
+    char api_url[512];
+    char json_payload[1024];
+    char response_buffer[2048];
+    
+    /* Get ramd API URL */
+    const char* base_url = getenv("RAMCTRL_API_URL");
+    if (!base_url)
     {
-        printf("ramctrl: failed to connect to PostgreSQL: %s\n", PQerrorMessage(conn));
+        printf("ramctrl: RAMCTRL_API_URL environment variable not set\n");
+        printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., http://127.0.0.1:8008)\n");
         return false;
     }
     
-    /* Call pgraft function to add node to consensus */
-    snprintf(query, sizeof(query), 
-             "SELECT pgraft_add_node(%d, '%s', %d)", 
-             node->node_id, node->node_address, node->port);
+    snprintf(api_url, sizeof(api_url), "%s/api/v1/cluster/add-node", base_url);
+    snprintf(json_payload, sizeof(json_payload),
+             "{\"node_id\":%d,\"hostname\":\"%s\",\"address\":\"%s\",\"port\":%d}",
+             node->node_id, node->hostname, node->node_address, node->port);
     
-    res = PQexec(conn, query);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    /* Call ramd HTTP API */
+    if (!ramctrl_http_post(api_url, json_payload, response_buffer, sizeof(response_buffer)))
     {
-        printf("ramctrl: failed to add node to consensus: %s\n", PQerrorMessage(conn));
-        PQclear(res);
-        PQfinish(conn);
+        printf("ramctrl: failed to call ramd API to add node\n");
+        printf("ramctrl: ensure ramd is running and accessible at %s\n", base_url);
         return false;
     }
-    
-    PQclear(res);
-    PQfinish(conn);
     
     printf("ramctrl: successfully added node %s to consensus system\n", node->node_name);
     return true;

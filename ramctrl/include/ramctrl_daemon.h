@@ -23,7 +23,7 @@ typedef struct ramctrl_daemon_status_t
 	char log_file[RAMCTRL_MAX_PATH_LENGTH];
 	char pid_file[RAMCTRL_MAX_PATH_LENGTH];
 	int32_t node_id;
-	char cluster_name[64];
+	char cluster_name[RAMCTRL_MAX_HOSTNAME_LENGTH];
 } ramctrl_daemon_status_t;
 
 /* Daemon control functions */

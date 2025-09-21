@@ -19,8 +19,8 @@ ramd_SOURCES = src/ramd_main.c \
                src/ramd_query.c \
                src/ramd_pgraft.c
 
-# Link with pthread and PostgreSQL
-ramd_LDADD = -lpthread -L/usr/local/pgsql/lib -L/opt/homebrew/lib -lpq
+# Link with pthread, PostgreSQL, and jansson
+ramd_LDADD = -lpthread -L/usr/local/pgsql/lib -L/opt/homebrew/lib -lpq -ljansson
 
 # Clean target
 clean:

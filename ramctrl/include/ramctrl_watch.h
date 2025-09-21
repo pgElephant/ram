@@ -24,7 +24,7 @@ typedef struct ramctrl_watch_config
 	bool show_health;            /* Show health status */
 	bool compact_mode;           /* Compact display mode */
 	bool color_output;           /* Use color output */
-	char filter_node[64];        /* Filter by node name */
+	char filter_node[RAMCTRL_MAX_HOSTNAME_LENGTH];        /* Filter by node name */
 	int32_t max_lines;           /* Maximum lines to display */
 } ramctrl_watch_config_t;
 
@@ -35,7 +35,7 @@ typedef struct ramctrl_watch_data
 	ramctrl_cluster_info_t cluster_info;
 	ramctrl_node_info_t nodes[RAMCTRL_MAX_NODES];
 	int32_t node_count;
-	char status_message[256];
+	char status_message[RAMCTRL_MAX_HOSTNAME_LENGTH];
 } ramctrl_watch_data_t;
 
 /* Watch mode statistics */

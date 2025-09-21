@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
+#include "ramctrl_defaults.h"
 
 /* Replication modes */
 typedef enum
@@ -37,10 +38,10 @@ typedef struct
 /* WAL-E backup configuration */
 typedef struct
 {
-	char wal_e_path[256];        /* Path to WAL-E binary */
-	char s3_bucket[256];         /* S3 bucket for backups */
-	char s3_prefix[256];         /* S3 prefix for backups */
-	char encryption_key[256];    /* Encryption key */
+	char wal_e_path[RAMCTRL_MAX_PATH_LENGTH];        /* Path to WAL-E binary */
+	char s3_bucket[RAMCTRL_MAX_HOSTNAME_LENGTH];         /* S3 bucket for backups */
+	char s3_prefix[RAMCTRL_MAX_HOSTNAME_LENGTH];         /* S3 prefix for backups */
+	char encryption_key[RAMCTRL_MAX_HOSTNAME_LENGTH];    /* Encryption key */
 	bool encryption_enabled;     /* Enable backup encryption */
 	int backup_retention_days;   /* Days to keep backups */
 	int backup_interval_hours;   /* Hours between backups */
@@ -50,12 +51,12 @@ typedef struct
 /* Bootstrap script configuration */
 typedef struct
 {
-	char script_path[256]; /* Path to bootstrap script */
-	char script_args[512]; /* Script arguments */
+	char script_path[RAMCTRL_MAX_PATH_LENGTH]; /* Path to bootstrap script */
+	char script_args[RAMCTRL_MAX_COMMAND_LENGTH]; /* Script arguments */
 	int timeout_seconds;   /* Script timeout */
 	bool run_on_primary;   /* Run on primary node */
 	bool run_on_standby;   /* Run on standby nodes */
-	char environment[512]; /* Environment variables */
+	char environment[RAMCTRL_MAX_COMMAND_LENGTH]; /* Environment variables */
 } bootstrap_script_config_t;
 
 /* Replication status */
@@ -67,13 +68,13 @@ typedef struct
 	time_t last_lag_check;     /* Last lag check timestamp */
 	bool is_sync_standby;      /* Is this a sync standby */
 	bool is_healthy;           /* Replication health status */
-	char application_name[64]; /* Application name */
-	char client_addr[64];      /* Client address */
-	char state[32];            /* Replication state */
-	char sent_lsn[32];         /* Sent LSN */
-	char write_lsn[32];        /* Write LSN */
-	char flush_lsn[32];        /* Flush LSN */
-	char replay_lsn[32];       /* Replay LSN */
+	char application_name[RAMCTRL_MAX_HOSTNAME_LENGTH]; /* Application name */
+	char client_addr[RAMCTRL_MAX_HOSTNAME_LENGTH];      /* Client address */
+	char state[RAMCTRL_MAX_HOSTNAME_LENGTH];            /* Replication state */
+	char sent_lsn[RAMCTRL_MAX_HOSTNAME_LENGTH];         /* Sent LSN */
+	char write_lsn[RAMCTRL_MAX_HOSTNAME_LENGTH];        /* Write LSN */
+	char flush_lsn[RAMCTRL_MAX_HOSTNAME_LENGTH];        /* Flush LSN */
+	char replay_lsn[RAMCTRL_MAX_HOSTNAME_LENGTH];       /* Replay LSN */
 } replication_status_t;
 
 /* Replication configuration */
@@ -82,7 +83,7 @@ typedef struct
 	replication_mode_t mode;                    /* Replication mode */
 	int max_sync_standbys;                      /* Maximum sync standbys */
 	int min_sync_standbys;                      /* Minimum sync standbys */
-	char sync_standby_names[512];               /* Sync standby names */
+	char sync_standby_names[RAMCTRL_MAX_COMMAND_LENGTH];               /* Sync standby names */
 	replication_lag_config_t lag_config;        /* Lag configuration */
 	wal_e_config_t wal_e_config;                /* WAL-E configuration */
 	bootstrap_script_config_t bootstrap_config; /* Bootstrap configuration */

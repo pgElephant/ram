@@ -137,6 +137,53 @@ int ramctrl_http_post(const char* url, const char* data, char* response,
 	return (res == CURLE_OK) ? 0 : -1;
 }
 
+/* Enhanced integration: Deep ramctrl-ramd communication */
+int
+ramctrl_http_notify_node_change(const char* action, int node_id, const char* hostname, int port)
+{
+	char url[512];
+	char data[1024];
+	char response[2048];
+	
+	/* Build notification URL */
+	snprintf(url, sizeof(url), "%s/api/v1/cluster/notify", g_http_config.base_url);
+	
+	/* Build notification data */
+	snprintf(data, sizeof(data),
+		"{\"action\":\"%s\",\"node_id\":%d,\"hostname\":\"%s\",\"port\":%d,\"timestamp\":%ld}",
+		action, node_id, hostname ? hostname : "", port, time(NULL));
+	
+	/* Send notification */
+	if (ramctrl_http_post(url, data, response, sizeof(response)) != 0)
+	{
+		fprintf(stderr, "ramctrl: Failed to notify ramd about node %s\n", action);
+		return -1;
+	}
+	
+	printf("ramctrl: Successfully notified ramd about node %s\n", action);
+	return 0;
+}
+
+int
+ramctrl_http_get_cluster_health(char* health_json, size_t json_size)
+{
+	char url[512];
+	char response[2048];
+	
+	snprintf(url, sizeof(url), "%s/api/v1/cluster/health", g_http_config.base_url);
+	
+	if (ramctrl_http_get(url, response, sizeof(response)) != 0)
+	{
+		fprintf(stderr, "ramctrl: Failed to get cluster health from ramd\n");
+		return -1;
+	}
+	
+	strncpy(health_json, response, json_size - 1);
+	health_json[json_size - 1] = '\0';
+	
+	return 0;
+}
+
 /*
  * Parse cluster status JSON response
  */

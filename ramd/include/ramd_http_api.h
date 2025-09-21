@@ -129,6 +129,12 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
 void ramd_http_handle_metrics(ramd_http_request_t* request,
                               ramd_http_response_t* response);
 
+/* Enhanced integration: New HTTP API handlers for ramctrl communication */
+void ramd_http_handle_add_node(ramd_http_request_t* request, ramd_http_response_t* response);
+void ramd_http_handle_remove_node(ramd_http_request_t* request, ramd_http_response_t* response);
+void ramd_http_handle_cluster_health(ramd_http_request_t* request, ramd_http_response_t* response);
+void ramd_http_handle_cluster_notify(ramd_http_request_t* request, ramd_http_response_t* response);
+
 /* Utility functions */
 char* ramd_http_get_query_param(const char* query_string,
                                 const char* param_name);

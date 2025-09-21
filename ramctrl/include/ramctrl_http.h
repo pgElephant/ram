@@ -18,17 +18,17 @@ typedef struct ramctrl_http_response
 	int status_code;
 	char* body;
 	size_t body_size;
-	char error_message[256];
+	char error_message[RAMCTRL_MAX_HOSTNAME_LENGTH];
 } ramctrl_http_response_t;
 
 /* HTTP configuration */
 typedef struct ramctrl_http_config
 {
-	char base_url[256];
+	char base_url[RAMCTRL_MAX_HOSTNAME_LENGTH];
 	int timeout_seconds;
 	int max_retries;
 	bool ssl_verify;
-	char auth_token[512];
+	char auth_token[RAMCTRL_MAX_COMMAND_LENGTH];
 } ramctrl_http_config_t;
 
 /* Function declarations */

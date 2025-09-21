@@ -18,9 +18,9 @@ typedef struct ramctrl_database_connection
 {
 	char host[RAMCTRL_MAX_HOSTNAME_LENGTH];
 	int32_t port;
-	char database[64];
-	char user[64];
-	char password[64];
+	char database[RAMCTRL_MAX_HOSTNAME_LENGTH];
+	char user[RAMCTRL_MAX_HOSTNAME_LENGTH];
+	char password[RAMCTRL_MAX_HOSTNAME_LENGTH];
 	void* connection; /* PGconn * */
 	bool is_connected;
 	time_t last_activity;
