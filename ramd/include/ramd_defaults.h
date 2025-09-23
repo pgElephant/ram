@@ -35,6 +35,14 @@
 #define RAMD_DEFAULT_PG_USER             "postgres"
 #define RAMD_DEFAULT_PG_PORT             5432
 
+/* Authentication Defaults */
+#define RAMD_DEFAULT_AUTH_METHOD         "password"
+#define RAMD_DEFAULT_SSL_MODE            "prefer"
+#define RAMD_DEFAULT_KERBEROS_SERVICE    "postgres"
+#define RAMD_DEFAULT_LDAP_PORT           389
+#define RAMD_DEFAULT_PAM_SERVICE         "postgresql"
+#define RAMD_DEFAULT_AUTH_CONNECTION_TIMEOUT  10
+
 /* Network Security Defaults */
 #define RAMD_DEFAULT_NETWORK_RANGE       "127.0.0.1/32"
 

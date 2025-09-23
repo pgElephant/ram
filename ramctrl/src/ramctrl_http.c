@@ -21,13 +21,32 @@ static ramctrl_http_config_t g_http_config = {.base_url =
                                               .ssl_verify = true,
                                               .auth_token = ""};
 
+/* Structure to pass response buffer info to callback */
+typedef struct {
+	char* buffer;
+	size_t buffer_size;
+	size_t current_len;
+} response_context_t;
+
 /* Callback for writing received data */
 static size_t write_callback(void* contents, size_t size, size_t nmemb,
                              void* userp)
 {
 	size_t realsize = size * nmemb;
-	char* response = (char*) userp;
-	strncat(response, contents, realsize);
+	response_context_t* ctx = (response_context_t*) userp;
+	size_t remaining_space = ctx->buffer_size - ctx->current_len - 1;
+	
+	if (remaining_space > 0 && realsize < remaining_space)
+	{
+		strncat(ctx->buffer, contents, realsize);
+		ctx->current_len += realsize;
+	}
+	else if (remaining_space > 0)
+	{
+		strncat(ctx->buffer, contents, remaining_space - 1);
+		ctx->current_len += remaining_space - 1;
+	}
+	
 	return realsize;
 }
 
@@ -71,7 +90,9 @@ int ramctrl_http_get(const char* url, char* response, size_t response_size)
 	/* Set options */
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+	/* Initialize context for safe buffer handling */
+	response_context_t ctx = {response, response_size, 0};
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, g_http_config.timeout_seconds);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "ramctrl/1.0");
 
@@ -117,7 +138,9 @@ int ramctrl_http_post(const char* url, const char* data, char* response,
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+	/* Initialize context for safe buffer handling */
+	response_context_t ctx = {response, response_size, 0};
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, g_http_config.timeout_seconds);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "ramctrl/1.0");
 
@@ -225,7 +248,8 @@ int ramctrl_parse_cluster_status(const char* json,
 	}
 	else
 	{
-		strcpy(cluster_info->cluster_name, "unknown");
+		strncpy(cluster_info->cluster_name, "unknown", sizeof(cluster_info->cluster_name) - 1);
+		cluster_info->cluster_name[sizeof(cluster_info->cluster_name) - 1] = '\0';
 	}
 
 	/* Parse total_nodes */
@@ -355,7 +379,8 @@ void ramctrl_set_fallback_cluster_info(ramctrl_cluster_info_t* cluster_info)
 	if (!cluster_info)
 		return;
 
-	strcpy(cluster_info->cluster_name, "offline_cluster");
+	strncpy(cluster_info->cluster_name, "offline_cluster", sizeof(cluster_info->cluster_name) - 1);
+	cluster_info->cluster_name[sizeof(cluster_info->cluster_name) - 1] = '\0';
 	cluster_info->total_nodes = 1;
 	cluster_info->active_nodes = 0;
 	cluster_info->primary_node_id = 0;
@@ -377,7 +402,8 @@ void ramctrl_set_fallback_nodes_data(ramctrl_node_info_t* nodes,
 	*node_count = 1;
 
 	nodes[0].node_id = 0;
-	strcpy(nodes[0].hostname, ""); /* Hostname must be configured */
+	strncpy(nodes[0].hostname, "", sizeof(nodes[0].hostname) - 1);
+	nodes[0].hostname[sizeof(nodes[0].hostname) - 1] = '\0'; /* Hostname must be configured */
 	nodes[0].port = 0;             /* Port must be configured */
 	nodes[0].is_primary = false;
 	nodes[0].is_healthy = false;

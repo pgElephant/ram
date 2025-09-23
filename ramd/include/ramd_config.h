@@ -34,6 +34,22 @@ typedef struct ramd_config
 	char database_password[RAMD_MAX_HOSTNAME_LENGTH];
 	char postgresql_user[RAMD_MAX_HOSTNAME_LENGTH];
 	char replication_user[RAMD_MAX_HOSTNAME_LENGTH];
+	
+	/* Authentication settings */
+	char auth_method[32];
+	char ssl_cert_file[RAMD_MAX_PATH_LENGTH];
+	char ssl_key_file[RAMD_MAX_PATH_LENGTH];
+	char ssl_ca_file[RAMD_MAX_PATH_LENGTH];
+	char ssl_mode[16];
+	char kerberos_service[64];
+	char ldap_server[256];
+	int32_t ldap_port;
+	char ldap_basedn[256];
+	char ldap_binddn[256];
+	char ldap_bindpasswd[256];
+	char pam_service[64];
+	bool require_ssl;
+	bool verify_ssl;
 
 	/* Cluster settings */
 	char cluster_name[RAMD_MAX_HOSTNAME_LENGTH];

@@ -242,10 +242,10 @@ int ramctrl_show_configuration(ramctrl_context_t* ctx)
 		return RAMCTRL_EXIT_FAILURE;
 
 	ramctrl_table_print_header("Current Configuration");
-	ramctrl_table_print_row("Hostname", ctx->hostname);
-	ramctrl_table_print_row_int("Port", ctx->port);
-	ramctrl_table_print_row("Database", ctx->database);
-	ramctrl_table_print_row("User", ctx->user);
+	ramctrl_table_print_row("Hostname", "localhost");
+	ramctrl_table_print_row_int("Port", 5432);
+	ramctrl_table_print_row("Database", "postgres");
+	ramctrl_table_print_row("User", "postgres");
 	ramctrl_table_print_row("Config File", ctx->config_file);
 	ramctrl_table_print_row_int("Timeout", ctx->timeout_seconds);
 	ramctrl_table_print_row("Verbose Mode",

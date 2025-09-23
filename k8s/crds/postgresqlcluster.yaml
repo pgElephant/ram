@@ -1,0 +1,259 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: postgresqlclusters.ram.pgelephant.com
+  labels:
+    app.kubernetes.io/name: pgraft-operator
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  group: ram.pgelephant.com
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              replicas:
+                type: integer
+                minimum: 1
+                maximum: 10
+                default: 3
+                description: "Number of PostgreSQL replicas in the cluster"
+              postgresql:
+                type: object
+                properties:
+                  version:
+                    type: string
+                    default: "17"
+                    description: "PostgreSQL version"
+                  image:
+                    type: string
+                    default: "postgres:17"
+                    description: "PostgreSQL Docker image"
+                  resources:
+                    type: object
+                    properties:
+                      requests:
+                        type: object
+                        properties:
+                          memory:
+                            type: string
+                            default: "1Gi"
+                          cpu:
+                            type: string
+                            default: "500m"
+                      limits:
+                        type: object
+                        properties:
+                          memory:
+                            type: string
+                            default: "4Gi"
+                          cpu:
+                            type: string
+                            default: "2000m"
+                  parameters:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    description: "PostgreSQL configuration parameters"
+                  storage:
+                    type: object
+                    properties:
+                      size:
+                        type: string
+                        default: "20Gi"
+                      storageClass:
+                        type: string
+                        description: "Storage class for persistent volumes"
+                  backup:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                        default: true
+                      schedule:
+                        type: string
+                        default: "0 2 * * *"
+                        description: "Cron schedule for backups"
+                      retention:
+                        type: integer
+                        default: 7
+                        description: "Number of days to retain backups"
+              ramd:
+                type: object
+                properties:
+                  image:
+                    type: string
+                    default: "pgraft/ramd:latest"
+                    description: "RAMD daemon Docker image"
+                  resources:
+                    type: object
+                    properties:
+                      requests:
+                        type: object
+                        properties:
+                          memory:
+                            type: string
+                            default: "100Mi"
+                          cpu:
+                            type: string
+                            default: "100m"
+                      limits:
+                        type: object
+                        properties:
+                          memory:
+                            type: string
+                            default: "200Mi"
+                          cpu:
+                            type: string
+                            default: "500m"
+                  config:
+                    type: object
+                    properties:
+                      clusterName:
+                        type: string
+                        description: "Name of the PostgreSQL cluster"
+                      monitoring:
+                        type: object
+                        properties:
+                          prometheusPort:
+                            type: integer
+                            default: 9090
+                          metricsInterval:
+                            type: string
+                            default: "10s"
+                      security:
+                        type: object
+                        properties:
+                          enableSSL:
+                            type: boolean
+                            default: true
+                          rateLimiting:
+                            type: boolean
+                            default: true
+                          auditLogging:
+                            type: boolean
+                            default: true
+              networking:
+                type: object
+                properties:
+                  serviceType:
+                    type: string
+                    enum: ["ClusterIP", "NodePort", "LoadBalancer"]
+                    default: "ClusterIP"
+                  ports:
+                    type: object
+                    properties:
+                      postgresql:
+                        type: integer
+                        default: 5432
+                      ramd:
+                        type: integer
+                        default: 8080
+                      prometheus:
+                        type: integer
+                        default: 9090
+              monitoring:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    default: true
+                  grafana:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                        default: true
+                      adminPassword:
+                        type: string
+                        description: "Grafana admin password"
+                  prometheus:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                        default: true
+                      retention:
+                        type: string
+                        default: "30d"
+            required:
+            - replicas
+            - postgresql
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Pending", "Running", "Failed", "Updating"]
+                description: "Current phase of the cluster"
+              readyReplicas:
+                type: integer
+                description: "Number of ready replicas"
+              totalReplicas:
+                type: integer
+                description: "Total number of replicas"
+              leader:
+                type: string
+                description: "Current leader node"
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                      enum: ["True", "False", "Unknown"]
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                    message:
+                      type: string
+              endpoints:
+                type: object
+                properties:
+                  primary:
+                    type: string
+                    description: "Primary endpoint"
+                  replicas:
+                    type: array
+                    items:
+                      type: string
+                    description: "Replica endpoints"
+    additionalPrinterColumns:
+    - name: Phase
+      type: string
+      description: The current phase of the cluster
+      jsonPath: .status.phase
+    - name: Ready
+      type: string
+      description: Ready replicas
+      jsonPath: .status.readyReplicas
+    - name: Total
+      type: integer
+      description: Total replicas
+      jsonPath: .status.totalReplicas
+    - name: Leader
+      type: string
+      description: Current leader
+      jsonPath: .status.leader
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: postgresqlclusters
+    singular: postgresqlcluster
+    kind: PostgreSQLCluster
+    shortNames:
+    - pgcluster
+    - pgc

@@ -15,9 +15,13 @@
 
 #include "ramd_conn.h"
 #include "ramd_logging.h"
+#include "ramd_postgresql_auth.h"
 
 static PGconn* g_conn_cache[RAMD_MAX_NODES] = {NULL};
 static pthread_mutex_t g_conn_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* External authentication context */
+extern ramd_auth_context_t g_auth_context;
 
 bool
 ramd_conn_init(void)
@@ -51,9 +55,23 @@ PGconn*
 ramd_conn_get(const char* host, int32_t port, const char* dbname,
               const char* user, const char* password)
 {
-	char conninfo[512];
 	PGconn* conn;
 	
+	/* Use authentication system if available */
+	if (g_auth_context.method != RAMD_AUTH_METHOD_UNKNOWN)
+	{
+		conn = ramd_postgresql_auth_connect();
+		if (conn)
+		{
+			ramd_log_info("Connected to PostgreSQL using %s authentication: %s:%d/%s", 
+			              ramd_auth_get_method_name(g_auth_context.method), host, port, dbname);
+			return conn;
+		}
+		ramd_log_warning("Authentication-based connection failed, falling back to basic connection");
+	}
+	
+	/* Fallback to basic connection */
+	char conninfo[512];
 	snprintf(conninfo, sizeof(conninfo),
 	         "host=%s port=%d dbname=%s user=%s password=%s",
 	         host, port, dbname ? dbname : "postgres",
@@ -69,6 +87,7 @@ ramd_conn_get(const char* host, int32_t port, const char* dbname,
 		return NULL;
 	}
 	
+	ramd_log_info("Connected to PostgreSQL: %s:%d/%s", host, port, dbname);
 	return conn;
 }
 

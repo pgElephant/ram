@@ -27,24 +27,11 @@
 
 /* Professional CLI utilities */
 static void ramctrl_print_banner(void);
-static void ramctrl_print_success(const char* message);
 static void ramctrl_print_error(const char* message);
-static void ramctrl_print_warning(const char* message);
-static void ramctrl_print_info(const char* message);
 static void ramctrl_print_progress(const char* message);
-static void ramctrl_print_separator(void);
-static int ramctrl_get_terminal_width(void);
-static void ramctrl_print_centered(const char* text);
-static bool ramctrl_confirm_action(const char* message);
-static void ramctrl_print_table_header(const char* headers[], int count);
-static void ramctrl_print_table_row(const char* values[], int count);
-static void ramctrl_clear_screen(void);
-static void ramctrl_print_loading(const char* message, int duration);
 
 /* Enhanced error handling */
-static void ramctrl_handle_error(const char* function, int error_code, const char* message);
 static void ramctrl_validate_api_url(ramctrl_context_t* ctx);
-static void ramctrl_validate_node_id(const char* node_id_str, int* node_id);
 
 void ramctrl_usage(const char* progname)
 {
@@ -648,27 +635,9 @@ ramctrl_print_banner(void)
 }
 
 static void
-ramctrl_print_success(const char* message)
-{
-	printf("✅ %s\n", message);
-}
-
-static void
 ramctrl_print_error(const char* message)
 {
 	fprintf(stderr, "❌ Error: %s\n", message);
-}
-
-static void
-ramctrl_print_warning(const char* message)
-{
-	printf("⚠️  Warning: %s\n", message);
-}
-
-static void
-ramctrl_print_info(const char* message)
-{
-	printf("ℹ️  %s\n", message);
 }
 
 static void
@@ -678,123 +647,12 @@ ramctrl_print_progress(const char* message)
 	fflush(stdout);
 }
 
-static void
-ramctrl_print_separator(void)
-{
-	int width = ramctrl_get_terminal_width();
-	for (int i = 0; i < width; i++)
-	{
-		printf("─");
-	}
-	printf("\n");
-}
 
-static int
-ramctrl_get_terminal_width(void)
-{
-	struct winsize w;
-	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0)
-	{
-		return w.ws_col;
-	}
-	return 80; /* Default width */
-}
 
-static void
-ramctrl_print_centered(const char* text)
-{
-	int width = ramctrl_get_terminal_width();
-	int text_len = strlen(text);
-	int padding = (width - text_len) / 2;
-	
-	for (int i = 0; i < padding; i++)
-	{
-		printf(" ");
-	}
-	printf("%s\n", text);
-}
 
-static bool
-ramctrl_confirm_action(const char* message)
-{
-	char response[10];
-	printf("❓ %s (y/N): ", message);
-	fflush(stdout);
-	
-	if (fgets(response, sizeof(response), stdin) == NULL)
-	{
-		return false;
-	}
-	
-	return (response[0] == 'y' || response[0] == 'Y');
-}
-
-static void
-ramctrl_print_table_header(const char* headers[], int count)
-{
-	printf("\n");
-	ramctrl_print_separator();
-	for (int i = 0; i < count; i++)
-	{
-		printf("│ %-15s ", headers[i]);
-	}
-	printf("│\n");
-	ramctrl_print_separator();
-}
-
-static void
-ramctrl_print_table_row(const char* values[], int count)
-{
-	for (int i = 0; i < count; i++)
-	{
-		printf("│ %-15s ", values[i] ? values[i] : "N/A");
-	}
-	printf("│\n");
-}
-
-static void
-ramctrl_clear_screen(void)
-{
-	printf("\033[2J\033[H");
-}
-
-static void
-ramctrl_print_loading(const char* message, int duration)
-{
-	const char* spinner[] = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
-	int spinner_count = sizeof(spinner) / sizeof(spinner[0]);
-	
-	printf("🔄 %s ", message);
-	fflush(stdout);
-	
-	for (int i = 0; i < duration; i++)
-	{
-		printf("\b\b%s ", spinner[i % spinner_count]);
-		fflush(stdout);
-		usleep(100000); /* 100ms */
-	}
-	printf("\b\b  \b\b\n");
-}
 
 /* Enhanced error handling implementation */
 
-static void
-ramctrl_handle_error(const char* function, int error_code, const char* message)
-{
-	ramctrl_print_error(message);
-	if (errno != 0)
-	{
-		fprintf(stderr, "   System error: %s (errno: %d)\n", strerror(errno), errno);
-	}
-	if (function)
-	{
-		fprintf(stderr, "   Function: %s\n", function);
-	}
-	if (error_code != 0)
-	{
-		fprintf(stderr, "   Error code: %d\n", error_code);
-	}
-}
 
 static void
 ramctrl_validate_api_url(ramctrl_context_t* ctx)
@@ -805,7 +663,7 @@ ramctrl_validate_api_url(ramctrl_context_t* ctx)
 		return;
 	}
 	
-	if (strlen(ctx->api_url) == 0)
+	if (strlen(ctx->api_url) == 0UL)
 	{
 		ramctrl_print_error("API URL not specified");
 		return;
@@ -820,30 +678,4 @@ ramctrl_validate_api_url(ramctrl_context_t* ctx)
 	}
 }
 
-static void
-ramctrl_validate_node_id(const char* node_id_str, int* node_id)
-{
-	if (!node_id_str || !node_id)
-	{
-		ramctrl_print_error("Invalid node ID parameter");
-		return;
-	}
-	
-	char* endptr;
-	long val = strtol(node_id_str, &endptr, 10);
-	
-	if (endptr == node_id_str || *endptr != '\0')
-	{
-		ramctrl_print_error("Node ID must be a valid integer");
-		return;
-	}
-	
-	if (val < 1 || val > 9999)
-	{
-		ramctrl_print_error("Node ID must be between 1 and 9999");
-		return;
-	}
-	
-	*node_id = (int)val;
-}
 

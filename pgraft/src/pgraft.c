@@ -20,6 +20,10 @@ PG_MODULE_MAGIC;
 void _PG_init(void);
 void _PG_fini(void);
 
+/* Debug control function */
+typedef int (*pgraft_go_set_debug_func)(int enabled);
+static pgraft_go_set_debug_func pgraft_go_set_debug_ptr = NULL;
+
 /* PostgreSQL includes */
 #include "access/htup_details.h"
 #include "access/tupdesc.h"
@@ -82,7 +86,6 @@ static Size pgraft_shmem_size = 0;
 
 /* Shared memory functions */
 static void pgraft_shmem_request_hook(void);
-static void pgraft_shmem_startup_hook(Datum main_arg);
 static void pgraft_shmem_shutdown_hook(int code, Datum arg);
 static void pgraft_init_shared_memory(void);
 static void pgraft_cleanup_shared_memory(void);
@@ -144,13 +147,10 @@ static pgraft_go_free_string_func pgraft_go_free_string_ptr = NULL;
 
 /* Forward declarations */
 static void pgraft_worker_tick(void);
-static void register_pgraft_worker(void);
 static int load_go_library(void);
 static void unload_go_library(void);
 
 /* Background worker processes */
-static BackgroundWorker worker;
-static bool worker_registered = false;
 static bool worker_running = false;
 
 /* Function info declarations are in their respective modules */
@@ -311,28 +311,6 @@ pgraft_worker_tick(void)
     }
 }
 
-/*
- * Register background worker
- */
-static void
-register_pgraft_worker(void)
-{
-    /* Configure worker */
-    memset(&worker, 0, sizeof(BackgroundWorker));
-    worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
-    worker.bgw_start_time = BgWorkerStart_ConsistentState;
-    worker.bgw_restart_time = BGW_NEVER_RESTART;
-    snprintf(worker.bgw_library_name, BGW_MAXLEN, "pgraft");
-    snprintf(worker.bgw_function_name, BGW_MAXLEN, "pgraft_worker_main");
-    snprintf(worker.bgw_name, BGW_MAXLEN, "pgraft consensus worker");
-    worker.bgw_main_arg = (Datum) 0;
-    worker.bgw_notify_pid = 0;
-    
-    /* Register the worker */
-    RegisterBackgroundWorker(&worker);
-    worker_registered = true;
-    elog(INFO, "pgraft consensus worker registered successfully");
-}
 
 /*
  * Initialize Raft system
@@ -373,14 +351,16 @@ pgraft_is_healthy(void)
     /* Add communication health check - check if comm module is initialized */
     if (!pgraft_comm_initialized())
     {
-        elog(DEBUG1, "pgraft_is_healthy: communication system not initialized");
+        elog(DEBUG1, "pgraft_is_healthy: communication system not initialized - pgraft_comm_initialized=%d", 
+             pgraft_comm_initialized() ? 1 : 0);
         return false;
     }
     
     /* Check if communication system has active connections */
     if (pgraft_comm_get_active_connections() == 0)
     {
-        elog(DEBUG1, "pgraft_is_healthy: no active communication connections");
+        elog(DEBUG1, "pgraft_is_healthy: no active communication connections - active_connections=%d", 
+             pgraft_comm_get_active_connections());
         return false;
     }
     
@@ -585,7 +565,7 @@ load_go_library(void)
     /* Try to load the Go library with retries */
     while (retry_count < max_retries)
     {
-        go_lib_handle = dlopen("/Users/ibrarahmed/pgelephant/pge/ram/pgraft/src/pgraft_go.dylib", RTLD_LAZY);
+        go_lib_handle = dlopen("/Users/postgres/pgelephant/pge/ram/pgraft/src/pgraft_go.dylib", RTLD_LAZY);
         if (go_lib_handle)
             break;
             
@@ -610,7 +590,7 @@ load_go_library(void)
     pgraft_go_init_ptr = (pgraft_go_init_func) dlsym(go_lib_handle, "pgraft_go_init");
     pgraft_go_start_ptr = (pgraft_go_start_func) dlsym(go_lib_handle, "pgraft_go_start");
     pgraft_go_stop_ptr = (pgraft_go_stop_func) dlsym(go_lib_handle, "pgraft_go_stop");
-    pgraft_go_add_node_ptr = (pgraft_go_add_node_func) dlsym(go_lib_handle, "pgraft_go_add_node");
+    pgraft_go_add_node_ptr = (pgraft_go_add_node_func) dlsym(go_lib_handle, "pgraft_go_add_peer");
     pgraft_go_add_peer_ptr = (pgraft_go_add_peer_func) dlsym(go_lib_handle, "pgraft_go_add_peer");
     
     /* Debug function pointer loading */
@@ -833,7 +813,8 @@ pgraft_start(PG_FUNCTION_ARGS)
     SpinLockAcquire(&shmem->mutex);
     shmem->running = 1;
     shmem->go_running = 1;
-    strcpy(shmem->state, "running");
+    strncpy(shmem->state, "running", sizeof(shmem->state) - 1);
+    shmem->state[sizeof(shmem->state) - 1] = '\0';
     SpinLockRelease(&shmem->mutex);
     
     elog(INFO, "pgraft_start: start completed successfully");
@@ -1219,14 +1200,6 @@ pgraft_shmem_request_hook(void)
     RequestAddinShmemSpace(sizeof(pgraft_shared_state));
 }
 
-/*
- * Shared memory startup hook - not used
- */
-static void
-pgraft_shmem_startup_hook(Datum main_arg)
-{
-    /* Shared memory will be initialized when first accessed */
-}
 
 /*
  * Shared memory shutdown hook
@@ -1271,7 +1244,8 @@ pgraft_init_shared_memory(void)
         pgraft_shmem->running = 0;
         pgraft_shmem->current_term = 0;
         pgraft_shmem->leader_id = -1;
-        strcpy(pgraft_shmem->state, "stopped");
+        strncpy(pgraft_shmem->state, "stopped", sizeof(pgraft_shmem->state) - 1);
+        pgraft_shmem->state[sizeof(pgraft_shmem->state) - 1] = '\0';
         
         pgraft_shmem->go_lib_loaded = 0;
         pgraft_shmem->go_initialized = 0;
@@ -1354,6 +1328,27 @@ pgraft_add_node_notify(PG_FUNCTION_ARGS)
 	
 	pfree(hostname);
 	PG_RETURN_DATUM(result);
+}
+
+/*
+ * Set debug logging level for pgraft
+ */
+Datum
+pgraft_set_debug(PG_FUNCTION_ARGS)
+{
+    bool enabled = PG_GETARG_BOOL(0);
+    
+    if (pgraft_go_set_debug_ptr)
+    {
+        pgraft_go_set_debug_ptr(enabled ? 1 : 0);
+        elog(INFO, "pgraft_set_debug: Debug logging %s", enabled ? "enabled" : "disabled");
+    }
+    else
+    {
+        elog(WARNING, "pgraft_set_debug: Go library not loaded, debug control unavailable");
+    }
+    
+    PG_RETURN_BOOL(true);
 }
 
 

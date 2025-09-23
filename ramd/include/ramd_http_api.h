@@ -128,6 +128,16 @@ void ramd_http_handle_add_replica(ramd_http_request_t* request,
                                   ramd_http_response_t* response);
 void ramd_http_handle_metrics(ramd_http_request_t* request,
                               ramd_http_response_t* response);
+void ramd_http_handle_prometheus_metrics(ramd_http_request_t* request,
+                                         ramd_http_response_t* response);
+
+/* Security handler functions */
+void ramd_http_handle_security_status(ramd_http_request_t* request,
+                                      ramd_http_response_t* response);
+void ramd_http_handle_security_audit(ramd_http_request_t* request,
+                                     ramd_http_response_t* response);
+void ramd_http_handle_security_users(ramd_http_request_t* request,
+                                     ramd_http_response_t* response);
 
 /* Enhanced integration: New HTTP API handlers for ramctrl communication */
 void ramd_http_handle_add_node(ramd_http_request_t* request, ramd_http_response_t* response);

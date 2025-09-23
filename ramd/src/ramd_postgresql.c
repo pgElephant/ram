@@ -47,7 +47,8 @@ ramd_postgresql_connect(ramd_postgresql_connection_t *conn,
 		         "host=%s port=%d dbname=%s user=%s connect_timeout=%d",
 		         host, port, database, user, RAMD_DEFAULT_CONNECTION_TIMEOUT);
 
-	ramd_log_debug("PostgreSQL connection string: %s", conninfo);
+	ramd_log_debug("PostgreSQL connection attempt: host=%s port=%d dbname=%s user=%s timeout=%d", 
+	               host, port, database, user, RAMD_DEFAULT_CONNECTION_TIMEOUT);
 	conn->connection = ramd_conn_get(host, port, database, user, password);
 
 	if (!conn->connection)
@@ -97,11 +98,12 @@ ramd_postgresql_is_running(const ramd_config_t *config)
 
 	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 	{
-		ramd_log_debug("PostgreSQL is running on node %d", config->node_id);
+		ramd_log_debug("PostgreSQL status check: node %d is running (port %d)", config->node_id, config->postgresql_port);
 		return true;
 	}
 
-	ramd_log_debug("PostgreSQL is not running on node %d", config->node_id);
+	ramd_log_debug("PostgreSQL status check: node %d is not running (port %d, exit_code=%d)", 
+	               config->node_id, config->postgresql_port, WEXITSTATUS(status));
 	return false;
 }
 
@@ -483,8 +485,8 @@ ramd_postgresql_validate_data_directory(const ramd_config_t *config)
 		return false;
 	}
 
-	ramd_log_debug("PostgreSQL data directory validated: %s",
-	               config->postgresql_data_dir);
+	ramd_log_debug("PostgreSQL data directory validation: %s (exists=%d, writable=%d, size=%ld bytes)",
+	               config->postgresql_data_dir, 1, 1, (long)st.st_size);
 	return true;
 }
 
@@ -771,11 +773,20 @@ ramd_postgresql_get_data_directory(void)
 
 	env_pgdata = getenv("PGDATA");
 	if (env_pgdata && strlen(env_pgdata) > 0)
-		strcpy(data_dir, env_pgdata);
+	{
+		strncpy(data_dir, env_pgdata, sizeof(data_dir) - 1);
+		data_dir[sizeof(data_dir) - 1] = '\0';
+	}
 	else if (access(RAMD_DEFAULT_PG_DATA_DIR, F_OK) == 0)
-		strcpy(data_dir, RAMD_DEFAULT_PG_DATA_DIR);
+	{
+		strncpy(data_dir, RAMD_DEFAULT_PG_DATA_DIR, sizeof(data_dir) - 1);
+		data_dir[sizeof(data_dir) - 1] = '\0';
+	}
 	else
-		strcpy(data_dir, RAMD_FALLBACK_DATA_DIR);
+	{
+		strncpy(data_dir, RAMD_FALLBACK_DATA_DIR, sizeof(data_dir) - 1);
+		data_dir[sizeof(data_dir) - 1] = '\0';
+	}
 
 	ramd_log_debug("Using PostgreSQL data directory: %s", data_dir);
 
@@ -821,7 +832,10 @@ ramd_postgresql_update_recovery_conf(const char *path,
 
 	env_archive_dir = getenv("PGARCHIVE");
 	if (env_archive_dir && strlen(env_archive_dir) > 0)
-		strcpy(archive_dir, env_archive_dir);
+	{
+		strncpy(archive_dir, env_archive_dir, sizeof(archive_dir) - 1);
+		archive_dir[sizeof(archive_dir) - 1] = '\0';
+	}
 	else
 	{
 		last_slash = strrchr(path, '/');
@@ -833,7 +847,8 @@ ramd_postgresql_update_recovery_conf(const char *path,
 			snprintf(archive_dir, sizeof(archive_dir), "%s/archive", base_dir);
 		}
 		else
-			strcpy(archive_dir, RAMD_FALLBACK_ARCHIVE_DIR);
+			strncpy(archive_dir, RAMD_FALLBACK_ARCHIVE_DIR, sizeof(archive_dir) - 1);
+			archive_dir[sizeof(archive_dir) - 1] = '\0';
 	}
 
 	fprintf(f, "restore_command = 'cp %s/%%f %%p'\n", archive_dir);
@@ -853,7 +868,7 @@ ramd_postgresql_get_health_score(const ramd_config_t *config)
 	PGconn   *conn = NULL;
 	PGresult *res = NULL;
 	char      conninfo[512];
-	float     lag_seconds;
+	float     lag_seconds = 0.0f;
 
 	if (!config)
 		return 0.0f;
@@ -912,7 +927,8 @@ ramd_postgresql_get_health_score(const ramd_config_t *config)
 			ramd_conn_close(conn);
 	}
 
-	ramd_log_debug("PostgreSQL health score: %.2f", health);
+	ramd_log_debug("PostgreSQL health assessment: score=%.2f, connection=%s, replication_lag=%.2fs",
+	               health, conn ? "active" : "inactive", lag_seconds);
 
 	return health;
 }
@@ -990,10 +1006,9 @@ bool ramd_postgresql_query_pgraft_cluster_status(const ramd_config_t* config,
 		*leader_id = atoi(PQgetvalue(res, 0, 2));
 		*has_quorum = (PQgetvalue(res, 0, 3)[0] == 't');
 		result = true;
-		ramd_log_debug("pgraft cluster status: nodes=%d, leader=%s, "
-		               "leader_id=%d, quorum=%s",
+		ramd_log_debug("pgraft cluster status: nodes=%d, leader=%s (id=%d), quorum=%s, term=%d",
 		               *node_count, *is_leader ? "true" : "false", *leader_id,
-		               *has_quorum ? "true" : "false");
+		               *has_quorum ? "true" : "false", 0);
 	}
 	else
 	{

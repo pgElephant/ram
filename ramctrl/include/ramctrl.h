@@ -148,6 +148,7 @@ typedef enum ramctrl_node_status
 	RAMCTRL_NODE_STATUS_MAINTENANCE
 } ramctrl_node_status_t;
 
+
 /* Cluster status */
 typedef enum ramctrl_cluster_status
 {

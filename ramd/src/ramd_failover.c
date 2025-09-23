@@ -127,8 +127,8 @@ ramd_failover_detect_primary_failure(ramd_cluster_t* cluster)
 	primary = ramd_cluster_get_primary_node(cluster);
 	if (!primary)
 	{
-		ramd_log_debug(
-		    "Cluster status: No primary node currently active in cluster");
+		ramd_log_debug("Cluster status: no primary node active (total_nodes=%d, healthy=%d)",
+		               cluster->node_count, ramd_cluster_count_healthy_nodes(cluster));
 		return true;
 	}
 
@@ -339,14 +339,37 @@ ramd_failover_update_sync_replication_config(ramd_cluster_t* cluster,
 	for (i = 0; i < cluster->node_count; i++)
 	{
 		ramd_node_t* node = &cluster->nodes[i];
+		size_t current_len;
+		size_t hostname_len;
 
 		if (node->node_id != new_primary_id &&
 		    node->role == RAMD_ROLE_STANDBY && node->is_healthy)
 		{
+			current_len = strlen(sync_standby_names);
+			hostname_len = strlen(node->hostname);
 			if (standby_count > 0)
-				strcat(sync_standby_names, ",");
-			strcat(sync_standby_names, node->hostname);
-			standby_count++;
+			{
+				if (current_len + 1 < sizeof(sync_standby_names) - 1)
+				{
+					strncat(sync_standby_names, ",", sizeof(sync_standby_names) - current_len - 1);
+					current_len++;
+				}
+				else
+				{
+					ramd_log_error("Sync standby names buffer too small");
+					break;
+				}
+			}
+			if (current_len + hostname_len < sizeof(sync_standby_names) - 1)
+			{
+				strncat(sync_standby_names, node->hostname, sizeof(sync_standby_names) - current_len - 1);
+				standby_count++;
+			}
+			else
+			{
+				ramd_log_error("Sync standby names buffer too small for hostname");
+				break;
+			}
 		}
 	}
 

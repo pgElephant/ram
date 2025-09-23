@@ -159,7 +159,11 @@ ramd_monitor_check_local_node(ramd_monitor_t *monitor)
 		return false;
 	}
 
-	ramd_log_debug("Local node health check passed (score: %.2f)", health_score);
+	ramd_log_debug("Local node health check: score=%.2f, role=%s, state=%s, uptime=%lds",
+	               health_score, 
+	               monitor->cluster->nodes[monitor->cluster->local_node_id].role == RAMD_ROLE_PRIMARY ? "primary" : "standby",
+	               monitor->cluster->nodes[monitor->cluster->local_node_id].state == RAMD_NODE_STATE_PRIMARY ? "primary" : "standby",
+	               time(NULL) - monitor->cluster->nodes[monitor->cluster->local_node_id].last_seen);
 	return true;
 }
 
@@ -214,8 +218,10 @@ ramd_monitor_check_remote_nodes(ramd_monitor_t *monitor)
 		}
 		else
 		{
-			ramd_log_debug("Node %d (%s) health check passed",
-			              node->node_id, node->hostname);
+			ramd_log_debug("Remote node health check: node=%d (%s), score=%.2f, role=%s, lag=%dms",
+			              node->node_id, node->hostname, node->health_score,
+			              node->role == RAMD_ROLE_PRIMARY ? "primary" : "standby",
+			              node->replication_lag_ms);
 		}
 	}
 
@@ -251,8 +257,10 @@ ramd_monitor_check_cluster_health(ramd_monitor_t *monitor)
 		return false;
 	}
 
-	ramd_log_debug("Cluster health check passed: %d/%d nodes healthy, quorum maintained",
-	               healthy_nodes, monitor->cluster->node_count);
+	ramd_log_debug("Cluster health assessment: healthy=%d/%d, quorum=%s, primary=%d, leader=%d, term=%d",
+	               healthy_nodes, monitor->cluster->node_count,
+	               ramd_cluster_has_quorum(monitor->cluster) ? "yes" : "no",
+	               monitor->cluster->primary_node_id, monitor->cluster->leader_node_id, 0);
 
 	return true;
 }
@@ -270,7 +278,10 @@ ramd_monitor_check_leadership(ramd_monitor_t *monitor)
 	if (self && (self->role == RAMD_ROLE_PRIMARY || self->is_leader))
 		am_leader = true;
 
-	ramd_log_debug("Leadership check: %s", am_leader ? "I am leader" : "I am follower");
+	ramd_log_debug("Leadership status: am_leader=%s, role=%s, primary_id=%d, leader_id=%d",
+	               am_leader ? "true" : "false",
+	               self ? (self->role == RAMD_ROLE_PRIMARY ? "primary" : "standby") : "unknown",
+	               monitor->cluster->primary_node_id, monitor->cluster->leader_node_id);
 	return true;
 }
 
@@ -327,15 +338,37 @@ ramd_monitor_handle_leadership_gained(ramd_monitor_t *monitor)
 
 	if (monitor->config->synchronous_replication)
 	{
+		size_t current_len = 0;
 		standby_names[0] = '\0';
 		for (i = 0; i < monitor->cluster->node_count; i++)
 		{
 			ramd_node_t *node = &monitor->cluster->nodes[i];
 			if (node->role == RAMD_ROLE_STANDBY && node->is_healthy)
 			{
-				if (strlen(standby_names) > 0)
-					strcat(standby_names, ",");
-				strcat(standby_names, node->hostname);
+				size_t hostname_len = strlen(node->hostname);
+				if (current_len > 0)
+				{
+					if (current_len + 1 < sizeof(standby_names) - 1)
+					{
+						strncat(standby_names, ",", sizeof(standby_names) - current_len - 1);
+						current_len++;
+					}
+					else
+					{
+						ramd_log_error("Standby names buffer too small");
+						break;
+					}
+				}
+				if (current_len + hostname_len < sizeof(standby_names) - 1)
+				{
+					strncat(standby_names, node->hostname, sizeof(standby_names) - current_len - 1);
+					current_len += hostname_len;
+				}
+				else
+				{
+					ramd_log_error("Standby names buffer too small for hostname");
+					break;
+				}
 			}
 		}
 

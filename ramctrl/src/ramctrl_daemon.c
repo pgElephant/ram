@@ -809,7 +809,7 @@ int ramctrl_cmd_show(ramctrl_context_t* ctx)
 	switch (ctx->show_command)
 	{
 	case RAMCTRL_SHOW_CLUSTER:
-                return ramctrl_cmd_show_cluster(ctx, ctx->hostname);
+		return ramctrl_cmd_show_cluster(ctx, "localhost");
 	case RAMCTRL_SHOW_NODES:
 		return ramctrl_cmd_show_nodes(ctx);
 	case RAMCTRL_SHOW_REPLICATION:
@@ -837,9 +837,9 @@ int ramctrl_cmd_node(ramctrl_context_t* ctx)
 	switch (ctx->node_command)
 	{
 	case RAMCTRL_NODE_ADD:
-                return ramctrl_cmd_add_node(ctx, ctx->user, ctx->hostname, ctx->port);
+		return ramctrl_cmd_add_node(ctx, "postgres", "localhost", 5432);
 	case RAMCTRL_NODE_REMOVE:
-		return ramctrl_cmd_remove_node(ctx, ctx->user);
+		return ramctrl_cmd_remove_node(ctx, "postgres");
 	case RAMCTRL_NODE_LIST:
 		return ramctrl_cmd_show_nodes(ctx);
 	case RAMCTRL_NODE_STATUS:
@@ -1026,7 +1026,7 @@ int ramctrl_cmd_remove_replica(ramctrl_context_t* ctx)
 	printf("ramctrl: removing replica from cluster\n");
 	
 	/* Implement actual replica removal logic */
-        if (!ramctrl_remove_node_from_cluster(ctx, ctx->user))
+	if (!ramctrl_remove_node_from_cluster(ctx, "postgres"))
 	{
 		printf("ramctrl: failed to remove replica from cluster\n");
 		return RAMCTRL_EXIT_FAILURE;

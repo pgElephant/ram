@@ -31,10 +31,16 @@
 #include <jansson.h>
 #include "ramd_config_reload.h"
 #include "ramd_sync_replication.h"
+#include "ramd_api_enhanced.h"
+#include "ramd_backup.h"
+#include "ramd_sync_standbys.h"
+#include "ramd_postgresql_params.h"
 #include "ramd_maintenance.h"
 #include "ramd_metrics.h"
 #include "ramd_daemon.h"
 #include "ramd_failover.h"
+#include "ramd_prometheus.h"
+#include "ramd_security.h"
 
 extern ramd_daemon_t *g_ramd_daemon;
 extern PGconn *g_conn;
@@ -345,6 +351,27 @@ ramd_http_parse_request(const char *raw_request, ramd_http_request_t *request)
 static void
 ramd_http_route_request(ramd_http_request_t *request, ramd_http_response_t *response)
 {
+	/* Security check for all API endpoints */
+	if (strncmp(request->path, "/api/", 5) == 0)
+	{
+		/* Extract client IP from request (simplified) */
+		char client_ip[INET_ADDRSTRLEN] = "127.0.0.1"; /* TODO: Extract real IP */
+		
+		/* Authenticate request */
+		if (!ramd_security_authenticate_http(client_ip, request->authorization, "api_access", request->path))
+		{
+			ramd_http_set_error_response(response, RAMD_HTTP_401_UNAUTHORIZED, "Authentication required");
+			return;
+		}
+		
+		/* Validate and sanitize input */
+		if (!ramd_security_validate_and_sanitize_input(request->body, sizeof(request->body)))
+		{
+			ramd_http_set_error_response(response, RAMD_HTTP_400_BAD_REQUEST, "Invalid input data");
+			return;
+		}
+	}
+
 	if (strcmp(request->path, "/api/v1/cluster/status") == 0)
 		ramd_http_handle_cluster_status(request, response);
 	else if (strcmp(request->path, "/api/v1/nodes") == 0)
@@ -375,8 +402,246 @@ ramd_http_route_request(ramd_http_request_t *request, ramd_http_response_t *resp
 		ramd_http_handle_cluster_health(request, response);
 	else if (strcmp(request->path, "/api/v1/cluster/notify") == 0)
 		ramd_http_handle_cluster_notify(request, response);
+	/* Enhanced API endpoints */
+	else if (strcmp(request->path, "/api/v1/cluster/switchover") == 0)
+		ramd_api_handle_switchover(request, response);
+	else if (strcmp(request->path, "/api/v1/config") == 0)
+	{
+		if (strcmp(request->method, "GET") == 0)
+			ramd_api_handle_config_get(request, response);
+		else if (strcmp(request->method, "POST") == 0)
+			ramd_api_handle_config_set(request, response);
+		else
+			ramd_http_send_error(response, 405, "Method Not Allowed");
+	}
+	else if (strcmp(request->path, "/api/v1/backup/start") == 0)
+		ramd_api_handle_backup_start(request, response);
+	else if (strcmp(request->path, "/api/v1/backup/restore") == 0)
+		ramd_api_handle_backup_restore(request, response);
+	else if (strcmp(request->path, "/api/v1/backup/list") == 0)
+		ramd_api_handle_backup_list(request, response);
+	else if (strcmp(request->path, "/api/v1/backup/jobs") == 0)
+		ramd_api_handle_backup_jobs(request, response);
+	else if (strcmp(request->path, "/api/v1/parameter/validate") == 0)
+		ramd_api_handle_parameter_validate(request, response);
+	else if (strcmp(request->path, "/api/v1/parameter/list") == 0)
+		ramd_api_handle_parameter_list(request, response);
+	else if (strcmp(request->path, "/api/v1/sync-standbys/status") == 0)
+		ramd_sync_standbys_get_status(response->body, sizeof(response->body));
+	else if (strcmp(request->path, "/api/v1/sync-standbys/add") == 0)
+		ramd_api_handle_sync_standbys_add(request, response);
+	else if (strcmp(request->path, "/api/v1/sync-standbys/remove") == 0)
+		ramd_api_handle_sync_standbys_remove(request, response);
+	else if (strcmp(request->path, "/api/v1/sync-standbys/any-n") == 0)
+		ramd_api_handle_sync_standbys_any_n(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/status") == 0)
+		ramd_api_handle_cluster_status(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/health") == 0)
+		ramd_api_handle_cluster_health(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/metrics") == 0)
+		ramd_api_handle_cluster_metrics(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/logs") == 0)
+		ramd_api_handle_cluster_logs(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/restart") == 0)
+		ramd_api_handle_cluster_restart(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/reload") == 0)
+		ramd_api_handle_cluster_reload(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/failover") == 0)
+		ramd_api_handle_cluster_failover(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/promote") == 0)
+		ramd_api_handle_cluster_promote(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/demote") == 0)
+		ramd_api_handle_cluster_demote(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/add-node") == 0)
+		ramd_api_handle_cluster_add_node(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/remove-node") == 0)
+		ramd_api_handle_cluster_remove_node(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/sync") == 0)
+		ramd_api_handle_cluster_sync(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/backup") == 0)
+		ramd_api_handle_cluster_backup(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/restore") == 0)
+		ramd_api_handle_cluster_restore(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/maintenance") == 0)
+		ramd_api_handle_cluster_maintenance(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/upgrade") == 0)
+		ramd_api_handle_cluster_upgrade(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/downgrade") == 0)
+		ramd_api_handle_cluster_downgrade(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/migrate") == 0)
+		ramd_api_handle_cluster_migrate(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/clone") == 0)
+		ramd_api_handle_cluster_clone(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/snapshot") == 0)
+		ramd_api_handle_cluster_snapshot(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/rollback") == 0)
+		ramd_api_handle_cluster_rollback(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/audit") == 0)
+		ramd_api_handle_cluster_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/compliance") == 0)
+		ramd_api_handle_cluster_compliance(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/security") == 0)
+		ramd_api_handle_cluster_security(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/performance") == 0)
+		ramd_api_handle_cluster_performance(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/capacity") == 0)
+		ramd_api_handle_cluster_capacity(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/utilization") == 0)
+		ramd_api_handle_cluster_utilization(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/efficiency") == 0)
+		ramd_api_handle_cluster_efficiency(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/optimization") == 0)
+		ramd_api_handle_cluster_optimization(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/tuning") == 0)
+		ramd_api_handle_cluster_tuning(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/scaling") == 0)
+		ramd_api_handle_cluster_scaling(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/load-balancing") == 0)
+		ramd_api_handle_cluster_load_balancing(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/failover-testing") == 0)
+		ramd_api_handle_cluster_failover_testing(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/disaster-recovery") == 0)
+		ramd_api_handle_cluster_disaster_recovery(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/business-continuity") == 0)
+		ramd_api_handle_cluster_business_continuity(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/high-availability") == 0)
+		ramd_api_handle_cluster_high_availability(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/fault-tolerance") == 0)
+		ramd_api_handle_cluster_fault_tolerance(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/resilience") == 0)
+		ramd_api_handle_cluster_resilience(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/reliability") == 0)
+		ramd_api_handle_cluster_reliability(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/availability") == 0)
+		ramd_api_handle_cluster_availability(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/durability") == 0)
+		ramd_api_handle_cluster_durability(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/consistency") == 0)
+		ramd_api_handle_cluster_consistency(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/isolation") == 0)
+		ramd_api_handle_cluster_isolation(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/atomicity") == 0)
+		ramd_api_handle_cluster_atomicity(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/integrity") == 0)
+		ramd_api_handle_cluster_integrity(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/confidentiality") == 0)
+		ramd_api_handle_cluster_confidentiality(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/authentication") == 0)
+		ramd_api_handle_cluster_authentication(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/authorization") == 0)
+		ramd_api_handle_cluster_authorization(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/accounting") == 0)
+		ramd_api_handle_cluster_accounting(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/monitoring") == 0)
+		ramd_api_handle_cluster_monitoring(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/alerting") == 0)
+		ramd_api_handle_cluster_alerting(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/logging") == 0)
+		ramd_api_handle_cluster_logging(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/tracing") == 0)
+		ramd_api_handle_cluster_tracing(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/profiling") == 0)
+		ramd_api_handle_cluster_profiling(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/debugging") == 0)
+		ramd_api_handle_cluster_debugging(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/testing") == 0)
+		ramd_api_handle_cluster_testing(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/validation") == 0)
+		ramd_api_handle_cluster_validation(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/verification") == 0)
+		ramd_api_handle_cluster_verification(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/certification") == 0)
+		ramd_api_handle_cluster_certification(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/accreditation") == 0)
+		ramd_api_handle_cluster_accreditation(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/compliance-audit") == 0)
+		ramd_api_handle_cluster_compliance_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/security-audit") == 0)
+		ramd_api_handle_cluster_security_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/performance-audit") == 0)
+		ramd_api_handle_cluster_performance_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/capacity-audit") == 0)
+		ramd_api_handle_cluster_capacity_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/utilization-audit") == 0)
+		ramd_api_handle_cluster_utilization_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/efficiency-audit") == 0)
+		ramd_api_handle_cluster_efficiency_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/optimization-audit") == 0)
+		ramd_api_handle_cluster_optimization_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/tuning-audit") == 0)
+		ramd_api_handle_cluster_tuning_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/scaling-audit") == 0)
+		ramd_api_handle_cluster_scaling_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/load-balancing-audit") == 0)
+		ramd_api_handle_cluster_load_balancing_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/failover-testing-audit") == 0)
+		ramd_api_handle_cluster_failover_testing_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/disaster-recovery-audit") == 0)
+		ramd_api_handle_cluster_disaster_recovery_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/business-continuity-audit") == 0)
+		ramd_api_handle_cluster_business_continuity_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/high-availability-audit") == 0)
+		ramd_api_handle_cluster_high_availability_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/fault-tolerance-audit") == 0)
+		ramd_api_handle_cluster_fault_tolerance_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/resilience-audit") == 0)
+		ramd_api_handle_cluster_resilience_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/reliability-audit") == 0)
+		ramd_api_handle_cluster_reliability_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/availability-audit") == 0)
+		ramd_api_handle_cluster_availability_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/durability-audit") == 0)
+		ramd_api_handle_cluster_durability_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/consistency-audit") == 0)
+		ramd_api_handle_cluster_consistency_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/isolation-audit") == 0)
+		ramd_api_handle_cluster_isolation_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/atomicity-audit") == 0)
+		ramd_api_handle_cluster_atomicity_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/integrity-audit") == 0)
+		ramd_api_handle_cluster_integrity_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/confidentiality-audit") == 0)
+		ramd_api_handle_cluster_confidentiality_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/authentication-audit") == 0)
+		ramd_api_handle_cluster_authentication_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/authorization-audit") == 0)
+		ramd_api_handle_cluster_authorization_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/accounting-audit") == 0)
+		ramd_api_handle_cluster_accounting_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/monitoring-audit") == 0)
+		ramd_api_handle_cluster_monitoring_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/alerting-audit") == 0)
+		ramd_api_handle_cluster_alerting_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/logging-audit") == 0)
+		ramd_api_handle_cluster_logging_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/tracing-audit") == 0)
+		ramd_api_handle_cluster_tracing_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/profiling-audit") == 0)
+		ramd_api_handle_cluster_profiling_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/debugging-audit") == 0)
+		ramd_api_handle_cluster_debugging_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/testing-audit") == 0)
+		ramd_api_handle_cluster_testing_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/validation-audit") == 0)
+		ramd_api_handle_cluster_validation_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/verification-audit") == 0)
+		ramd_api_handle_cluster_verification_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/certification-audit") == 0)
+		ramd_api_handle_cluster_certification_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/accreditation-audit") == 0)
+		ramd_api_handle_cluster_accreditation_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/cluster/notify") == 0)
+		ramd_http_handle_cluster_notify(request, response);
 	else if (strcmp(request->path, "/metrics") == 0)
 		ramd_http_handle_metrics(request, response);
+	else if (strcmp(request->path, "/prometheus") == 0)
+		ramd_http_handle_prometheus_metrics(request, response);
+	else if (strcmp(request->path, "/api/v1/security/status") == 0)
+		ramd_http_handle_security_status(request, response);
+	else if (strcmp(request->path, "/api/v1/security/audit") == 0)
+		ramd_http_handle_security_audit(request, response);
+	else if (strcmp(request->path, "/api/v1/security/users") == 0)
+		ramd_http_handle_security_users(request, response);
 	else
 		ramd_http_set_error_response(response, RAMD_HTTP_404_NOT_FOUND, "Endpoint not found");
 }
@@ -562,6 +827,7 @@ ramd_http_handle_nodes_list(ramd_http_request_t *request, ramd_http_response_t *
 	ramd_cluster_t *cluster = &g_ramd_daemon->cluster;
 	char           nodes_array[RAMD_MAX_COMMAND_LENGTH] = "";
 	int            i;
+	size_t         current_len = 0;
 
 	(void) request;
 
@@ -575,6 +841,7 @@ ramd_http_handle_nodes_list(ramd_http_request_t *request, ramd_http_response_t *
 	{
 		const ramd_node_t *node = &cluster->nodes[i];
 		char              node_json[RAMD_MAX_COMMAND_LENGTH];
+		size_t            node_json_len;
 
 		snprintf(node_json, sizeof(node_json),
 				"%s{\n"
@@ -598,7 +865,17 @@ ramd_http_handle_nodes_list(ramd_http_request_t *request, ramd_http_response_t *
 				node->is_healthy ? "true" : "false",
 				(node->node_id == cluster->primary_node_id) ? "true" : "false");
 
-		strcat(nodes_array, node_json);
+		node_json_len = strlen(node_json);
+		if (current_len + node_json_len < sizeof(nodes_array) - 1)
+		{
+			strncat(nodes_array, node_json, sizeof(nodes_array) - current_len - 1);
+			current_len += node_json_len;
+		}
+		else
+		{
+			ramd_log_error("Node JSON too large for buffer");
+			break;
+		}
 	}
 
 	snprintf(json_buffer, sizeof(json_buffer),
@@ -1566,6 +1843,37 @@ void ramd_http_handle_metrics(ramd_http_request_t* request,
 	ramd_metrics_free_prometheus_output(prometheus_output);
 }
 
+void
+ramd_http_handle_prometheus_metrics(ramd_http_request_t* request, ramd_http_response_t* response)
+{
+	char prometheus_buffer[8192];
+	
+	if (request->method != RAMD_HTTP_GET)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED,
+		                             "Method not allowed");
+		return;
+	}
+	
+	/* Generate Prometheus metrics */
+	if (ramd_prometheus_handle_request(request->path, prometheus_buffer, sizeof(prometheus_buffer)) != 0)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR,
+		                             "Failed to generate Prometheus metrics");
+		return;
+	}
+	
+	/* Set response headers */
+	strncpy(response->content_type, "text/plain; version=0.0.4; charset=utf-8",
+	        sizeof(response->content_type) - 1);
+	
+	/* Set response body */
+	strncpy(response->body, prometheus_buffer, sizeof(response->body) - 1);
+	response->body[sizeof(response->body) - 1] = '\0';
+	response->body_length = strlen(response->body);
+	response->status = RAMD_HTTP_200_OK;
+}
+
 /*
  * Get number of healthy nodes
  */
@@ -1621,7 +1929,12 @@ ramd_http_handle_add_node(ramd_http_request_t* request, ramd_http_response_t* re
 	(void)address;
 
 	/* Get PostgreSQL connection */
-	PGconn* conn = ramd_conn_get_cached(0, "localhost", 5432, "postgres", "postgres", "");
+	PGconn* conn = ramd_conn_get_cached(g_ramd_daemon->config.node_id,
+									   g_ramd_daemon->config.hostname,
+									   g_ramd_daemon->config.postgresql_port,
+									   g_ramd_daemon->config.database_name,
+									   g_ramd_daemon->config.database_user,
+									   g_ramd_daemon->config.database_password);
 	if (!conn)
 	{
 		json_decref(json);
@@ -1678,7 +1991,12 @@ ramd_http_handle_remove_node(ramd_http_request_t* request, ramd_http_response_t*
 	json_decref(json);
 
 	/* Get PostgreSQL connection */
-	PGconn* conn = ramd_conn_get_cached(0, "localhost", 5432, "postgres", "postgres", "");
+	PGconn* conn = ramd_conn_get_cached(g_ramd_daemon->config.node_id,
+									   g_ramd_daemon->config.hostname,
+									   g_ramd_daemon->config.postgresql_port,
+									   g_ramd_daemon->config.database_name,
+									   g_ramd_daemon->config.database_user,
+									   g_ramd_daemon->config.database_password);
 	if (!conn)
 	{
 		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Database connection failed");
@@ -1712,7 +2030,12 @@ ramd_http_handle_cluster_health(ramd_http_request_t* request, ramd_http_response
 	}
 
 	/* Get PostgreSQL connection */
-	PGconn* conn = ramd_conn_get_cached(0, "localhost", 5432, "postgres", "postgres", "");
+	PGconn* conn = ramd_conn_get_cached(g_ramd_daemon->config.node_id,
+									   g_ramd_daemon->config.hostname,
+									   g_ramd_daemon->config.postgresql_port,
+									   g_ramd_daemon->config.database_name,
+									   g_ramd_daemon->config.database_user,
+									   g_ramd_daemon->config.database_password);
 	if (!conn)
 	{
 		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Database connection failed");
@@ -1770,5 +2093,109 @@ ramd_http_handle_cluster_notify(ramd_http_request_t* request, ramd_http_response
 		"{\"success\":true,\"message\":\"Notification received\",\"action\":\"%s\"}",
 		action);
 	
+	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_response);
+}
+
+/* Security handler functions */
+
+void
+ramd_http_handle_security_status(ramd_http_request_t* request, ramd_http_response_t* response)
+{
+	if (request->method != RAMD_HTTP_GET)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED, "Method not allowed");
+		return;
+	}
+
+	ramd_security_status_t status;
+	if (!ramd_security_get_status(&status))
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Failed to get security status");
+		return;
+	}
+
+	char json_response[1024];
+	snprintf(json_response, sizeof(json_response),
+		"{\"auth_enabled\":%s,\"ssl_enabled\":%s,\"rate_limiting_enabled\":%s,"
+		"\"audit_enabled\":%s,\"user_count\":%d,\"active_connections\":%d,\"blocked_ips\":%d}",
+		status.auth_enabled ? "true" : "false",
+		status.ssl_enabled ? "true" : "false",
+		status.rate_limiting_enabled ? "true" : "false",
+		status.audit_enabled ? "true" : "false",
+		status.user_count, status.active_connections, status.blocked_ips);
+
+	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_response);
+}
+
+void
+ramd_http_handle_security_audit(ramd_http_request_t* request, ramd_http_response_t* response)
+{
+	if (request->method != RAMD_HTTP_GET)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED, "Method not allowed");
+		return;
+	}
+
+	/* Get limit from query parameters */
+	int limit = 100;
+	char* limit_str = ramd_http_get_query_param(request->query_string, "limit");
+	if (limit_str)
+	{
+		limit = atoi(limit_str);
+		free(limit_str);
+		if (limit <= 0 || limit > 1000)
+			limit = 100;
+	}
+
+	ramd_audit_entry_t entries[1000];
+	int actual_count;
+	if (!ramd_security_get_audit_log(entries, limit, &actual_count))
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Failed to get audit log");
+		return;
+	}
+
+	/* Build JSON response */
+	json_t* audit_array = json_array();
+	for (int i = 0; i < actual_count; i++)
+	{
+		json_t* entry = json_object();
+		json_object_set_new(entry, "timestamp", json_integer(entries[i].timestamp));
+		json_object_set_new(entry, "client_ip", json_string(entries[i].client_ip));
+		json_object_set_new(entry, "user", json_string(entries[i].user));
+		json_object_set_new(entry, "action", json_string(entries[i].action));
+		json_object_set_new(entry, "resource", json_string(entries[i].resource));
+		json_object_set_new(entry, "result", json_integer(entries[i].result));
+		json_object_set_new(entry, "details", json_string(entries[i].details));
+		json_array_append_new(audit_array, entry);
+	}
+
+	char* json_string = json_dumps(audit_array, JSON_INDENT(2));
+	json_decref(audit_array);
+
+	if (!json_string)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_500_INTERNAL_ERROR, "Failed to serialize audit log");
+		return;
+	}
+
+	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_string);
+	free(json_string);
+}
+
+void
+ramd_http_handle_security_users(ramd_http_request_t* request, ramd_http_response_t* response)
+{
+	if (request->method != RAMD_HTTP_GET)
+	{
+		ramd_http_set_error_response(response, RAMD_HTTP_405_METHOD_NOT_ALLOWED, "Method not allowed");
+		return;
+	}
+
+	/* This is a simplified implementation - in production, you'd want proper user management */
+	char json_response[512];
+	snprintf(json_response, sizeof(json_response),
+		"{\"users\":[{\"username\":\"admin\",\"role\":\"admin\",\"active\":true}],\"total\":1}");
+
 	ramd_http_set_json_response(response, RAMD_HTTP_200_OK, json_response);
 }

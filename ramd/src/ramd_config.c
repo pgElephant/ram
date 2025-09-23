@@ -97,6 +97,26 @@ void ramd_config_set_defaults(ramd_config_t* config)
 	config->daemonize = false;
 	config->user[0] = '\0';
 	config->group[0] = '\0';
+	
+	/* Authentication defaults */
+	strncpy(config->auth_method, RAMD_DEFAULT_AUTH_METHOD, sizeof(config->auth_method) - 1);
+	config->auth_method[sizeof(config->auth_method) - 1] = '\0';
+	config->ssl_cert_file[0] = '\0';
+	config->ssl_key_file[0] = '\0';
+	config->ssl_ca_file[0] = '\0';
+	strncpy(config->ssl_mode, RAMD_DEFAULT_SSL_MODE, sizeof(config->ssl_mode) - 1);
+	config->ssl_mode[sizeof(config->ssl_mode) - 1] = '\0';
+	strncpy(config->kerberos_service, RAMD_DEFAULT_KERBEROS_SERVICE, sizeof(config->kerberos_service) - 1);
+	config->kerberos_service[sizeof(config->kerberos_service) - 1] = '\0';
+	config->ldap_server[0] = '\0';
+	config->ldap_port = RAMD_DEFAULT_LDAP_PORT;
+	config->ldap_basedn[0] = '\0';
+	config->ldap_binddn[0] = '\0';
+	config->ldap_bindpasswd[0] = '\0';
+	strncpy(config->pam_service, RAMD_DEFAULT_PAM_SERVICE, sizeof(config->pam_service) - 1);
+	config->pam_service[sizeof(config->pam_service) - 1] = '\0';
+	config->require_ssl = false;
+	config->verify_ssl = true;
 
 	strncpy(config->http_bind_address, RAMD_DEFAULT_HTTP_BIND_ADDRESS,
 	        sizeof(config->http_bind_address) - 1);
@@ -256,6 +276,74 @@ bool ramd_config_parse_key_value(ramd_config_t* config, const char* key,
 		strncpy(config->database_password, value,
 		        sizeof(config->database_password) - 1);
 		config->database_password[sizeof(config->database_password) - 1] = '\0';
+	}
+	/* Authentication settings */
+	else if (strcmp(key, "auth_method") == 0)
+	{
+		strncpy(config->auth_method, value, sizeof(config->auth_method) - 1);
+		config->auth_method[sizeof(config->auth_method) - 1] = '\0';
+	}
+	else if (strcmp(key, "ssl_cert_file") == 0)
+	{
+		strncpy(config->ssl_cert_file, value, sizeof(config->ssl_cert_file) - 1);
+		config->ssl_cert_file[sizeof(config->ssl_cert_file) - 1] = '\0';
+	}
+	else if (strcmp(key, "ssl_key_file") == 0)
+	{
+		strncpy(config->ssl_key_file, value, sizeof(config->ssl_key_file) - 1);
+		config->ssl_key_file[sizeof(config->ssl_key_file) - 1] = '\0';
+	}
+	else if (strcmp(key, "ssl_ca_file") == 0)
+	{
+		strncpy(config->ssl_ca_file, value, sizeof(config->ssl_ca_file) - 1);
+		config->ssl_ca_file[sizeof(config->ssl_ca_file) - 1] = '\0';
+	}
+	else if (strcmp(key, "ssl_mode") == 0)
+	{
+		strncpy(config->ssl_mode, value, sizeof(config->ssl_mode) - 1);
+		config->ssl_mode[sizeof(config->ssl_mode) - 1] = '\0';
+	}
+	else if (strcmp(key, "kerberos_service") == 0)
+	{
+		strncpy(config->kerberos_service, value, sizeof(config->kerberos_service) - 1);
+		config->kerberos_service[sizeof(config->kerberos_service) - 1] = '\0';
+	}
+	else if (strcmp(key, "ldap_server") == 0)
+	{
+		strncpy(config->ldap_server, value, sizeof(config->ldap_server) - 1);
+		config->ldap_server[sizeof(config->ldap_server) - 1] = '\0';
+	}
+	else if (strcmp(key, "ldap_port") == 0)
+	{
+		config->ldap_port = atoi(value);
+	}
+	else if (strcmp(key, "ldap_basedn") == 0)
+	{
+		strncpy(config->ldap_basedn, value, sizeof(config->ldap_basedn) - 1);
+		config->ldap_basedn[sizeof(config->ldap_basedn) - 1] = '\0';
+	}
+	else if (strcmp(key, "ldap_binddn") == 0)
+	{
+		strncpy(config->ldap_binddn, value, sizeof(config->ldap_binddn) - 1);
+		config->ldap_binddn[sizeof(config->ldap_binddn) - 1] = '\0';
+	}
+	else if (strcmp(key, "ldap_bindpasswd") == 0)
+	{
+		strncpy(config->ldap_bindpasswd, value, sizeof(config->ldap_bindpasswd) - 1);
+		config->ldap_bindpasswd[sizeof(config->ldap_bindpasswd) - 1] = '\0';
+	}
+	else if (strcmp(key, "pam_service") == 0)
+	{
+		strncpy(config->pam_service, value, sizeof(config->pam_service) - 1);
+		config->pam_service[sizeof(config->pam_service) - 1] = '\0';
+	}
+	else if (strcmp(key, "require_ssl") == 0)
+	{
+		config->require_ssl = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+	}
+	else if (strcmp(key, "verify_ssl") == 0)
+	{
+		config->verify_ssl = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
 	}
 	else if (strcmp(key, "cluster_name") == 0)
 	{

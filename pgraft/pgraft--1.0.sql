@@ -45,6 +45,12 @@ RETURNS boolean
 LANGUAGE C
 AS 'pgraft', 'pgraft_remove_node';
 
+-- Set debug logging level
+CREATE OR REPLACE FUNCTION pgraft_set_debug(enabled boolean)
+RETURNS boolean
+LANGUAGE C
+AS 'pgraft', 'pgraft_set_debug';
+
 -- Get current Raft state
 CREATE OR REPLACE FUNCTION pgraft_get_state()
 RETURNS text

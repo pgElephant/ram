@@ -62,6 +62,16 @@ extern void ramd_log(ramd_log_level_t level, const char* file, int line,
 #define ramd_log_fatal(...)                                                    \
 	ramd_log(RAMD_LOG_LEVEL_FATAL, "", 0, "", __VA_ARGS__)
 
+/* Professional status logging macros */
+#define ramd_log_success(...) \
+	ramd_log(RAMD_LOG_LEVEL_INFO, "", 0, "", "✓ " __VA_ARGS__)
+#define ramd_log_failure(...) \
+	ramd_log(RAMD_LOG_LEVEL_ERROR, "", 0, "", "✗ " __VA_ARGS__)
+#define ramd_log_operation(...) \
+	ramd_log(RAMD_LOG_LEVEL_INFO, "", 0, "", "→ " __VA_ARGS__)
+#define ramd_log_status(...) \
+	ramd_log(RAMD_LOG_LEVEL_NOTICE, "", 0, "", "● " __VA_ARGS__)
+
 /* Log level utilities */
 extern const char* ramd_logging_level_to_string(ramd_log_level_t level);
 extern ramd_log_level_t ramd_logging_string_to_level(const char* level_str);

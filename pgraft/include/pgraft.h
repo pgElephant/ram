@@ -133,6 +133,8 @@ extern Datum pgraft_init(PG_FUNCTION_ARGS);
 extern Datum pgraft_start(PG_FUNCTION_ARGS);
 extern Datum pgraft_stop(PG_FUNCTION_ARGS);
 extern Datum pgraft_add_node(PG_FUNCTION_ARGS);
+extern Datum pgraft_add_node_notify(PG_FUNCTION_ARGS);
+extern Datum pgraft_set_debug(PG_FUNCTION_ARGS);
 extern Datum pgraft_remove_node(PG_FUNCTION_ARGS);
 extern Datum pgraft_get_state(PG_FUNCTION_ARGS);
 extern Datum pgraft_get_leader(PG_FUNCTION_ARGS);

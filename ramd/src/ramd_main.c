@@ -24,6 +24,11 @@
 #include "ramd_config_reload.h"
 #include "ramd_maintenance.h"
 #include "ramd_conn.h"
+#include "ramd_prometheus.h"
+#include "ramd_backup.h"
+#include "ramd_sync_standbys.h"
+#include "ramd_api_enhanced.h"
+#include "ramd_postgresql_params.h"
 
 ramd_daemon_t *g_ramd_daemon = NULL;
 PGconn       *g_conn = NULL;
@@ -237,6 +242,25 @@ ramd_init(const char *config_file)
 	}
 
 	ramd_failover_context_init(&g_ramd_daemon->failover_context);
+
+	/* Initialize Prometheus metrics */
+	ramd_prometheus_init();
+
+	/* Initialize backup system */
+	if (!ramd_backup_init())
+	{
+		ramd_log_error("Backup system initialization failure");
+		ramd_cleanup();
+		return false;
+	}
+
+	/* Initialize synchronous standbys system */
+	if (!ramd_sync_standbys_init())
+	{
+		ramd_log_error("Synchronous standbys initialization failure");
+		ramd_cleanup();
+		return false;
+	}
 
 	if (g_ramd_daemon->config.http_api_enabled)
 	{

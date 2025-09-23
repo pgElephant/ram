@@ -462,7 +462,9 @@ bool ramd_config_reload_cluster(const ramd_config_t* old_config,
 
 		if (g_ramd_daemon)
 		{
-			strcpy(g_ramd_daemon->cluster.cluster_name, new_config->cluster_name);
+			strncpy(g_ramd_daemon->cluster.cluster_name, new_config->cluster_name, 
+			        sizeof(g_ramd_daemon->cluster.cluster_name) - 1);
+			g_ramd_daemon->cluster.cluster_name[sizeof(g_ramd_daemon->cluster.cluster_name) - 1] = '\0';
 		}
 	}
 

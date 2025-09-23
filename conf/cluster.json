@@ -1,0 +1,285 @@
+{
+  "_metadata": {
+    "description": "RAM PostgreSQL Cluster Configuration",
+    "copyright": "Copyright (c) 2024-2025, pgElephant, Inc.",
+    "format": "JSON",
+    "version": "1.0"
+  },
+  
+  "cluster": {
+    "name": "ram_cluster",
+    "version": "1.0",
+    "description": "RAM PostgreSQL High Availability Cluster",
+    "environment": "development",
+    "region": "us-west-1",
+    "datacenter": "dc1"
+  },
+  
+  "nodes": [
+    {
+      "id": 1,
+      "name": "primary",
+      "hostname": "localhost",
+      "ip": "127.0.0.1",
+      "port": 5432,
+      "role": "primary",
+      "state": "running",
+      "priority": 100,
+      "user": "postgres",
+      "password": "postgres",
+      "database": "postgres",
+      "data_dir": "/tmp/postgres_data_1",
+      "log_dir": "/tmp/postgres_logs_1",
+      "bin_dir": "/usr/local/pgsql.17/bin",
+      "config_file": "/tmp/postgres_data_1/postgresql.conf",
+      "pgraft_port": 7400,
+      "ramd_port": 8008,
+      "enabled": true,
+      "tags": ["primary", "master"],
+      "metadata": {
+        "zone": "us-west-1a",
+        "instance_type": "t3.micro",
+        "storage_type": "gp2"
+      }
+    },
+    {
+      "id": 2,
+      "name": "replica1",
+      "hostname": "localhost",
+      "ip": "127.0.0.1",
+      "port": 5433,
+      "role": "replica",
+      "state": "running",
+      "priority": 50,
+      "user": "postgres",
+      "password": "postgres",
+      "database": "postgres",
+      "data_dir": "/tmp/postgres_data_2",
+      "log_dir": "/tmp/postgres_logs_2",
+      "bin_dir": "/usr/local/pgsql.17/bin",
+      "config_file": "/tmp/postgres_data_2/postgresql.conf",
+      "pgraft_port": 7401,
+      "ramd_port": 8009,
+      "enabled": true,
+      "tags": ["replica", "standby"],
+      "metadata": {
+        "zone": "us-west-1b",
+        "instance_type": "t3.micro",
+        "storage_type": "gp2"
+      }
+    },
+    {
+      "id": 3,
+      "name": "replica2",
+      "hostname": "localhost",
+      "ip": "127.0.0.1",
+      "port": 5434,
+      "role": "replica",
+      "state": "running",
+      "priority": 50,
+      "user": "postgres",
+      "password": "postgres",
+      "database": "postgres",
+      "data_dir": "/tmp/postgres_data_3",
+      "log_dir": "/tmp/postgres_logs_3",
+      "bin_dir": "/usr/local/pgsql.17/bin",
+      "config_file": "/tmp/postgres_data_3/postgresql.conf",
+      "pgraft_port": 7402,
+      "ramd_port": 8010,
+      "enabled": true,
+      "tags": ["replica", "standby"],
+      "metadata": {
+        "zone": "us-west-1c",
+        "instance_type": "t3.micro",
+        "storage_type": "gp2"
+      }
+    }
+  ],
+  
+  "postgresql": {
+    "version": "17.0",
+    "shared_preload_libraries": "pgraft",
+    "wal_level": "replica",
+    "max_wal_senders": 10,
+    "max_replication_slots": 10,
+    "hot_standby": true,
+    "synchronous_commit": "on",
+    "synchronous_standby_names": "replica1,replica2",
+    "archive_mode": "on",
+    "archive_command": "test ! -f /tmp/pg_wal_archive/%f && cp %p /tmp/pg_wal_archive/%f",
+    "archive_timeout": "300s",
+    "checkpoint_timeout": "5min",
+    "checkpoint_completion_target": 0.9,
+    "wal_keep_size": "1GB",
+    "max_connections": 100,
+    "shared_buffers": "128MB",
+    "effective_cache_size": "512MB",
+    "maintenance_work_mem": "64MB",
+    "checkpoint_segments": 32,
+    "wal_buffers": "16MB",
+    "default_statistics_target": 100,
+    "random_page_cost": 1.1,
+    "effective_io_concurrency": 1,
+    "work_mem": "4MB",
+    "min_wal_size": "1GB",
+    "max_wal_size": "4GB"
+  },
+  
+  "raft": {
+    "cluster_id": "ram_cluster",
+    "heartbeat_interval_ms": 1000,
+    "election_timeout_ms": 5000,
+    "snapshot_interval_ms": 30000,
+    "max_snapshot_count": 3,
+    "log_level": "info",
+    "data_dir": "/tmp/pgraft_data",
+    "network": {
+      "bind_address": "0.0.0.0",
+      "advertise_address": "",
+      "port_range_start": 7400,
+      "port_range_end": 7500
+    }
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "interval_ms": 5000,
+    "health_check_timeout_ms": 10000,
+    "failover_timeout_ms": 30000,
+    "recovery_timeout_ms": 300000,
+    "metrics": {
+      "enabled": true,
+      "port": 9090,
+      "path": "/metrics",
+      "retention_days": 30
+    },
+    "alerting": {
+      "enabled": false,
+      "webhook_url": "",
+      "email": "",
+      "slack": ""
+    }
+  },
+  
+  "backup": {
+    "enabled": true,
+    "tool": "pgbackrest",
+    "repository": "/var/lib/ramd/backups",
+    "retention_days": 7,
+    "compression": true,
+    "encryption": false,
+    "schedule": "0 2 * * *",
+    "pre_backup_script": "",
+    "post_backup_script": ""
+  },
+  
+  "security": {
+    "ssl_enabled": false,
+    "ssl_cert_file": "",
+    "ssl_key_file": "",
+    "ssl_ca_file": "",
+    "authentication": {
+      "method": "password",
+      "password_file": "",
+      "ldap_server": "",
+      "ldap_bind_dn": "",
+      "ldap_bind_password": ""
+    },
+    "authorization": {
+      "enabled": false,
+      "rbac_config": ""
+    }
+  },
+  
+  "networking": {
+    "cluster_network": "10.0.0.0/24",
+    "replication_network": "10.0.1.0/24",
+    "management_network": "10.0.2.0/24",
+    "load_balancer": {
+      "enabled": false,
+      "type": "haproxy",
+      "port": 5432,
+      "config_file": "/etc/haproxy/haproxy.cfg"
+    }
+  },
+  
+  "maintenance": {
+    "enabled": true,
+    "drain_timeout_ms": 30000,
+    "backup_before": true,
+    "notify_before": true,
+    "notify_after": true,
+    "schedule": "maintenance_window"
+  },
+  
+  "failover": {
+    "auto_failover_enabled": true,
+    "failover_timeout_ms": 30000,
+    "recovery_timeout_ms": 300000,
+    "promotion_timeout_ms": 60000,
+    "demotion_timeout_ms": 60000,
+    "check_quorum": true,
+    "pre_vote": true,
+    "priority_based": true
+  },
+  
+  "replication": {
+    "synchronous_replication": true,
+    "synchronous_standby_names": "replica1,replica2",
+    "num_sync_standbys": 2,
+    "sync_replication_timeout_ms": 10000,
+    "enforce_sync_standbys": true,
+    "any_n_sync_standbys": false,
+    "standby_names": "replica1,replica2"
+  },
+  
+  "logging": {
+    "level": "info",
+    "destinations": {
+      "console": true,
+      "syslog": false,
+      "file": true
+    },
+    "file": {
+      "path": "/var/log/ramd",
+      "rotation_size_mb": 100,
+      "rotation_count": 5,
+      "compression": true
+    }
+  },
+  
+  "kubernetes": {
+    "enabled": false,
+    "namespace": "postgresql",
+    "context": "",
+    "operator": {
+      "enabled": false,
+      "image": "pgraft/operator:latest",
+      "replicas": 1
+    },
+    "helm": {
+      "enabled": false,
+      "chart": "pgraft",
+      "values_file": "values.yaml"
+    }
+  },
+  
+  "docker": {
+    "enabled": false,
+    "network": "ram_network",
+    "compose_file": "docker-compose.yml",
+    "images": {
+      "postgresql": "postgres:17",
+      "ramd": "pgraft/ramd:latest",
+      "ramctrl": "pgraft/ramctrl:latest"
+    }
+  },
+  
+  "development": {
+    "debug_mode": false,
+    "profiling_enabled": false,
+    "memory_debugging": false,
+    "test_mode": false,
+    "mock_external_services": false
+  }
+}

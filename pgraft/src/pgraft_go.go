@@ -49,7 +49,26 @@ var (
 	// Message handling - integrated with comm module
 	messageChan chan raftpb.Message
 
-	// Replication state
+	// Debug logging control
+	debugEnabled bool = false
+)
+
+// Debug logging function that respects log level
+func debugLog(format string, args ...interface{}) {
+	if debugEnabled {
+		log.Printf("pgraft: "+format, args...)
+	}
+}
+
+// Set debug logging level
+//
+//export pgraft_go_set_debug
+func pgraft_go_set_debug(enabled C.int) {
+	debugEnabled = (enabled != 0)
+}
+
+// Replication state
+var (
 	replicationState struct {
 		lastAppliedIndex  uint64
 		lastSnapshotIndex uint64
@@ -114,18 +133,15 @@ type ClusterState struct {
 
 //export pgraft_go_init
 func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
-	log.Printf("pgraft: pgraft_go_init called with nodeID=%d, address=%s, port=%d",
-		nodeID, C.GoString(address), int(port))
+	debugLog("init: nodeID=%d, address=%s, port=%d", nodeID, C.GoString(address), int(port))
 
 	raftMutex.Lock()
 	defer raftMutex.Unlock()
-	log.Printf("pgraft: acquired mutex lock in init")
 
 	if atomic.LoadInt32(&initialized) == 1 {
-		log.Printf("pgraft: already initialized")
+		debugLog("init: already initialized, skipping")
 		return 0 // Already initialized
 	}
-	log.Printf("pgraft: initialization check passed")
 
 	// Initialize storage
 	raftStorage = raft.NewMemoryStorage()
@@ -173,23 +189,23 @@ func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
 
 	// Create the actual Raft node with peers
 	raftNode = raft.StartNode(raftConfig, peers)
-	log.Printf("pgraft: Raft node created successfully with %d peers", len(peers))
+	debugLog("init: Raft node created with %d peers", len(peers))
 
 	// Start the background processing loop
 	raftCtx, raftCancel = context.WithCancel(context.Background())
 	go processRaftReady()
-	log.Printf("pgraft: background processing started")
+	debugLog("init: background processing started")
 
 	// Start the ticker for Raft operations
 	raftTicker = time.NewTicker(100 * time.Millisecond)
 	go processRaftTicker()
-	log.Printf("pgraft: Raft ticker started")
+	debugLog("init: Raft ticker started")
 
 	// Force an immediate election attempt for single-node cluster
 	go func() {
 		time.Sleep(1 * time.Second) // Wait a bit for everything to initialize
 		if raftNode != nil {
-			log.Printf("pgraft: attempting immediate election for single-node cluster")
+			debugLog("init: attempting immediate election for single-node cluster")
 			raftNode.Campaign(raftCtx)
 		}
 	}()
@@ -208,51 +224,47 @@ func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
 	startupTime = time.Now()
 	healthStatus = "initializing"
 
-	log.Printf("pgraft: setting initialized flag to 1")
 	atomic.StoreInt32(&initialized, 1)
+	debugLog("init: completed successfully for node %d at %s:%d", nodeID, C.GoString(address), int(port))
 
-	log.Printf("pgraft: Go Raft system initialized for node %d at %s:%d",
-		nodeID, C.GoString(address), int(port))
-
-	log.Printf("pgraft: init completed successfully - returning 0")
+	debugLog("init: returning success")
 	return 0
 }
 
 //export pgraft_go_start
 func pgraft_go_start() C.int {
-	log.Printf("pgraft: pgraft_go_start called")
+	debugLog("start: called")
 
 	raftMutex.Lock()
 	defer raftMutex.Unlock()
-	log.Printf("pgraft: acquired mutex lock")
 
 	if atomic.LoadInt32(&running) == 1 {
-		log.Printf("pgraft: already running")
+		debugLog("start: already running, skipping")
 		return 0
 	}
 
 	// Start the Raft node if it exists
 	if raftNode != nil {
-		log.Printf("pgraft: starting Raft node")
+		debugLog("start: starting Raft node")
 
-		// For single-node cluster, force an immediate election
-		log.Printf("pgraft: forcing immediate election for single-node cluster")
+		// Force an immediate election for any cluster size
+		debugLog("start: forcing immediate election")
 		go func() {
 			time.Sleep(500 * time.Millisecond) // Wait a bit
-			log.Printf("pgraft: calling Campaign for immediate election")
+			debugLog("start: calling Campaign for immediate election")
 			raftNode.Campaign(raftCtx)
 		}()
 
-		log.Printf("pgraft: Raft node ready for leader election")
+		debugLog("start: Raft node ready for leader election")
 	} else {
-		log.Printf("pgraft: ERROR - Raft node is nil, cannot start")
+		debugLog("start: ERROR - Raft node is nil, cannot start")
 	}
 
 	// Set running state
 	atomic.StoreInt32(&running, 1)
-	log.Printf("pgraft: set running state to 1")
+	debugLog("start: set running state to 1")
 
-	log.Printf("pgraft: Go Raft system start completed successfully - returning 0")
+	debugLog("start: completed successfully")
 	return 0
 }
 
@@ -343,10 +355,37 @@ func pgraft_go_add_peer(nodeID C.int, address *C.char, port C.int) C.int {
 	nodes[uint64(nodeID)] = nodeAddr
 	log.Printf("pgraft: added node to map: %d -> %s", nodeID, nodeAddr)
 
-	// For now, skip the configuration change to avoid crashes
-	// We'll implement this later when the basic functionality is stable
-	log.Printf("pgraft: skipping configuration change for now to avoid crashes")
-	log.Printf("pgraft: added peer node %d at %s (configuration change deferred)", nodeID, nodeAddr)
+	// Add peer to Raft cluster configuration
+	if raftNode != nil {
+		log.Printf("pgraft: adding peer to Raft cluster configuration")
+
+		// Create a configuration change proposal
+		cc := raftpb.ConfChange{
+			Type:    raftpb.ConfChangeAddNode,
+			NodeID:  uint64(nodeID),
+			Context: []byte(nodeAddr),
+		}
+
+		// Propose the configuration change
+		log.Printf("pgraft: proposing configuration change for node %d", nodeID)
+		if err := raftNode.ProposeConfChange(raftCtx, cc); err != nil {
+			log.Printf("pgraft: ERROR proposing configuration change: %v", err)
+			return -1
+		}
+
+		log.Printf("pgraft: configuration change proposed successfully for node %d", nodeID)
+
+		// Trigger leader election after adding peer
+		go func() {
+			time.Sleep(1 * time.Second) // Wait for configuration change to be applied
+			log.Printf("pgraft: triggering leader election after adding peer")
+			raftNode.Campaign(raftCtx)
+		}()
+	} else {
+		log.Printf("pgraft: WARNING - Raft node is nil, cannot add peer to configuration")
+	}
+
+	log.Printf("pgraft: added peer node %d at %s (configuration change applied)", nodeID, nodeAddr)
 
 	return 0
 }

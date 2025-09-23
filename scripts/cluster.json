@@ -1,0 +1,105 @@
+{
+  "cluster": {
+    "name": "ram_cluster",
+    "description": "PostgreSQL RAM Cluster with Raft Consensus"
+  },
+  "paths": {
+    "root_dir": "/Users/postgres/pgelephant/pge/ram",
+    "pg_bin": "/usr/local/pgsql.17/bin",
+    "pg_log": "/tmp/pglogs"
+  },
+  
+  "nodes": {
+    "n1": {
+      "name": "n1",
+      "ip": "127.0.0.1",
+      "ramd": {
+        "port": 8008,
+        "election_timeout": 1000,
+        "heartbeat_interval": 100,
+        "max_log_entries": 10000
+      
+      },
+      "pg": {
+        "data_dir": "/tmp/pgdata2",
+        "db": "postgres",
+        "user": "postgres",
+        "password": "",
+        "port": 5432,
+        "shared_preload_libraries": "pgraft"
+      }
+    },
+    "n2": {
+        "name": "n2",
+        "ip": "127.0.0.1",
+        "ramd": {
+          "port": 8009,
+          "election_timeout": 1000,
+          "heartbeat_interval": 100,
+          "max_log_entries": 10000
+        },
+        "pg": {
+          "data_dir": "/tmp/pgdata3",
+          "port": 5433,
+          "db": "postgres",
+          "user": "postgres",
+          "password": "",
+           "shared_preload_libraries": "pgraft"
+        }
+      },
+    "n3": {
+        "name": "n3",
+        "ip": "127.0.0.1",
+        "ramd": {
+          "port": 8010,
+          "election_timeout": 1000,
+          "heartbeat_interval": 100,
+          "max_log_entries": 10000
+        },
+        "pg": {
+          "data_dir": "/tmp/pgdata4",
+          "port": 5434,
+          "db": "postgres",
+          "user": "postgres",
+          "password": "",
+          "shared_preload_libraries": "pgraft"
+        }
+      },
+    "n4": {
+        "name": "n4",
+        "ip": "127.0.0.1",
+        "ramd": {
+          "port": 8011,
+          "election_timeout": 1000,
+          "heartbeat_interval": 100,
+          "max_log_entries": 10000
+        },
+        "pg": {
+          "data_dir": "/tmp/pgdata5",
+          "port": 5435,
+          "db": "postgres",
+          "user": "postgres",
+          "password": "",
+          "shared_preload_libraries": "pgraft"
+        }
+      },
+    "n5": {
+        "name": "n5",
+        "ip": "127.0.0.1",
+        "ramd": {
+          "port": 8012,
+          "election_timeout": 1000,
+          "heartbeat_interval": 100,
+          "max_log_entries": 10000
+        },
+        "pg": {
+          "data_dir": "/tmp/pgdata6",
+          "port": 5436,
+          "db": "postgres",
+          "user": "postgres",
+          "password": "",
+          "shared_preload_libraries": "pgraft"
+        }
+      }
+  }
+}
