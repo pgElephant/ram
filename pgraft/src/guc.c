@@ -14,28 +14,28 @@
 #include "utils/elog.h"
 
 /* Core GUC variables */
-int pgraft_node_id = 1;
-int pgraft_port = 5432;
-char *pgraft_address = NULL;
-int pgraft_log_level = 1;
-int pgraft_heartbeat_interval = 1000;
-int pgraft_election_timeout = 5000;
-bool pgraft_worker_enabled = true;
-int pgraft_worker_interval = 1000;
-char *pgraft_cluster_name = NULL;
-int pgraft_cluster_size = 3;
-bool pgraft_enable_auto_cluster_formation = true;
+int			pgraft_node_id = 1;
+int			pgraft_port = 0;	/* Will be set from configuration */
+char	   *pgraft_address = NULL;
+int			pgraft_log_level = 1;
+int			pgraft_heartbeat_interval = 1000;
+int			pgraft_election_timeout = 5000;
+bool		pgraft_worker_enabled = true;
+int			pgraft_worker_interval = 1000;
+char	   *pgraft_cluster_name = NULL;
+int			pgraft_cluster_size = 3;
+bool		pgraft_enable_auto_cluster_formation = true;
 
 /* Additional GUCs for cluster management */
-char *pgraft_node_name = NULL;
-char *pgraft_node_ip = NULL;
-bool pgraft_is_primary = false;
-int pgraft_health_period_ms = 5000;
-bool pgraft_health_verbose = false;
+char	   *pgraft_node_name = NULL;
+char	   *pgraft_node_ip = NULL;
+bool		pgraft_is_primary = false;
+int			pgraft_health_period_ms = 5000;
+bool		pgraft_health_verbose = false;
 
 /* Metrics and debugging GUCs */
-bool pgraft_metrics_enabled = true;
-bool pgraft_trace_enabled = false;
+bool		pgraft_metrics_enabled = true;
+bool		pgraft_trace_enabled = false;
 
 /*
  * Register GUC variables
@@ -57,29 +57,29 @@ pgraft_register_guc_variables(void)
                            NULL,
                            NULL);
 
-    DefineCustomIntVariable("pgraft.port",
-                           "Port for pgraft communication",
-                           NULL,
-                           &pgraft_port,
-                           5432,
-                           1,
-                           65535,
-                           PGC_SUSET,
-                           0,
-                           NULL,
-                           NULL,
-                           NULL);
+	DefineCustomIntVariable("pgraft.port",
+							"Port for pgraft communication",
+							NULL,
+							&pgraft_port,
+							0,	/* Default to 0, will be set from config */
+							1,
+							65535,
+							PGC_SUSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
 
-    DefineCustomStringVariable("pgraft.address",
-                              "Address for pgraft communication",
-                              NULL,
-                              &pgraft_address,
-                              "localhost",
-                              PGC_SUSET,
-                              0,
-                              NULL,
-                              NULL,
-                              NULL);
+	DefineCustomStringVariable("pgraft.address",
+							   "Address for pgraft communication",
+							   NULL,
+							   &pgraft_address,
+							   NULL,	/* No default, must be configured */
+							   PGC_SUSET,
+							   0,
+							   NULL,
+							   NULL,
+							   NULL);
 
     DefineCustomIntVariable("pgraft.log_level",
                            "Log level for pgraft (0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR)",
@@ -192,16 +192,16 @@ pgraft_register_guc_variables(void)
                               NULL,
                               NULL);
 
-    DefineCustomStringVariable("pgraft.node_ip",
-                              "Node IP address",
-                              NULL,
-                              &pgraft_node_ip,
-                              "127.0.0.1",
-                              PGC_SUSET,
-                              0,
-                              NULL,
-                              NULL,
-                              NULL);
+	DefineCustomStringVariable("pgraft.node_ip",
+							   "Node IP address",
+							   NULL,
+							   &pgraft_node_ip,
+							   NULL,	/* No default, must be configured */
+							   PGC_SUSET,
+							   0,
+							   NULL,
+							   NULL,
+							   NULL);
 
     DefineCustomBoolVariable("pgraft.is_primary",
                             "Whether this node is a primary",

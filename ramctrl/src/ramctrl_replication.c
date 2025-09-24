@@ -273,7 +273,7 @@ bool ramctrl_wal_e_create_backup(void)
 
 	/* Build WAL-E backup command */
 	snprintf(command, sizeof(command),
-	         "%s backup-push /var/lib/postgresql/data",
+	         "%s backup-push {{VAR_DIR}}lib/postgresql/data",
 	         g_replication_config.wal_e_config.wal_e_path);
 
 	/* Execute backup command */
@@ -297,7 +297,7 @@ bool ramctrl_wal_e_restore_backup(const char* backup_name)
 
 	/* Build WAL-E restore command */
 	snprintf(command, sizeof(command),
-	         "%s backup-fetch /var/lib/postgresql/data %s",
+	         "%s backup-fetch {{VAR_DIR}}lib/postgresql/data %s",
 	         g_replication_config.wal_e_config.wal_e_path, backup_name);
 
 	/* Execute restore command */

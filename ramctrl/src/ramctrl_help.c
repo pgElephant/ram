@@ -234,7 +234,7 @@ void ramctrl_help_show_examples(void)
 	printf("Examples:\n\n");
 	printf("Basic operations:\n");
 	printf("  ramctrl status\n");
-	printf("  ramctrl start --config /etc/ramd/production.conf\n");
+	printf("  ramctrl start --config {{ETC_DIR}}ramd/production.conf\n");
 	printf("  ramctrl show cluster --verbose\n\n");
 	printf("Cluster management:\n");
 	printf("  ramctrl promote\n");
@@ -255,12 +255,12 @@ void ramctrl_help_show_configuration(void)
 {
 	printf("Configuration:\n\n");
 	printf("Configuration files:\n");
-	printf("  /etc/ramd/ramd.conf      System-wide configuration\n");
+	printf("  {{ETC_DIR}}ramd/ramd.conf      System-wide configuration\n");
 	printf("  ~/.ramctrl/config        User configuration\n");
 	printf("  --config FILE            Custom configuration file\n\n");
 	printf("Environment variables:\n");
 	printf("  RAMCTRL_CONFIG      Override default config file\n");
-	printf("  RAMCTRL_API_URL     ramd API endpoint URL (default: http://127.0.0.1:8008)\n");
+	printf("  RAMCTRL_API_URL     ramd API endpoint URL (default: http://127.0.0.1:{{API_PORT}})\n");
 	printf("\n");
 	printf("Configuration sections:\n");
 	printf("  [cluster]           Cluster identification and settings\n");
@@ -294,7 +294,7 @@ void ramctrl_help_show_troubleshooting(void)
 	printf("  ramctrl show nodes\n");
 	printf("  ramctrl logs --lines 100\n\n");
 	printf("Log locations:\n");
-	printf("  /var/log/ramd/ramd.log\n");
+	printf("  {{VAR_DIR}}log/ramd/ramd.log\n");
 	printf("  PostgreSQL logs (check postgresql.conf)\n");
 }
 

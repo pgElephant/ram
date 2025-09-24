@@ -18,4 +18,5 @@ ramctrl_SOURCES = \
   src/ramctrl_help.c \
   src/ramctrl_show.c \
   src/ramctrl_formation.c \
-  src/ramctrl_security.c
+  src/ramctrl_security.c \
+  src/ramctrl_missing_functions.c

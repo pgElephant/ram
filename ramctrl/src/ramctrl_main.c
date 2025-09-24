@@ -8,22 +8,22 @@
  *-------------------------------------------------------------------------
  */
 
+#include <errno.h>
+#include <getopt.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <signal.h>
-#include <errno.h>
 #include <sys/ioctl.h>
 #include <termios.h>
+#include <unistd.h>
 
 #include "ramctrl.h"
 #include "ramctrl_daemon.h"
 #include "ramctrl_defaults.h"
-#include "ramctrl_watch.h"
 #include "ramctrl_help.h"
 #include "ramctrl_show.h"
+#include "ramctrl_watch.h"
 
 /* Professional CLI utilities */
 static void ramctrl_print_banner(void);
@@ -33,16 +33,17 @@ static void ramctrl_print_progress(const char* message);
 /* Enhanced error handling */
 static void ramctrl_validate_api_url(ramctrl_context_t* ctx);
 
-void ramctrl_usage(const char* progname)
+void
+ramctrl_usage(const char *progname)
 {
 	ramctrl_print_banner();
-	
+
 	printf("USAGE:\n");
 	printf("  %s [OPTIONS] COMMAND [ARGS...]\n\n", progname);
-	
+
 	printf("GLOBAL OPTIONS:\n");
 	printf("  Connection Options:\n");
-	printf("    -u, --api-url URL       ramd API endpoint (default: http://127.0.0.1:8008)\n");
+	printf("    -u, --api-url URL       ramd API endpoint (default: http://127.0.0.1:{{API_PORT}})\n");
 	printf("    -c, --config FILE       Configuration file path\n");
 	printf("\n");
 	printf("  Output Options:\n");
@@ -124,8 +125,8 @@ void ramctrl_usage(const char* progname)
 	printf("  %s --force remove-node 3               # Skip confirmation\n", progname);
 	printf("\n");
 	printf("  # Configuration\n");
-	printf("  %s -u http://ramd.example.com:8008 status    # Connect to remote ramd\n", progname);
-	printf("  %s -c /etc/ramctrl.conf status               # Use custom config\n", progname);
+	printf("  %s -u http://ramd.example.com:{{API_PORT}} status    # Connect to remote ramd\n", progname);
+	printf("  %s -c {{ETC_DIR}}ramctrl.conf status               # Use custom config\n", progname);
 	printf("\n");
 	printf("OUTPUT FORMATS:\n");
 	printf("  Default: Human-readable text with colors and formatting\n");
@@ -154,7 +155,7 @@ bool ramctrl_init(ramctrl_context_t* ctx)
 	memset(ctx, 0, sizeof(ramctrl_context_t));
 
 	/* Set defaults */
-	strncpy(ctx->api_url, "http://127.0.0.1:8008", sizeof(ctx->api_url) - 1);
+	strncpy(ctx->api_url, "http://127.0.0.1:{{API_PORT}}", sizeof(ctx->api_url) - 1);
 	ctx->api_url[sizeof(ctx->api_url) - 1] = '\0';
 	ctx->timeout_seconds = RAMCTRL_DEFAULT_TIMEOUT_SECONDS;
 	ctx->verbose = false;

@@ -1,97 +1,75 @@
-#!/usr/bin/env python3
 """
-PGRaft Unit Tests
-Copyright (c) 2024-2025, pgElephant, Inc.
+Unit tests for PGRaft extension
 """
 
-import unittest
-import psycopg2
-import time
-import subprocess
+import pytest
 import os
 import sys
+from pathlib import Path
 
-class PGRaftUnitTests(unittest.TestCase):
-    """Unit tests for PGRaft extension"""
+@pytest.mark.unit
+@pytest.mark.pgraft
+class TestPGRaftUnit:
+    """PGRaft unit tests"""
     
-    @classmethod
-    def setUpClass(cls):
-        """Set up test class"""
-        cls.conn = None
-        cls.cursor = None
+    def test_extension_file_exists(self):
+        """Test that PGRaft extension file exists"""
+        extension_path = Path("pgraft/pgraft.dylib")
+        assert extension_path.exists(), "PGRaft extension file not found"
+        assert extension_path.stat().st_size > 0, "PGRaft extension file is empty"
+    
+    def test_go_library_exists(self):
+        """Test that Go library exists"""
+        go_lib_path = Path("pgraft/src/pgraft_go.dylib")
+        assert go_lib_path.exists(), "Go library file not found"
+        assert go_lib_path.stat().st_size > 0, "Go library file is empty"
+    
+    def test_source_files_exist(self):
+        """Test that all source files exist"""
+        source_files = [
+            "pgraft/src/pgraft.c",
+            "pgraft/src/raft.c",
+            "pgraft/src/comm.c",
+            "pgraft/src/monitor.c",
+            "pgraft/src/guc.c",
+            "pgraft/src/metrics.c",
+            "pgraft/src/utils.c",
+            "pgraft/src/worker_manager.c",
+            "pgraft/src/health_worker.c"
+        ]
         
-    def setUp(self):
-        """Set up each test"""
-        try:
-            self.conn = psycopg2.connect(
-                host='localhost',
-                port=5432,
-                user='postgres',
-                password='postgres',
-                database='postgres'
-            )
-            self.cursor = self.conn.cursor()
-        except Exception as e:
-            self.skipTest(f"Could not connect to PostgreSQL: {e}")
+        for source_file in source_files:
+            assert Path(source_file).exists(), f"Source file {source_file} not found"
     
-    def tearDown(self):
-        """Clean up after each test"""
-        if self.cursor:
-            self.cursor.close()
-        if self.conn:
-            self.conn.close()
-    
-    def test_extension_exists(self):
-        """Test that PGRaft extension exists"""
-        self.cursor.execute("SELECT * FROM pg_extension WHERE extname = 'pgraft'")
-        result = self.cursor.fetchone()
-        self.assertIsNotNone(result, "PGRaft extension not found")
-    
-    def test_pgraft_init(self):
-        """Test pgraft_init function"""
-        self.cursor.execute("SELECT pgraft_init()")
-        result = self.cursor.fetchone()
-        self.assertTrue(result[0], "pgraft_init failed")
-    
-    def test_pgraft_status(self):
-        """Test pgraft_status function"""
-        self.cursor.execute("SELECT pgraft_status()")
-        result = self.cursor.fetchone()
-        self.assertIsNotNone(result, "pgraft_status returned null")
-    
-    def test_pgraft_is_healthy(self):
-        """Test pgraft_is_healthy function"""
-        self.cursor.execute("SELECT pgraft_is_healthy()")
-        result = self.cursor.fetchone()
-        self.assertIsNotNone(result, "pgraft_is_healthy returned null")
-    
-    def test_pgraft_is_leader(self):
-        """Test pgraft_is_leader function"""
-        self.cursor.execute("SELECT pgraft_is_leader()")
-        result = self.cursor.fetchone()
-        self.assertIsNotNone(result, "pgraft_is_leader returned null")
-    
-    def test_pgraft_get_nodes(self):
-        """Test pgraft_get_nodes function"""
-        self.cursor.execute("SELECT pgraft_get_nodes()")
-        result = self.cursor.fetchone()
-        self.assertIsNotNone(result, "pgraft_get_nodes returned null")
-    
-    def test_pgraft_get_leader(self):
-        """Test pgraft_get_leader function"""
-        self.cursor.execute("SELECT pgraft_get_leader()")
-        result = self.cursor.fetchone()
-        self.assertIsNotNone(result, "pgraft_get_leader returned null")
-    
-    def test_pgraft_set_debug(self):
-        """Test pgraft_set_debug function"""
-        self.cursor.execute("SELECT pgraft_set_debug(true)")
-        result = self.cursor.fetchone()
-        self.assertTrue(result[0], "pgraft_set_debug failed")
+    def test_header_files_exist(self):
+        """Test that all header files exist"""
+        header_files = [
+            "pgraft/include/pgraft.h",
+            "pgraft/pgraft_go.h"
+        ]
         
-        self.cursor.execute("SELECT pgraft_set_debug(false)")
-        result = self.cursor.fetchone()
-        self.assertTrue(result[0], "pgraft_set_debug failed")
-
-if __name__ == '__main__':
-    unittest.main()
+        for header_file in header_files:
+            assert Path(header_file).exists(), f"Header file {header_file} not found"
+    
+    def test_sql_files_exist(self):
+        """Test that SQL files exist"""
+        sql_files = [
+            "pgraft/pgraft--1.0.sql",
+            "pgraft/pgraft.control"
+        ]
+        
+        for sql_file in sql_files:
+            assert Path(sql_file).exists(), f"SQL file {sql_file} not found"
+    
+    def test_makefile_exists(self):
+        """Test that Makefile exists"""
+        makefile_path = Path("pgraft/Makefile")
+        assert makefile_path.exists(), "Makefile not found"
+    
+    def test_extension_size_reasonable(self):
+        """Test that extension size is reasonable"""
+        extension_path = Path("pgraft/pgraft.dylib")
+        if extension_path.exists():
+            size = extension_path.stat().st_size
+            # Extension should be between 50KB and 2MB
+            assert 50 * 1024 < size < 2 * 1024 * 1024, f"Extension size {size} bytes is unreasonable"

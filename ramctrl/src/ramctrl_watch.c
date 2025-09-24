@@ -415,7 +415,7 @@ bool ramctrl_watch_update_data(ramctrl_watch_data_t* data)
 	if (!base_url || strlen(base_url) == 0)
 	{
 		/* No hardcoded fallback - must be configured */
-		strcpy(data->status_message, "RAMCTRL_API_URL not configured");
+		strncpy(data->status_message, "RAMCTRL_API_URL not configured", sizeof(data->status_message) - 1); data->status_message[sizeof(data->status_message) - 1] = '0';
 		return false;
 	}
 	snprintf(url, sizeof(url), "%s/api/v1/cluster/status", base_url);
@@ -428,7 +428,7 @@ bool ramctrl_watch_update_data(ramctrl_watch_data_t* data)
 		if (result == 0)
 		{
 			data->node_count = data->cluster_info.total_nodes;
-			strcpy(data->status_message, "Connected to ramd");
+			strncpy(data->status_message, "Connected to ramd", sizeof(data->status_message) - 1); data->status_message[sizeof(data->status_message) - 1] = '0';
 		}
 		else
 		{

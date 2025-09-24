@@ -8,27 +8,26 @@
  *-------------------------------------------------------------------------
  */
 
+#include <getopt.h>
 #include <pthread.h>
 #include <signal.h>
-#include <getopt.h>
 
 #include "ramd.h"
-#include "ramd_daemon.h"
-#include "ramd_config.h"
-#include "ramd_cluster.h"
-#include "ramd_monitor.h"
-#include "ramd_failover.h"
-#include "ramd_logging.h"
-#include "ramd_http_api.h"
-#include "ramd_sync_replication.h"
-#include "ramd_config_reload.h"
-#include "ramd_maintenance.h"
-#include "ramd_conn.h"
-#include "ramd_prometheus.h"
 #include "ramd_backup.h"
-#include "ramd_sync_standbys.h"
-#include "ramd_api_enhanced.h"
+#include "ramd_cluster.h"
+#include "ramd_config.h"
+#include "ramd_config_reload.h"
+#include "ramd_conn.h"
+#include "ramd_daemon.h"
+#include "ramd_failover.h"
+#include "ramd_http_api.h"
+#include "ramd_logging.h"
+#include "ramd_maintenance.h"
+#include "ramd_monitor.h"
 #include "ramd_postgresql_params.h"
+#include "ramd_prometheus.h"
+#include "ramd_sync_replication.h"
+#include "ramd_sync_standbys.h"
 
 ramd_daemon_t *g_ramd_daemon = NULL;
 PGconn       *g_conn = NULL;
@@ -37,7 +36,7 @@ static volatile sig_atomic_t g_shutdown_requested = 0;
 static bool
 ramd_establish_postgres_connection(void)
 {
-	PGconn *conn;
+	PGconn	   *conn;
 
 	if (!g_ramd_daemon)
 		return false;
@@ -47,11 +46,11 @@ ramd_establish_postgres_connection(void)
 				  g_ramd_daemon->config.postgresql_port);
 
 	conn = ramd_conn_get_cached(g_ramd_daemon->config.node_id,
-							   g_ramd_daemon->config.hostname,
-							   g_ramd_daemon->config.postgresql_port,
-							   g_ramd_daemon->config.database_name,
-							   g_ramd_daemon->config.database_user,
-							   g_ramd_daemon->config.database_password);
+								g_ramd_daemon->config.hostname,
+								g_ramd_daemon->config.postgresql_port,
+								g_ramd_daemon->config.database_name,
+								g_ramd_daemon->config.database_user,
+								g_ramd_daemon->config.database_password);
 
 	if (!conn)
 	{

@@ -20,7 +20,8 @@ ramd_SOURCES = src/ramd_main.c \
                src/ramd_pgraft.c \
                src/ramd_prometheus.c \
                src/ramd_postgresql_auth.c \
-               src/ramd_security.c
+               src/ramd_security.c \
+               src/ramd_missing_functions.c
 
 # Link with pthread, PostgreSQL, jansson, and OpenSSL
 ramd_LDADD = -lpthread -L/usr/local/pgsql/lib -L/opt/homebrew/lib -lpq -ljansson -lssl -lcrypto

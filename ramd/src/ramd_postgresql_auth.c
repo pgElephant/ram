@@ -422,9 +422,9 @@ ramd_auth_validate_kerberos_config(const ramd_auth_context_t* auth_ctx)
     }
     
     /* Check for Kerberos configuration file */
-    if (access("/etc/krb5.conf", R_OK) != 0)
+    if (access("{{ETC_DIR}}krb5.conf", R_OK) != 0)
     {
-        ramd_log_warning("Kerberos configuration file not found: /etc/krb5.conf");
+        ramd_log_warning("Kerberos configuration file not found: {{ETC_DIR}}krb5.conf");
     }
     
     ramd_log_info("Kerberos configuration validation passed");
@@ -473,7 +473,7 @@ ramd_auth_validate_pam_config(const ramd_auth_context_t* auth_ctx)
     
     /* Check for PAM configuration file */
     char pam_config_path[256];
-    snprintf(pam_config_path, sizeof(pam_config_path), "/etc/pam.d/%s", auth_ctx->pam_service);
+    snprintf(pam_config_path, sizeof(pam_config_path), "{{ETC_DIR}}pam.d/%s", auth_ctx->pam_service);
     
     if (access(pam_config_path, R_OK) != 0)
     {

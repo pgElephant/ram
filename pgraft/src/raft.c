@@ -10,6 +10,7 @@
  */
 
 #include "postgres.h"
+#include "miscadmin.h"
 #include "../include/pgraft.h"
 #include <dlfcn.h>
 #include <pthread.h>
@@ -89,12 +90,19 @@ load_go_library(void)
     if (go_lib_loaded)
         return 0;
     
-    /* Try to load the Go library with retries */
-    while (retry_count < max_retries)
-    {
-        go_lib_handle = dlopen("/usr/local/pgsql.17/lib/pgraft_go.dylib", RTLD_LAZY);
-        if (go_lib_handle)
-            break;
+	/* Try to load the Go library with retries */
+	while (retry_count < max_retries)
+	{
+		char		lib_path[MAXPGPATH];
+		const char *pg_libdir;
+
+		/* Get PostgreSQL library directory */
+		pg_libdir = pkglib_path;
+		snprintf(lib_path, sizeof(lib_path), "%s/pgraft_go.dylib", pg_libdir);
+
+		go_lib_handle = dlopen(lib_path, RTLD_LAZY);
+		if (go_lib_handle)
+			break;
             
         retry_count++;
         elog(WARNING, "pgraft_raft: attempt %d failed to load Go library: %s", 

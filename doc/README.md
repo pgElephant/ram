@@ -1,177 +1,239 @@
-# RAM PostgreSQL High Availability System Documentation
+# RAM Documentation
 
-Welcome to the RAM (Raft-based Auto-failover Manager) PostgreSQL High Availability System documentation. This comprehensive guide will help you understand, deploy, and manage a highly available PostgreSQL cluster using our advanced Raft consensus-based failover system.
+Comprehensive documentation for the RAM (Resilient Adaptive Manager) PostgreSQL clustering solution. This documentation covers all aspects of the system from installation to advanced configuration and troubleshooting.
 
-## Table of Contents
+## Documentation Structure
 
 ### Getting Started
-- [Quick Start Guide](getting-started/quick-start.md) - Get up and running in minutes
-- [Installation Guide](getting-started/installation.md) - Complete installation instructions
-- [Configuration Guide](getting-started/configuration.md) - Configure your cluster
-- [First Cluster](getting-started/first-cluster.md) - Create your first cluster
-
-### Module Documentation
-- [PGRaft Extension](getting-started/pgraft.md) - PostgreSQL Raft consensus extension
-- [RAMD Daemon](getting-started/ramd.md) - High availability daemon
-- [RAMCTRL CLI](getting-started/ramctrl.md) - Command-line interface
-
-### API Reference
-- [REST API](api-reference/rest-api.md) - Complete API documentation
-- [Configuration API](api-reference/configuration-api.md) - Configuration management
-- [Monitoring API](api-reference/monitoring-api.md) - Health and metrics
-- [Backup API](api-reference/backup-api.md) - Backup and restore operations
+- **[Quick Start Guide](getting-started/quick-start.md)** - Get up and running in minutes
+- **[PGRaft Setup](getting-started/pgraft.md)** - PostgreSQL extension setup
+- **[RAMD Setup](getting-started/ramd.md)** - Cluster daemon setup
+- **[RAMCTRL Setup](getting-started/ramctrl.md)** - Control utility setup
 
 ### Configuration
-- [Cluster Configuration](configuration/cluster.md) - Cluster setup and management
-- [Node Configuration](configuration/nodes.md) - Individual node settings
-- [Security Configuration](configuration/security.md) - Authentication and encryption
-- [Monitoring Configuration](configuration/monitoring.md) - Metrics and alerting
+- **[Main Configuration](configuration/)** - Core configuration files
+- **[Environment Variables](configuration/environment.md)** - Environment-based configuration
+- **[Security Configuration](configuration/security.md)** - Security settings and best practices
+- **[Performance Tuning](configuration/performance.md)** - Performance optimization
 
 ### Deployment
-- [Production Deployment](deployment/production.md) - Production-ready deployment
-- [Docker Deployment](deployment/docker.md) - Containerized deployment
-- [Kubernetes Deployment](deployment/kubernetes.md) - Kubernetes operator
-- [Cloud Deployment](deployment/cloud.md) - AWS, GCP, Azure deployment
+- **[Production Deployment](deployment/)** - Production deployment guide
+- **[Docker Deployment](deployment/docker.md)** - Containerized deployment
+- **[Kubernetes Deployment](deployment/kubernetes.md)** - K8s deployment
+- **[Cloud Deployment](deployment/cloud.md)** - Cloud provider deployment
 
 ### Development
-- [Development Setup](development/setup.md) - Development environment
-- [Building from Source](development/building.md) - Compile and build
-- [Testing](development/testing.md) - Test suite and validation
-- [Contributing](development/contributing.md) - Contributing guidelines
+- **[Development Setup](development/)** - Development environment setup
+- **[API Development](development/api.md)** - API development guide
+- **[Testing](development/testing.md)** - Testing framework and practices
+- **[Contributing](development/contributing.md)** - Contribution guidelines
+
+### API Reference
+- **[REST API](api-reference/rest-api.md)** - Complete REST API documentation
+- **[PGRaft Functions](api-reference/pgraft-functions.md)** - PostgreSQL extension functions
+- **[RAMCTRL Commands](api-reference/ramctrl-commands.md)** - Command-line utility reference
 
 ### Troubleshooting
-- [Common Issues](troubleshooting/common-issues.md) - Frequently encountered problems
-- [Debugging Guide](troubleshooting/debugging.md) - Debug and diagnose issues
-- [Performance Tuning](troubleshooting/performance.md) - Optimize performance
-- [Recovery Procedures](troubleshooting/recovery.md) - Disaster recovery
+- **[Common Issues](troubleshooting/)** - Frequently encountered problems
+- **[Performance Issues](troubleshooting/performance.md)** - Performance troubleshooting
+- **[Network Issues](troubleshooting/network.md)** - Network connectivity problems
+- **[Security Issues](troubleshooting/security.md)** - Security-related problems
 
-### Examples
-- [Basic Cluster](examples/basic-cluster.md) - Simple 3-node cluster
-- [High Availability Setup](examples/ha-setup.md) - Production HA configuration
-- [Backup and Restore](examples/backup-restore.md) - Backup strategies
-- [Monitoring Setup](examples/monitoring.md) - Prometheus and Grafana
+## Quick Navigation
 
-## Architecture Overview
+### For New Users
+1. Start with [Quick Start Guide](getting-started/quick-start.md)
+2. Follow [PGRaft Setup](getting-started/pgraft.md)
+3. Configure [RAMD](getting-started/ramd.md)
+4. Use [RAMCTRL](getting-started/ramctrl.md)
 
-RAM is a comprehensive PostgreSQL high availability solution consisting of three main components:
+### For Administrators
+1. Review [Production Deployment](deployment/)
+2. Configure [Security](configuration/security.md)
+3. Set up [Monitoring](deployment/monitoring.md)
+4. Plan [Backup Strategy](deployment/backup.md)
+
+### For Developers
+1. Set up [Development Environment](development/)
+2. Read [API Documentation](api-reference/)
+3. Follow [Testing Guidelines](development/testing.md)
+4. Review [Contributing Guidelines](development/contributing.md)
+
+### For Troubleshooting
+1. Check [Common Issues](troubleshooting/)
+2. Review [Performance Issues](troubleshooting/performance.md)
+3. Check [Network Issues](troubleshooting/network.md)
+4. Review [Security Issues](troubleshooting/security.md)
+
+## Component Documentation
 
 ### PGRaft Extension
-- **Purpose**: PostgreSQL extension providing Raft consensus algorithm
-- **Features**: Leader election, consensus, shared memory management
-- **Integration**: Deep PostgreSQL integration via shared memory
+- **Purpose**: PostgreSQL extension providing Raft consensus
+- **Key Features**: Distributed consensus, leader election, log replication
+- **Documentation**: [PGRaft README](../pgraft/README.md)
+- **API Reference**: [PGRaft Functions](api-reference/pgraft-functions.md)
 
 ### RAMD Daemon
-- **Purpose**: High availability daemon managing cluster operations
-- **Features**: Health monitoring, failover management, API server
-- **Integration**: Communicates with PGRaft and external systems
+- **Purpose**: Cluster management daemon with REST API
+- **Key Features**: Health monitoring, failover, configuration management
+- **Documentation**: [RAMD README](../ramd/README.md)
+- **API Reference**: [REST API](api-reference/rest-api.md)
 
-### RAMCTRL CLI
-- **Purpose**: Command-line interface for cluster management
-- **Features**: Cluster operations, monitoring, configuration
-- **Integration**: HTTP-based communication with RAMD
+### RAMCTRL Utility
+- **Purpose**: Command-line utility for cluster management
+- **Key Features**: Professional CLI, multiple output formats, interactive mode
+- **Documentation**: [RAMCTRL README](../ramctrl/README.md)
+- **Command Reference**: [RAMCTRL Commands](api-reference/ramctrl-commands.md)
 
-## Key Features
+## Configuration Examples
 
-### High Availability
-- ✅ Automatic failover with Raft consensus
-- ✅ Zero-downtime promotions and demotions
-- ✅ Network partition handling
-- ✅ Split-brain prevention
+### Basic Cluster Setup
+```bash
+# 1. Install PGRaft extension
+psql -d postgres -c "CREATE EXTENSION pgraft;"
 
-### Monitoring & Observability
-- ✅ Comprehensive health monitoring
-- ✅ Prometheus metrics integration
-- ✅ Grafana dashboards
-- ✅ Real-time cluster status
+# 2. Start RAMD daemon
+ramd start
 
-### Backup & Recovery
-- ✅ pgBackRest integration
-- ✅ Barman support
-- ✅ Automated backup scheduling
-- ✅ Point-in-time recovery
+# 3. Create 3-node cluster
+python3 scripts/cluster.py create cluster --num_nodes=3
 
-### Security
-- ✅ SSL/TLS encryption
-- ✅ Authentication and authorization
-- ✅ Rate limiting and DoS protection
-- ✅ Audit logging
+# 4. Check cluster status
+ramctrl status
+```
 
-### Kubernetes Integration
-- ✅ Native Kubernetes operator
-- ✅ Custom Resource Definitions (CRDs)
-- ✅ Helm charts
-- ✅ Auto-scaling support
+### Production Configuration
+```ini
+# /etc/ramd.conf
+[cluster]
+node_id = 1
+cluster_name = production_cluster
+primary_host = 192.168.1.10
+primary_port = 5432
+replica_hosts = 192.168.1.11:5432,192.168.1.12:5432
 
-### Advanced Features
-- ✅ Multiple synchronous standbys
-- ✅ ANY N synchronous replication
-- ✅ Parameter validation and optimization
-- ✅ Maintenance mode operations
+[api]
+host = 0.0.0.0
+port = 8080
+ssl_enabled = true
+auth_token = your-secure-token
 
-## Quick Start
+[security]
+rate_limit = 1000
+max_connections = 5000
+ssl_cert = /etc/ssl/certs/ramd.crt
+ssl_key = /etc/ssl/private/ramd.key
+```
 
-1. **Install Dependencies**
-   ```bash
-   # Install PostgreSQL 17
-   brew install postgresql@17
-   
-   # Install Go (for PGRaft)
-   brew install go
-   
-   # Install build tools
-   brew install make gcc
-   ```
+### Environment Variables
+```bash
+# Load environment configuration
+source conf/environment.conf
 
-2. **Build and Install**
-   ```bash
-   # Build all components
-   make all
-   
-   # Install PGRaft extension
-   make install-pgraft
-   
-   # Install RAMD daemon
-   make install-ramd
-   
-   # Install RAMCTRL CLI
-   make install-ramctrl
-   ```
+# Set production values
+export RAMD_NODE_ID=1
+export RAMD_CLUSTER_NAME=production_cluster
+export RAMD_API_PORT=8080
+export RAMD_SSL_ENABLED=true
+export RAMD_AUTH_TOKEN=your-secure-token
+```
 
-3. **Create Your First Cluster**
-   ```bash
-   # Create a 3-node cluster
-   ./ramctrl cluster create --num-nodes=3
-   
-   # Check cluster status
-   ./ramctrl cluster status
-   ```
+## Monitoring and Observability
 
-4. **Monitor Your Cluster**
-   ```bash
-   # Start monitoring
-   ./ramctrl monitor
-   
-   # View metrics
-   curl http://localhost:8008/metrics
-   ```
+### Prometheus Metrics
+- **Cluster Metrics**: Node count, health status, leader changes
+- **API Metrics**: Request count, response time, error rate
+- **PostgreSQL Metrics**: Connections, queries, replication lag
+- **System Metrics**: CPU, memory, disk, network
 
-## Support
+### Grafana Dashboards
+- **Cluster Overview**: High-level cluster status
+- **Node Details**: Individual node performance
+- **API Performance**: API response times and errors
+- **PostgreSQL Performance**: Database performance metrics
 
-- **Documentation**: This comprehensive guide
-- **Issues**: GitHub Issues for bug reports
-- **Discussions**: GitHub Discussions for questions
-- **Community**: Join our community forum
+### Logging
+- **Structured Logging**: JSON-formatted logs
+- **Log Levels**: DEBUG, INFO, WARN, ERROR
+- **Component Logging**: Separate logs for each component
+- **Audit Logging**: Security and access logs
 
-## License
+## Security Best Practices
 
-Copyright (c) 2024-2025, pgElephant, Inc. All rights reserved.
+### Authentication and Authorization
+- Use strong, unique authentication tokens
+- Implement role-based access control
+- Regularly rotate authentication tokens
+- Monitor for suspicious activity
 
-This software is licensed under the PostgreSQL License. See LICENSE file for details.
+### Network Security
+- Enable SSL/TLS for all communications
+- Use firewall rules to restrict access
+- Implement rate limiting
+- Monitor network traffic
 
-## Contributing
+### Data Security
+- Encrypt sensitive configuration data
+- Use secure backup storage
+- Implement data retention policies
+- Regular security audits
 
-We welcome contributions! Please see our [Contributing Guide](development/contributing.md) for details on how to get started.
+## Testing and Quality Assurance
+
+### Testing Framework
+- **Unit Tests**: Component-level testing
+- **Integration Tests**: End-to-end workflow testing
+- **Performance Tests**: Load and stress testing
+- **Security Tests**: Vulnerability scanning
+
+### Quality Gates
+- Zero compilation warnings
+- Zero memory leaks
+- 100% test coverage
+- Security scan passing
+- Performance benchmarks met
+
+## Performance Optimization
+
+### Cluster Performance
+- Optimize network configuration
+- Tune PostgreSQL parameters
+- Configure appropriate timeouts
+- Monitor resource utilization
+
+### API Performance
+- Implement connection pooling
+- Use efficient data structures
+- Optimize database queries
+- Cache frequently accessed data
+
+### System Performance
+- Monitor system resources
+- Optimize memory usage
+- Tune kernel parameters
+- Use SSD storage for logs
+
+## Support and Community
+
+### Getting Help
+- **GitHub Issues**: [Report bugs and request features](https://github.com/pgElephant/ram/issues)
+- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/pgElephant/ram/discussions)
+- **Documentation**: This comprehensive documentation
+- **Code Examples**: See the `examples/` directory
+
+### Contributing
+- **Code Contributions**: Follow the contributing guidelines
+- **Documentation**: Help improve this documentation
+- **Testing**: Report bugs and test fixes
+- **Community**: Join discussions and help others
+
+## License and Legal
+
+- **License**: MIT License - see [LICENSE](../LICENSE)
+- **Copyright**: Copyright (c) 2024 pgElephant
+- **Trademarks**: PostgreSQL is a trademark of the PostgreSQL Global Development Group
+- **Third-party Licenses**: See individual component licenses
 
 ---
 
-**Ready to get started?** Begin with our [Quick Start Guide](getting-started/quick-start.md)!
+**RAM Documentation: Your complete guide to PostgreSQL clustering.** 

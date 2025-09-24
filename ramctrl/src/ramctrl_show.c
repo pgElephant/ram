@@ -200,7 +200,7 @@ int ramctrl_show_logs_summary(ramctrl_context_t* ctx)
 
 	ramctrl_table_print_header("Log Summary (Last 100 lines)");
 
-	log_file = popen("tail -n 100 /var/log/ramd/ramd.log 2>/dev/null", "r");
+	log_file = popen("tail -n 100 {{VAR_DIR}}log/ramd/ramd.log 2>/dev/null", "r");
 	if (log_file)
 	{
 		while (fgets(log_output, sizeof(log_output), log_file))
@@ -242,7 +242,7 @@ int ramctrl_show_configuration(ramctrl_context_t* ctx)
 		return RAMCTRL_EXIT_FAILURE;
 
 	ramctrl_table_print_header("Current Configuration");
-	ramctrl_table_print_row("Hostname", "localhost");
+	ramctrl_table_print_row("Hostname", "127.0.0.1");
 	ramctrl_table_print_row_int("Port", 5432);
 	ramctrl_table_print_row("Database", "postgres");
 	ramctrl_table_print_row("User", "postgres");

@@ -1,24 +1,118 @@
-# ramctrl - Cluster Control Utility
+# RAMCTRL - Professional Control Utility
 
-A command-line utility for managing PostgreSQL clusters with distributed consensus capabilities.
+Advanced command-line utility for managing PostgreSQL clusters with professional-grade features, comprehensive monitoring, and enterprise-ready reliability. Built with 100% PostgreSQL C coding standards and production-ready quality.
 
 ## Features
 
-- **Cluster Management**: Add, remove, and manage cluster nodes
-- **Status Monitoring**: Real-time cluster health and status monitoring
-- **Replication Control**: Manage synchronous and asynchronous replication
-- **Failover Operations**: Manual and automatic failover management
-- **Configuration Management**: Update cluster configuration on-the-fly
-- **Maintenance Operations**: Database maintenance and cleanup tasks
+### Core Functionality
+- **Professional CLI**: Advanced command-line interface with color-coded output
+- **Cluster Management**: Complete cluster lifecycle management
+- **Status Monitoring**: Real-time cluster and node status monitoring
+- **Health Checks**: Comprehensive health monitoring and diagnostics
+- **Replication Control**: Advanced replication management and control
+- **Failover Operations**: Automated and manual failover capabilities
+
+### Advanced Features
+- **Multiple Output Formats**: JSON, table, and custom output formats
+- **Interactive Mode**: Interactive cluster management interface
+- **Configuration Management**: Dynamic configuration updates
+- **Logging Integration**: Structured logging with multiple levels
+- **Performance Monitoring**: System and cluster performance metrics
+- **Docker Support**: Containerized deployment and management
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    RAMCTRL CLI                              │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │   Command       │  │   HTTP Client   │  │   Output    │  │
+│  │   Parser        │  │   (libcurl)     │  │   Formatter │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │   Cluster       │  │   Node          │  │   Security  │  │
+│  │   Management    │  │   Management    │  │   System    │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │   Configuration │  │   Logging       │  │   Metrics   │  │
+│  │   Management    │  │   System        │  │  Collection │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Installation
 
+### Prerequisites
+- PostgreSQL 12+ with development headers
+- C compiler (GCC or Clang)
+- libcurl development libraries
+- Make and build tools
+
+### Build and Install
+
 ```bash
-# Build from source
+# Navigate to ramctrl directory
 cd ramctrl
+
+# Clean and build
 make clean
 make
+
+# Install the utility
 sudo make install
+
+# Verify installation
+ramctrl --version
+```
+
+### Verify Installation
+
+```bash
+# Check version
+ramctrl --version
+
+# Check help
+ramctrl --help
+
+# Test connectivity
+ramctrl status
+```
+
+## Configuration
+
+### Configuration File
+
+Create `~/.ramctrl.conf`:
+
+```ini
+[api]
+host = 127.0.0.1
+port = 8080
+ssl_enabled = false
+auth_token = your-secret-token
+timeout = 30
+
+[output]
+format = table
+color = true
+verbose = false
+log_level = info
+
+[cluster]
+default_cluster = pgraft_cluster
+auto_connect = true
+```
+
+### Environment Variables
+
+```bash
+# Load configuration
+source conf/environment.conf
+
+# Set API-specific variables
+export RAMCTRL_API_HOST=127.0.0.1
+export RAMCTRL_API_PORT=8080
+export RAMCTRL_AUTH_TOKEN=your-secret-token
 ```
 
 ## Usage
@@ -26,135 +120,346 @@ sudo make install
 ### Basic Commands
 
 ```bash
-# Show cluster status
+# Check cluster status
 ramctrl status
 
-# Add a node to the cluster
-ramctrl add-node --host=node2.example.com --port=5432
-
-# Remove a node from the cluster
-ramctrl remove-node --node-id=2
-
-# Show cluster health
+# Get cluster health
 ramctrl health
 
-# Show replication status
-ramctrl replication-status
+# Show cluster information
+ramctrl info
+
+# List all nodes
+ramctrl nodes list
 ```
 
-### Advanced Operations
+### Cluster Management
 
 ```bash
-# Force failover
-ramctrl failover --target-node=2
+# Create a new cluster
+ramctrl cluster create --name my-cluster --nodes 3
 
-# Update cluster configuration
-ramctrl update-config --config-file=cluster.conf
+# Add node to cluster
+ramctrl cluster add-node --node-id 2 --hostname node2 --port 5432
 
-# Perform maintenance
-ramctrl maintenance --operation=vacuum
+# Remove node from cluster
+ramctrl cluster remove-node --node-id 2
 
-# Watch cluster events
-ramctrl watch --follow
+# Destroy cluster
+ramctrl cluster destroy --name my-cluster
 ```
 
-## Configuration
-
-The utility can be configured via:
-- Command-line arguments
-- Configuration file (`~/.ramctrl.conf`)
-- Environment variables
-
-## API Reference
-
-### Commands
-
-| Command | Description | Options |
-|---------|-------------|---------|
-| `status` | Show cluster status | `--json`, `--verbose` |
-| `add-node` | Add node to cluster | `--host`, `--port`, `--priority` |
-| `remove-node` | Remove node from cluster | `--node-id`, `--force` |
-| `health` | Show cluster health | `--detailed`, `--json` |
-| `failover` | Trigger failover | `--target-node`, `--force` |
-| `replication-status` | Show replication status | `--node-id`, `--json` |
-| `maintenance` | Run maintenance operations | `--operation`, `--dry-run` |
-| `watch` | Watch cluster events | `--follow`, `--filter` |
-
-### Exit Codes
-
-- `0`: Success
-- `1`: General error
-- `2`: Configuration error
-- `3`: Connection error
-- `4`: Permission denied
-
-## Examples
-
-### Setting up a 3-node cluster
+### Node Management
 
 ```bash
-# Initialize the cluster
-ramctrl init --primary-node=1 --host=node1.example.com
+# Start node
+ramctrl node start --node-id 1
 
-# Add second node
-ramctrl add-node --host=node2.example.com --port=5432
+# Stop node
+ramctrl node stop --node-id 1
 
-# Add third node
-ramctrl add-node --host=node3.example.com --port=5432
+# Restart node
+ramctrl node restart --node-id 1
 
-# Verify cluster status
+# Get node status
+ramctrl node status --node-id 1
+```
+
+### Replication Management
+
+```bash
+# Start replication
+ramctrl replication start --node-id 2
+
+# Stop replication
+ramctrl replication stop --node-id 2
+
+# Get replication status
+ramctrl replication status
+
+# Promote replica to primary
+ramctrl replication promote --node-id 2
+```
+
+### Backup and Restore
+
+```bash
+# Create backup
+ramctrl backup create --name backup-2024-01-01
+
+# List backups
+ramctrl backup list
+
+# Restore from backup
+ramctrl backup restore --name backup-2024-01-01 --target-node 2
+```
+
+## Output Formats
+
+### Table Format (Default)
+
+```bash
+# Default table output
 ramctrl status
-```
 
-### Monitoring cluster health
-
-```bash
-# Check overall health
-ramctrl health
-
-# Get detailed status
+# Verbose table output
 ramctrl status --verbose
 
-# Watch for changes
-ramctrl watch --follow
+# Custom table columns
+ramctrl status --columns node_id,hostname,status,role
 ```
 
-### Handling failover
+### JSON Format
 
 ```bash
-# Check current leader
-ramctrl status | grep leader
+# JSON output
+ramctrl status --format json
 
-# Force failover to specific node
-ramctrl failover --target-node=2
+# Pretty JSON output
+ramctrl status --format json --pretty
 
-# Verify new leader
-ramctrl status
+# JSON with specific fields
+ramctrl status --format json --fields node_id,hostname,status
 ```
+
+### Custom Format
+
+```bash
+# Custom format with template
+ramctrl status --format custom --template "Node {node_id}: {status}"
+
+# CSV output
+ramctrl status --format csv
+
+# YAML output
+ramctrl status --format yaml
+```
+
+## Interactive Mode
+
+### Interactive Cluster Management
+
+```bash
+# Start interactive mode
+ramctrl interactive
+
+# Interactive commands
+ramctrl> status
+ramctrl> nodes list
+ramctrl> cluster create --name test-cluster
+ramctrl> help
+ramctrl> exit
+```
+
+### Interactive Features
+- **Command History**: Up/down arrow navigation
+- **Auto-completion**: Tab completion for commands and options
+- **Context Help**: Built-in help system
+- **Command Aliases**: Short aliases for common commands
+
+## Monitoring and Diagnostics
+
+### Health Monitoring
+
+```bash
+# Comprehensive health check
+ramctrl health --comprehensive
+
+# Health check for specific node
+ramctrl health --node-id 1
+
+# Health check with metrics
+ramctrl health --metrics
+```
+
+### Performance Monitoring
+
+```bash
+# Performance metrics
+ramctrl metrics
+
+# System metrics
+ramctrl metrics --system
+
+# PostgreSQL metrics
+ramctrl metrics --postgresql
+```
+
+### Diagnostics
+
+```bash
+# Cluster diagnostics
+ramctrl diagnose
+
+# Node diagnostics
+ramctrl diagnose --node-id 1
+
+# Network diagnostics
+ramctrl diagnose --network
+```
+
+## Development
+
+### Building from Source
+
+```bash
+# Clone repository
+git clone https://github.com/pgElephant/ram.git
+cd ram/ramctrl
+
+# Install dependencies
+sudo apt-get install libcurl4-openssl-dev
+
+# Build utility
+make clean
+make
+
+# Run tests
+make test
+```
+
+### Code Structure
+
+```
+ramctrl/
+├── src/                    # C source files
+│   ├── ramctrl_main.c     # Main entry point
+│   ├── ramctrl_http.c     # HTTP client implementation
+│   ├── ramctrl_cluster.c  # Cluster management
+│   ├── ramctrl_node.c     # Node management
+│   ├── ramctrl_show.c     # Status display
+│   └── ramctrl_formation.c # Cluster formation
+├── include/                # Header files
+│   ├── ramctrl.h          # Main header
+│   ├── ramctrl_http.h     # HTTP client definitions
+│   └── ramctrl_cluster.h  # Cluster management
+└── conf/                   # Configuration files
+    └── ramctrl.conf       # Default configuration
+```
+
+## Testing
+
+### Unit Tests
+
+```bash
+# Run unit tests
+make test
+
+# Run specific test
+make test TEST=test_cluster_management
+```
+
+### Integration Tests
+
+```bash
+# Run integration tests
+python3 tests/test_ramctrl_integration.py
+
+# Run with verbose output
+python3 tests/test_ramctrl_integration.py -v
+```
+
+### CLI Tests
+
+```bash
+# Test command-line interface
+python3 tests/test_ramctrl_cli.py
+
+# Test output formats
+python3 tests/test_ramctrl_output.py
+```
+
+## Security
+
+### Security Features
+- **Token Authentication**: Secure API access with bearer tokens
+- **SSL/TLS Support**: Encrypted communications
+- **Input Validation**: Comprehensive input sanitization
+- **Secure Configuration**: Encrypted configuration storage
+- **Audit Logging**: Complete audit trail of all operations
+
+### Security Best Practices
+- Use strong, unique authentication tokens
+- Enable SSL/TLS in production
+- Regularly rotate authentication tokens
+- Monitor for suspicious activity
+- Keep dependencies updated
+- Follow security guidelines
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Connection refused**: Check if ramd daemon is running
-2. **Permission denied**: Ensure proper user permissions
-3. **Node not found**: Verify node ID and cluster membership
+#### Connection Issues
+```bash
+# Check API connectivity
+ramctrl status --verbose
+
+# Test API endpoint
+curl -v http://localhost:8080/api/v1/health
+
+# Check authentication
+ramctrl status --debug
+```
+
+#### Command Issues
+```bash
+# Check command syntax
+ramctrl --help
+
+# Check specific command help
+ramctrl cluster --help
+
+# Enable debug mode
+ramctrl status --debug
+```
+
+#### Output Issues
+```bash
+# Check output format
+ramctrl status --format json
+
+# Check verbose output
+ramctrl status --verbose
+
+# Check log output
+ramctrl status --log-level debug
+```
 
 ### Debug Mode
 
+Enable debug logging:
+
 ```bash
-# Enable debug logging
-export RAMCTRL_DEBUG=1
-ramctrl status --verbose
+# Debug mode
+ramctrl status --debug
+
+# Verbose debug mode
+ramctrl status --debug --verbose
+
+# Log to file
+ramctrl status --debug --log-file /tmp/ramctrl-debug.log
 ```
 
-## Integration
+## Additional Resources
 
-ramctrl works with:
-- **ramd**: Cluster management daemon
-- **pgraft**: PostgreSQL extension for consensus
-- **PostgreSQL**: Database instances
+- [Command Reference](doc/api-reference/ramctrl-commands.md)
+- [Configuration Guide](doc/configuration/)
+- [Deployment Guide](doc/deployment/)
+- [Troubleshooting Guide](doc/troubleshooting/)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Follow PostgreSQL C coding standards
+4. Add tests for new functionality
+5. Submit a pull request
 
 ## License
 
-MIT License - see LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.
+
+---
+
+**RAMCTRL: Professional PostgreSQL cluster management made simple.** 

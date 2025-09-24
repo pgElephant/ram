@@ -196,7 +196,7 @@ ramctrl_security_generate_token(char *token, size_t token_size)
 	/* Convert to hex string */
 	for (int i = 0; i < 32; i++)
 	{
-		sprintf(hex_string + (i * 2), "%02x", random_bytes[i]);
+		snprintf(hex_string + (i * 2), 3, "%02x", random_bytes[i]);
 	}
 	hex_string[64] = '\0';
 

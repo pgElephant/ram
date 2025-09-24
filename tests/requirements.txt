@@ -1,0 +1,23 @@
+# Test dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+pytest-xdist>=3.0.0
+pytest-html>=3.1.0
+pytest-json-report>=1.5.0
+
+# Performance testing
+pytest-benchmark>=4.0.0
+memory-profiler>=0.60.0
+
+# HTTP testing
+requests>=2.28.0
+httpx>=0.24.0
+
+# Database testing
+psycopg2-binary>=2.9.0
+
+# Utilities
+colorama>=0.4.6
+rich>=13.0.0
+click>=8.1.0

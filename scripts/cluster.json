@@ -4,8 +4,8 @@
     "description": "PostgreSQL RAM Cluster with Raft Consensus"
   },
   "paths": {
-    "root_dir": "/Users/postgres/pgelephant/pge/ram",
-    "pg_bin": "/usr/local/pgsql.17/bin",
+    "root_dir": "/Users/ibrarahmed/pgelephant/pge/ram",
+    "pg_bin": "/opt/homebrew/bin",
     "pg_log": "/tmp/pglogs"
   },
   

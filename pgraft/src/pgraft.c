@@ -11,74 +11,74 @@
 #include "postgres.h"
 #include "miscadmin.h"
 #include "utils/guc.h"
-#include "../include/pgraft.h"
+
 #include <dlfcn.h>
 
-PG_MODULE_MAGIC;
-
-/* Function declarations */
-void _PG_init(void);
-void _PG_fini(void);
-
-/* Debug control function */
-typedef int (*pgraft_go_set_debug_func)(int enabled);
-static pgraft_go_set_debug_func pgraft_go_set_debug_ptr = NULL;
-
-/* PostgreSQL includes */
 #include "access/htup_details.h"
 #include "access/tupdesc.h"
 #include "catalog/pg_type.h"
 #include "executor/spi.h"
 #include "funcapi.h"
 #include "nodes/pg_list.h"
-#include "utils/builtins.h"
-#include "utils/memutils.h"
-#include "utils/timestamp.h"
 #include "postmaster/bgworker.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/proc.h"
 #include "storage/shmem.h"
 #include "tcop/utility.h"
-#include "utils/guc.h"
+#include "utils/builtins.h"
+#include "utils/memutils.h"
 #include "utils/ps_status.h"
+#include "utils/timestamp.h"
+
+#include "../include/pgraft.h"
+
+PG_MODULE_MAGIC;
+
+/* Function declarations */
+void		_PG_init(void);
+void		_PG_fini(void);
 
 /* External module functions */
 extern void pgraft_monitor_init(void);
 extern void pgraft_monitor_shutdown(void);
 extern void pgraft_register_guc_variables(void);
-extern int pgraft_comm_init(const char *address, int port);
-extern int pgraft_comm_shutdown(void);
+extern int	pgraft_comm_init(const char *address, int port);
+extern int	pgraft_comm_shutdown(void);
 extern void pgraft_worker_manager_init(void);
 extern void pgraft_worker_manager_cleanup(void);
 extern void pgraft_raft_init(void);
+extern void pgraft_raft_cleanup(void);
+extern void pgraft_metrics_init(void);
+extern void pgraft_validate_configuration(void);
+extern void pgraft_memory_cleanup(void);
 
 /* Shared memory structure for Raft state */
 typedef struct pgraft_shared_state
 {
-    /* Raft state */
-    int32 node_id;
-    char address[256];
-    int32 port;
-    int32 initialized;
-    int32 running;
-    int32 current_term;
-    int64 leader_id;
-    char state[64];
-    
-    /* Go library state */
-    int32 go_lib_loaded;
-    int32 go_initialized;
-    int32 go_running;
-    
-    /* Statistics */
-    int64 messages_processed;
-    int64 heartbeats_sent;
-    int64 log_entries;
-    
-    /* Mutex for thread safety */
-    slock_t mutex;
-} pgraft_shared_state;
+	/* Raft state */
+	int32		node_id;
+	char		address[256];
+	int32		port;
+	int32		initialized;
+	int32		running;
+	int32		current_term;
+	int64		leader_id;
+	char		state[64];
+
+	/* Go library state */
+	int32		go_lib_loaded;
+	int32		go_initialized;
+	int32		go_running;
+
+	/* Statistics */
+	int64		messages_processed;
+	int64		heartbeats_sent;
+	int64		log_entries;
+
+	/* Mutex for thread safety */
+	slock_t		mutex;
+}			pgraft_shared_state;
 
 /* Shared memory variables */
 static pgraft_shared_state *pgraft_shmem = NULL;
@@ -90,13 +90,9 @@ static void pgraft_shmem_shutdown_hook(int code, Datum arg);
 static void pgraft_init_shared_memory(void);
 static void pgraft_cleanup_shared_memory(void);
 static pgraft_shared_state *pgraft_get_shared_memory(void);
-extern void pgraft_raft_cleanup(void);
-extern void pgraft_metrics_init(void);
-extern void pgraft_validate_configuration(void);
-extern void pgraft_memory_cleanup(void);
 
 /* Global variables */
-bool pgraft_initialized = false;
+bool		pgraft_initialized = false;
 static MemoryContext pgraft_context = NULL;
 
 /* Dynamic loading of Go Raft library */
@@ -111,6 +107,7 @@ typedef int (*pgraft_go_add_node_func)(int nodeID, char* address, int port, int 
 typedef int (*pgraft_go_add_peer_func)(int nodeID, char* address, int port);
 typedef int (*pgraft_go_remove_node_func)(int nodeID);
 typedef char* (*pgraft_go_get_state_func)(void);
+typedef void (*pgraft_go_set_debug_func)(int enabled);
 typedef long (*pgraft_go_get_leader_func)(void);
 typedef long (*pgraft_go_get_term_func)(void);
 typedef int (*pgraft_go_is_leader_func)(void);
@@ -132,6 +129,7 @@ static pgraft_go_add_node_func pgraft_go_add_node_ptr = NULL;
 static pgraft_go_add_peer_func pgraft_go_add_peer_ptr = NULL;
 static pgraft_go_remove_node_func pgraft_go_remove_node_ptr = NULL;
 static pgraft_go_get_state_func pgraft_go_get_state_ptr = NULL;
+static pgraft_go_set_debug_func pgraft_go_set_debug_ptr = NULL;
 static pgraft_go_get_leader_func pgraft_go_get_leader_ptr = NULL;
 static pgraft_go_get_term_func pgraft_go_get_term_ptr = NULL;
 static pgraft_go_is_leader_func pgraft_go_is_leader_ptr = NULL;
@@ -161,45 +159,45 @@ static bool worker_running = false;
 void
 _PG_init(void)
 {
-    /* Extension can be loaded dynamically for testing */
-    /* if (!process_shared_preload_libraries_in_progress)
-        elog(ERROR, "pgraft is not in shared_preload_libraries"); */
-    
-    /* Create memory context for pgraft */
-    pgraft_context = AllocSetContextCreate(TopMemoryContext,
-                                         "pgraft",
-                                         ALLOCSET_DEFAULT_SIZES);
-    
-    /* Register GUC variables */
-    pgraft_register_guc_variables();
-    
-    /* Mark GUC variables as used */
-    /* GUC prefix registration handled by individual GUC variables */
-    
-    /* Validate configuration */
-    pgraft_validate_configuration();
-    
-    /* Initialize metrics system */
-    pgraft_metrics_init();
-    
-    /* Initialize monitoring system */
-    pgraft_monitor_init();
-    
-    /* Worker management system will be initialized when explicitly requested */
-    /* Not during extension loading to avoid postmaster startup issues */
-    
-    /* Register shared memory hooks */
-    shmem_request_hook = pgraft_shmem_request_hook;
-    before_shmem_exit(pgraft_shmem_shutdown_hook, (Datum) 0);
-    
-    /* Go Raft system will be initialized when explicitly requested via SQL functions */
-    /* Not during extension loading to avoid postmaster startup issues */
-    
-    /* Background workers will be registered when explicitly requested */
-    /* Not during extension loading to avoid postmaster startup issues */
-    
-    pgraft_initialized = true;
-    elog(INFO, "pgraft extension loaded successfully (version %s)", PGRAFT_VERSION);
+	/* Extension can be loaded dynamically for testing */
+	/* if (!process_shared_preload_libraries_in_progress)
+		elog(ERROR, "pgraft is not in shared_preload_libraries"); */
+
+	/* Create memory context for pgraft */
+	pgraft_context = AllocSetContextCreate(TopMemoryContext,
+										   "pgraft",
+										   ALLOCSET_DEFAULT_SIZES);
+
+	/* Register GUC variables */
+	pgraft_register_guc_variables();
+
+	/* Mark GUC variables as used */
+	/* GUC prefix registration handled by individual GUC variables */
+
+	/* Validate configuration */
+	pgraft_validate_configuration();
+
+	/* Initialize metrics system */
+	pgraft_metrics_init();
+
+	/* Initialize monitoring system */
+	pgraft_monitor_init();
+
+	/* Worker management system will be initialized when explicitly requested */
+	/* Not during extension loading to avoid postmaster startup issues */
+
+	/* Register shared memory hooks */
+	shmem_request_hook = pgraft_shmem_request_hook;
+	before_shmem_exit(pgraft_shmem_shutdown_hook, (Datum) 0);
+
+	/* Go Raft system will be initialized when explicitly requested via SQL functions */
+	/* Not during extension loading to avoid postmaster startup issues */
+
+	/* Background workers will be registered when explicitly requested */
+	/* Not during extension loading to avoid postmaster startup issues */
+
+	pgraft_initialized = true;
+	elog(INFO, "pgraft extension loaded successfully (version %s)", PGRAFT_VERSION);
 }
 
 
@@ -209,35 +207,35 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
-    /* Shutdown worker management system */
-    pgraft_worker_manager_cleanup();
-    
-    /* Shutdown monitoring system */
-    pgraft_monitor_shutdown();
-    
-    /* Shutdown communication layer */
-    pgraft_comm_shutdown();
-    
-    /* Shutdown Go Raft system */
-    if (pgraft_go_stop_ptr)
-    {
-        pgraft_go_stop_ptr();
-    }
-    
-    /* Unload Go library */
-    unload_go_library();
-    
-    /* Cleanup memory */
-    pgraft_memory_cleanup();
-    
-    if (pgraft_context != NULL)
-    {
-        MemoryContextDelete(pgraft_context);
-        pgraft_context = NULL;
-    }
-    
-    pgraft_initialized = false;
-    elog(INFO, "pgraft extension finalized");
+	/* Shutdown worker management system */
+	pgraft_worker_manager_cleanup();
+
+	/* Shutdown monitoring system */
+	pgraft_monitor_shutdown();
+
+	/* Shutdown communication layer */
+	pgraft_comm_shutdown();
+
+	/* Shutdown Go Raft system */
+	if (pgraft_go_stop_ptr)
+	{
+		pgraft_go_stop_ptr();
+	}
+
+	/* Unload Go library */
+	unload_go_library();
+
+	/* Cleanup memory */
+	pgraft_memory_cleanup();
+
+	if (pgraft_context != NULL)
+	{
+		MemoryContextDelete(pgraft_context);
+		pgraft_context = NULL;
+	}
+
+	pgraft_initialized = false;
+	elog(INFO, "pgraft extension finalized");
 }
 
 /*
@@ -248,21 +246,21 @@ _PG_fini(void)
 static void
 pgraft_worker_main(Datum main_arg)
 {
-    worker_running = true;
-    elog(INFO, "pgraft consensus worker started");
-    
-    while (!proc_exit_inprogress)
-    {
-        /* Process Raft operations */
-            pgraft_worker_tick();
-        
-        /* Sleep for configured interval */
-        pg_usleep(pgraft_worker_interval * 1000);
-    }
-    
-    /* Cleanup */
-    worker_running = false;
-    elog(INFO, "pgraft consensus worker stopped");
+	worker_running = true;
+	elog(INFO, "pgraft consensus worker started");
+
+	while (!proc_exit_inprogress)
+	{
+		/* Process Raft operations */
+		pgraft_worker_tick();
+
+		/* Sleep for configured interval */
+		pg_usleep(pgraft_worker_interval * 1000);
+	}
+
+	/* Cleanup */
+	worker_running = false;
+	elog(INFO, "pgraft consensus worker stopped");
 }
 #pragma GCC diagnostic pop
 
@@ -272,43 +270,43 @@ pgraft_worker_main(Datum main_arg)
 static void
 pgraft_worker_tick(void)
 {
-    pgraft_raft_state_t *raft_state;
-    pgraft_health_worker_status_t worker_status;
-    
-    if (!pgraft_initialized)
-        return;
-    
-    raft_state = pgraft_raft_get_state();
-    if (!raft_state || !raft_state->is_initialized)
-        return;
-    
-    /* Process Raft operations via Go etcd-io/raft library */
-    /* All Raft consensus logic is now handled by the Go library */
-    /* The Go library handles:
-     * - Election timeouts and leader election
-     * - Heartbeat sending and processing
-     * - Log replication and commitment
-     * - Message processing and state transitions
-     */
-    
-    /* Process incoming messages */
-    pgraft_process_incoming_messages();
-    
-    /* Manage snapshots if needed */
-    /* Check if snapshot is needed and create one */
-    if (raft_state->last_log_index > 0 && 
-        raft_state->last_log_index % 1000 == 0)
-    {
-        pgraft_create_snapshot();
-    }
-    
-    /* Update worker activity timestamp */
-    /* Update worker activity timestamp in worker manager */
-    if (pgraft_worker_manager_get_status(&worker_status))
-    {
-        worker_status.last_activity = GetCurrentTimestamp();
-        /* Update the worker status in the manager */
-    }
+	pgraft_raft_state_t *raft_state;
+	pgraft_health_worker_status_t worker_status;
+
+	if (!pgraft_initialized)
+		return;
+
+	raft_state = pgraft_raft_get_state();
+	if (!raft_state || !raft_state->is_initialized)
+		return;
+
+	/* Process Raft operations via Go etcd-io/raft library */
+	/* All Raft consensus logic is now handled by the Go library */
+	/* The Go library handles:
+	 * - Election timeouts and leader election
+	 * - Heartbeat sending and processing
+	 * - Log replication and commitment
+	 * - Message processing and state transitions
+	 */
+
+	/* Process incoming messages */
+	pgraft_process_incoming_messages();
+
+	/* Manage snapshots if needed */
+	/* Check if snapshot is needed and create one */
+	if (raft_state->last_log_index > 0 &&
+		raft_state->last_log_index % 1000 == 0)
+	{
+		pgraft_create_snapshot();
+	}
+
+	/* Update worker activity timestamp */
+	/* Update worker activity timestamp in worker manager */
+	if (pgraft_worker_manager_get_status(&worker_status))
+	{
+		worker_status.last_activity = GetCurrentTimestamp();
+		/* Update the worker status in the manager */
+	}
 }
 
 
@@ -562,12 +560,19 @@ load_go_library(void)
     if (go_lib_loaded)
         return 0;
     
-    /* Try to load the Go library with retries */
-    while (retry_count < max_retries)
-    {
-        go_lib_handle = dlopen("/Users/postgres/pgelephant/pge/ram/pgraft/src/pgraft_go.dylib", RTLD_LAZY);
-        if (go_lib_handle)
-            break;
+	/* Try to load the Go library with retries */
+	while (retry_count < max_retries)
+	{
+		char		lib_path[MAXPGPATH];
+		const char *pg_libdir;
+
+		/* Get PostgreSQL library directory */
+		pg_libdir = pkglib_path;
+		snprintf(lib_path, sizeof(lib_path), "%s/pgraft_go.dylib", pg_libdir);
+
+		go_lib_handle = dlopen(lib_path, RTLD_LAZY);
+		if (go_lib_handle)
+			break;
             
         retry_count++;
         elog(WARNING, "pgraft: attempt %d failed to load Go library: %s", 
@@ -598,6 +603,7 @@ load_go_library(void)
          pgraft_go_init_ptr, pgraft_go_start_ptr, pgraft_go_stop_ptr, pgraft_go_add_node_ptr, pgraft_go_add_peer_ptr);
     pgraft_go_remove_node_ptr = (pgraft_go_remove_node_func) dlsym(go_lib_handle, "pgraft_go_remove_peer");
     pgraft_go_get_state_ptr = (pgraft_go_get_state_func) dlsym(go_lib_handle, "pgraft_go_get_state");
+    pgraft_go_set_debug_ptr = (pgraft_go_set_debug_func) dlsym(go_lib_handle, "pgraft_go_set_debug");
     pgraft_go_get_leader_ptr = (pgraft_go_get_leader_func) dlsym(go_lib_handle, "pgraft_go_get_leader");
     pgraft_go_get_term_ptr = (pgraft_go_get_term_func) dlsym(go_lib_handle, "pgraft_go_get_term");
     pgraft_go_is_leader_ptr = (pgraft_go_is_leader_func) dlsym(go_lib_handle, "pgraft_go_is_leader");
@@ -1300,7 +1306,21 @@ pgraft_notify_components(const char* event_type, const char* data)
 	         "NOTIFY ram_events, '%s:%s'", event_type, data);
 	
 	/* Execute notification in background if possible */
-	// TODO: Implement background notification
+	if (SPI_connect() == SPI_OK_CONNECT)
+	{
+		int			ret = SPI_exec(notify_query, 0);
+		
+		if (ret != SPI_OK_UTILITY)
+		{
+			elog(WARNING, "pgraft: Failed to send notification: %s", notify_query);
+		}
+		
+		SPI_finish();
+	}
+	else
+	{
+		elog(WARNING, "pgraft: Failed to connect to SPI for notification");
+	}
 }
 
 /* Enhanced pgraft_add_node with component notification */

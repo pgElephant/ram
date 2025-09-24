@@ -400,11 +400,11 @@ ramd_backup_pgbackrest_init(ramd_backup_tool_t* tool)
     }
     
     if (strlen(tool->backup_path) == 0) {
-        snprintf(tool->backup_path, sizeof(tool->backup_path), "/var/lib/pgbackrest");
+        snprintf(tool->backup_path, sizeof(tool->backup_path), "{{VAR_DIR}}lib/pgbackrest");
     }
     
     if (strlen(tool->restore_path) == 0) {
-        snprintf(tool->restore_path, sizeof(tool->restore_path), "/var/lib/postgresql/restore");
+        snprintf(tool->restore_path, sizeof(tool->restore_path), "{{VAR_DIR}}lib/postgresql/restore");
     }
     
     /* Create backup directory if it doesn't exist */
@@ -438,11 +438,11 @@ ramd_backup_barman_init(ramd_backup_tool_t* tool)
     }
     
     if (strlen(tool->backup_path) == 0) {
-        snprintf(tool->backup_path, sizeof(tool->backup_path), "/var/lib/barman");
+        snprintf(tool->backup_path, sizeof(tool->backup_path), "{{VAR_DIR}}lib/barman");
     }
     
     if (strlen(tool->restore_path) == 0) {
-        snprintf(tool->restore_path, sizeof(tool->restore_path), "/var/lib/postgresql/restore");
+        snprintf(tool->restore_path, sizeof(tool->restore_path), "{{VAR_DIR}}lib/postgresql/restore");
     }
     
     /* Create backup directory if it doesn't exist */
@@ -478,11 +478,11 @@ ramd_backup_custom_init(ramd_backup_tool_t* tool)
     
     /* Set default paths if not provided */
     if (strlen(tool->backup_path) == 0) {
-        snprintf(tool->backup_path, sizeof(tool->backup_path), "/var/lib/backups");
+        snprintf(tool->backup_path, sizeof(tool->backup_path), "{{VAR_DIR}}lib/backups");
     }
     
     if (strlen(tool->restore_path) == 0) {
-        snprintf(tool->restore_path, sizeof(tool->restore_path), "/var/lib/postgresql/restore");
+        snprintf(tool->restore_path, sizeof(tool->restore_path), "{{VAR_DIR}}lib/postgresql/restore");
     }
     
     /* Create backup directory if it doesn't exist */

@@ -13,24 +13,24 @@
 
 /* RAMD Daemon Defaults */
 #define RAMCTRL_DEFAULT_RAMD_BINARY      "ramd"
-#define RAMCTRL_DEFAULT_RAMD_PIDFILE     "/var/run/ramd.pid"
-#define RAMCTRL_DEFAULT_RAMD_LOGFILE     "/var/log/ramd.log"
-#define RAMCTRL_DEFAULT_RAMD_CONFIG      "/etc/ramd/ramd.conf"
+#define RAMCTRL_DEFAULT_RAMD_PIDFILE     NULL	/* Will be set from config */
+#define RAMCTRL_DEFAULT_RAMD_LOGFILE     NULL	/* Will be set from config */
+#define RAMCTRL_DEFAULT_RAMD_CONFIG      NULL	/* Will be set from config */
 
 /* PostgreSQL Connection Defaults */
-#define RAMCTRL_DEFAULT_PG_DATABASE      "postgres"
-#define RAMCTRL_DEFAULT_PG_USER          "postgres"
-#define RAMCTRL_DEFAULT_PG_PORT          5432
+#define RAMCTRL_DEFAULT_PG_DATABASE      NULL	/* Will be set from config */
+#define RAMCTRL_DEFAULT_PG_USER          NULL	/* Will be set from config */
+#define RAMCTRL_DEFAULT_PG_PORT          0		/* Will be set from config */
 
 /* HTTP API Defaults */
-#define RAMCTRL_DEFAULT_API_PORT         8008
+#define RAMCTRL_DEFAULT_API_PORT         0		/* Will be set from config */
 
 /* Command Timeouts */
 #define RAMCTRL_DEFAULT_TIMEOUT_SECONDS  30
 
 /* Replication Defaults */
-#define RAMCTRL_DEFAULT_WAL_E_PATH       "/usr/local/bin/wal-e"
-#define RAMCTRL_DEFAULT_BACKUP_DIR       "/var/lib/postgresql/backups"
+#define RAMCTRL_DEFAULT_WAL_E_PATH       NULL	/* Will be set from config */
+#define RAMCTRL_DEFAULT_BACKUP_DIR       NULL	/* Will be set from config */
 
 /* Display Defaults */
 #define RAMCTRL_DEFAULT_TABLE_WIDTH      80

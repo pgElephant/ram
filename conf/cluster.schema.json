@@ -1,0 +1,490 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RAM Cluster Configuration Schema",
+  "description": "Validation schema for RAM PostgreSQL cluster configuration",
+  "type": "object",
+  "required": ["cluster", "nodes", "postgresql", "raft", "monitoring"],
+  "properties": {
+    "_metadata": {
+      "type": "object",
+      "properties": {
+        "description": {"type": "string", "minLength": 1},
+        "copyright": {"type": "string", "minLength": 1},
+        "format": {"type": "string", "enum": ["JSON"]},
+        "version": {"type": "string", "pattern": "^\\d+\\.\\d+$"}
+      }
+    },
+    "cluster": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Cluster name: alphanumeric, underscore, hyphen only"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+$",
+          "description": "Cluster version: semantic version format"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Cluster description: max 200 characters"
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["development", "staging", "production", "testing"],
+          "description": "Environment: development, staging, production, testing"
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$",
+          "description": "AWS region: lowercase alphanumeric with hyphens"
+        },
+        "datacenter": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$",
+          "description": "Datacenter identifier: lowercase alphanumeric with hyphens"
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "hostname", "port", "role"],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9,
+            "description": "Node ID: unique integer 1-9"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1,
+            "maxLength": 50,
+            "description": "Node name: alphanumeric, underscore, hyphen only"
+          },
+          "hostname": {
+            "type": "string",
+            "format": "hostname",
+            "description": "Node hostname: valid hostname format"
+          },
+          "ip": {
+            "type": "string",
+            "format": "ipv4",
+            "description": "Node IP address: valid IPv4 address"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 65535,
+            "description": "PostgreSQL port: 1024-65535"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["primary", "replica", "standby"],
+            "description": "Node role: primary, replica, standby"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["running", "stopped", "starting", "stopping", "failed"],
+            "description": "Node state: running, stopped, starting, stopping, failed"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Node priority: 0-100 (higher = more likely to be primary)"
+          },
+          "user": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_]+$",
+            "minLength": 1,
+            "maxLength": 63,
+            "description": "PostgreSQL username: alphanumeric and underscore only"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "PostgreSQL password: max 100 characters"
+          },
+          "database": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_]+$",
+            "minLength": 1,
+            "maxLength": 63,
+            "description": "PostgreSQL database name: alphanumeric and underscore only"
+          },
+          "data_dir": {
+            "type": "string",
+            "pattern": "^/[a-zA-Z0-9_/.-]+$",
+            "description": "Data directory: absolute path with write permissions"
+          },
+          "log_dir": {
+            "type": "string",
+            "pattern": "^/[a-zA-Z0-9_/.-]+$",
+            "description": "Log directory: absolute path with write permissions"
+          },
+          "bin_dir": {
+            "type": "string",
+            "pattern": "^/[a-zA-Z0-9_/.-]+$",
+            "description": "PostgreSQL binary directory: absolute path"
+          },
+          "config_file": {
+            "type": "string",
+            "pattern": "^/[a-zA-Z0-9_/.-]+$",
+            "description": "PostgreSQL config file: absolute path"
+          },
+          "pgraft_port": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 65535,
+            "description": "PGRaft port: 1024-65535"
+          },
+          "ramd_port": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 65535,
+            "description": "RAMD port: 1024-65535"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Node enabled: true/false"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["primary", "replica", "standby", "master", "slave", "hot", "warm", "cold"]
+            },
+            "description": "Node tags: primary, replica, standby, master, slave, hot, warm, cold"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "zone": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]+$",
+                "description": "Availability zone: lowercase alphanumeric with hyphens"
+              },
+              "instance_type": {
+                "type": "string",
+                "pattern": "^[a-z0-9.]+$",
+                "description": "Instance type: lowercase alphanumeric with dots"
+              },
+              "storage_type": {
+                "type": "string",
+                "enum": ["gp2", "gp3", "io1", "io2", "st1", "sc1"],
+                "description": "Storage type: gp2, gp3, io1, io2, st1, sc1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "postgresql": {
+      "type": "object",
+      "required": ["version"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+$",
+          "description": "PostgreSQL version: semantic version format"
+        },
+        "shared_preload_libraries": {
+          "type": "string",
+          "description": "Shared preload libraries: comma-separated list"
+        },
+        "wal_level": {
+          "type": "string",
+          "enum": ["minimal", "replica", "logical"],
+          "description": "WAL level: minimal, replica, logical"
+        },
+        "max_wal_senders": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Max WAL senders: 0-100"
+        },
+        "max_replication_slots": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Max replication slots: 0-100"
+        },
+        "hot_standby": {
+          "type": "boolean",
+          "description": "Hot standby enabled: true/false"
+        },
+        "synchronous_commit": {
+          "type": "string",
+          "enum": ["off", "local", "remote_write", "on", "remote_apply"],
+          "description": "Synchronous commit: off, local, remote_write, on, remote_apply"
+        },
+        "synchronous_standby_names": {
+          "type": "string",
+          "description": "Synchronous standby names: comma-separated list"
+        },
+        "archive_mode": {
+          "type": "string",
+          "enum": ["off", "on", "always"],
+          "description": "Archive mode: off, on, always"
+        },
+        "archive_command": {
+          "type": "string",
+          "description": "Archive command: shell command string"
+        },
+        "archive_timeout": {
+          "type": "string",
+          "pattern": "^\\d+[smhd]?$",
+          "description": "Archive timeout: number with optional unit (s, m, h, d)"
+        },
+        "checkpoint_timeout": {
+          "type": "string",
+          "pattern": "^\\d+[smhd]?$",
+          "description": "Checkpoint timeout: number with optional unit (s, m, h, d)"
+        },
+        "checkpoint_completion_target": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Checkpoint completion target: 0.0-1.0"
+        },
+        "wal_keep_size": {
+          "type": "string",
+          "pattern": "^\\d+[KMGT]?B$",
+          "description": "WAL keep size: number with unit (B, KB, MB, GB, TB)"
+        },
+        "max_connections": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 10000,
+          "description": "Max connections: 10-10000"
+        },
+        "shared_buffers": {
+          "type": "string",
+          "pattern": "^\\d+[KMGT]?B$",
+          "description": "Shared buffers: number with unit (B, KB, MB, GB, TB)"
+        },
+        "effective_cache_size": {
+          "type": "string",
+          "pattern": "^\\d+[KMGT]?B$",
+          "description": "Effective cache size: number with unit (B, KB, MB, GB, TB)"
+        },
+        "maintenance_work_mem": {
+          "type": "string",
+          "pattern": "^\\d+[KMGT]?B$",
+          "description": "Maintenance work memory: number with unit (B, KB, MB, GB, TB)"
+        },
+        "checkpoint_segments": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Checkpoint segments: 1-1000"
+        },
+        "wal_buffers": {
+          "type": "string",
+          "pattern": "^\\d+[KMGT]?B$",
+          "description": "WAL buffers: number with unit (B, KB, MB, GB, TB)"
+        },
+        "default_statistics_target": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Default statistics target: 1-10000"
+        },
+        "random_page_cost": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 10.0,
+          "description": "Random page cost: 0.0-10.0"
+        },
+        "effective_io_concurrency": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Effective I/O concurrency: 0-1000"
+        },
+        "work_mem": {
+          "type": "string",
+          "pattern": "^\\d+[KMGT]?B$",
+          "description": "Work memory: number with unit (B, KB, MB, GB, TB)"
+        },
+        "min_wal_size": {
+          "type": "string",
+          "pattern": "^\\d+[KMGT]?B$",
+          "description": "Min WAL size: number with unit (B, KB, MB, GB, TB)"
+        },
+        "max_wal_size": {
+          "type": "string",
+          "pattern": "^\\d+[KMGT]?B$",
+          "description": "Max WAL size: number with unit (B, KB, MB, GB, TB)"
+        }
+      }
+    },
+    "raft": {
+      "type": "object",
+      "required": ["cluster_id"],
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Raft cluster ID: alphanumeric, underscore, hyphen only"
+        },
+        "heartbeat_interval_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Heartbeat interval: 100-10000 milliseconds"
+        },
+        "election_timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Election timeout: 1000-30000 milliseconds"
+        },
+        "snapshot_interval_ms": {
+          "type": "integer",
+          "minimum": 10000,
+          "maximum": 3600000,
+          "description": "Snapshot interval: 10000-3600000 milliseconds"
+        },
+        "max_snapshot_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Max snapshot count: 1-10"
+        },
+        "log_level": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "description": "Log level: debug, info, warn, error"
+        },
+        "data_dir": {
+          "type": "string",
+          "pattern": "^/[a-zA-Z0-9_/.-]+$",
+          "description": "Raft data directory: absolute path with write permissions"
+        },
+        "network": {
+          "type": "object",
+          "properties": {
+            "bind_address": {
+              "type": "string",
+              "enum": ["0.0.0.0"],
+              "description": "Bind address: 0.0.0.0 for all interfaces"
+            },
+            "advertise_address": {
+              "type": "string",
+              "description": "Advertise address: hostname or IP address"
+            },
+            "port_range_start": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65535,
+              "description": "Port range start: 1024-65535"
+            },
+            "port_range_end": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65535,
+              "description": "Port range end: 1024-65535"
+            }
+          }
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Monitoring enabled: true/false"
+        },
+        "interval_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Monitoring interval: 1000-60000 milliseconds"
+        },
+        "health_check_timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Health check timeout: 1000-60000 milliseconds"
+        },
+        "failover_timeout_ms": {
+          "type": "integer",
+          "minimum": 5000,
+          "maximum": 300000,
+          "description": "Failover timeout: 5000-300000 milliseconds"
+        },
+        "recovery_timeout_ms": {
+          "type": "integer",
+          "minimum": 30000,
+          "maximum": 3600000,
+          "description": "Recovery timeout: 30000-3600000 milliseconds"
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Metrics enabled: true/false"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65535,
+              "description": "Metrics port: 1024-65535"
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^/[a-zA-Z0-9_/.-]*$",
+              "description": "Metrics path: URL path starting with /"
+            },
+            "retention_days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365,
+              "description": "Metrics retention: 1-365 days"
+            }
+          }
+        },
+        "alerting": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Alerting enabled: true/false"
+            },
+            "webhook_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Webhook URL: valid HTTP/HTTPS URL"
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Email address: valid email format"
+            },
+            "slack": {
+              "type": "string",
+              "description": "Slack webhook URL: valid Slack webhook URL"
+            }
+          }
+        }
+      }
+    }
+  }
+}

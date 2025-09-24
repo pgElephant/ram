@@ -22,13 +22,13 @@
 #define RAMD_MONITOR_INTERVAL_MS           5000
 #define RAMD_FAILOVER_TIMEOUT_MS           30000
 #define RAMD_HEALTH_CHECK_TIMEOUT_MS       10000
-#define RAMD_DEFAULT_PORT                  8008
+#define RAMD_DEFAULT_PORT                  5432
 
 /* PostgreSQL Default Paths */
 #define RAMD_DEFAULT_PG_BIN_DIR          "/usr/bin"
-#define RAMD_DEFAULT_PG_DATA_DIR         "/var/lib/postgresql/data"
-#define RAMD_DEFAULT_PG_LOG_DIR          "/var/log/postgresql"
-#define RAMD_DEFAULT_PG_ARCHIVE_DIR      "/var/lib/postgresql/archive"
+#define RAMD_DEFAULT_PG_DATA_DIR         "{{VAR_DIR}}lib/postgresql/data"
+#define RAMD_DEFAULT_PG_LOG_DIR          "{{VAR_DIR}}log/postgresql"
+#define RAMD_DEFAULT_PG_ARCHIVE_DIR      "{{VAR_DIR}}lib/postgresql/archive"
 
 /* PostgreSQL Default Connection Parameters */
 #define RAMD_DEFAULT_PG_DATABASE         "postgres"
@@ -47,7 +47,7 @@
 #define RAMD_DEFAULT_NETWORK_RANGE       "127.0.0.1/32"
 
 /* HTTP API Defaults */
-#define RAMD_DEFAULT_HTTP_PORT           8008
+#define RAMD_DEFAULT_HTTP_PORT           8080
 #define RAMD_DEFAULT_HTTP_BIND_ADDRESS   "127.0.0.1"
 
 /* RALE (Raft-like Leader Election) Defaults */
@@ -106,9 +106,9 @@
 #define RAMD_DEFAULT_SYNC_TIMEOUT_MS     10000
 
 /* File Paths */
-#define RAMD_DEFAULT_CONFIG_FILE         "/etc/ramd/ramd.conf"
-#define RAMD_DEFAULT_PID_FILE            "/var/run/ramd.pid"
-#define RAMD_DEFAULT_LOG_FILE            "/var/log/ramd.log"
+#define RAMD_DEFAULT_CONFIG_FILE         "{{ETC_DIR}}ramd/ramd.conf"
+#define RAMD_DEFAULT_PID_FILE            "{{VAR_DIR}}run/ramd.pid"
+#define RAMD_DEFAULT_LOG_FILE            "{{VAR_DIR}}log/ramd.log"
 
 /* Temporary/Development Paths */
 #define RAMD_FALLBACK_DATA_DIR           "/tmp/postgresql/data"

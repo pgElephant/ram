@@ -517,7 +517,7 @@ int ramctrl_cmd_logs(ramctrl_context_t* ctx)
 	{
 		snprintf(log_output, sizeof(log_output),
 		         "tail -n 50 %s 2>/dev/null || echo 'Log file not accessible'",
-		         RAMD_LOGFILE);
+		         (char*)RAMD_LOGFILE);
 		system(log_output);
 	}
 
@@ -704,7 +704,7 @@ int ramctrl_cmd_bootstrap_run(ramctrl_context_t* ctx)
 	{
 		printf("ramctrl: RAMCTRL_API_URL environment variable not set\n");
 		printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., "
-		       "http://127.0.0.1:8008)\n");
+		       "http://${API_HOST}:${API_PORT})\n");
 		return RAMCTRL_EXIT_FAILURE;
 	}
 	snprintf(full_url, sizeof(full_url), "%s/api/v1/bootstrap/primary",
@@ -787,7 +787,7 @@ bool ramctrl_daemon_get_logs(ramctrl_context_t* ctx, char* output,
 		size_t line_len = strlen(line);
 		if (written + line_len < output_size - 1)
 		{
-			strcat(output, line);
+			strncat(output, line, output_size - written - 1);
 			written += line_len;
 		}
 		else
@@ -809,7 +809,7 @@ int ramctrl_cmd_show(ramctrl_context_t* ctx)
 	switch (ctx->show_command)
 	{
 	case RAMCTRL_SHOW_CLUSTER:
-		return ramctrl_cmd_show_cluster(ctx, "localhost");
+		return ramctrl_cmd_show_cluster(ctx, "127.0.0.1");
 	case RAMCTRL_SHOW_NODES:
 		return ramctrl_cmd_show_nodes(ctx);
 	case RAMCTRL_SHOW_REPLICATION:
@@ -837,7 +837,7 @@ int ramctrl_cmd_node(ramctrl_context_t* ctx)
 	switch (ctx->node_command)
 	{
 	case RAMCTRL_NODE_ADD:
-		return ramctrl_cmd_add_node(ctx, "postgres", "localhost", 5432);
+		return ramctrl_cmd_add_node(ctx, "postgres", "127.0.0.1", 5432);
 	case RAMCTRL_NODE_REMOVE:
 		return ramctrl_cmd_remove_node(ctx, "postgres");
 	case RAMCTRL_NODE_LIST:
@@ -973,7 +973,7 @@ int ramctrl_cmd_add_replica(ramctrl_context_t* ctx)
 	{
 		printf("ramctrl: RAMCTRL_API_URL environment variable not set\n");
 		printf("ramctrl: set RAMCTRL_API_URL to ramd daemon address (e.g., "
-		       "http://127.0.0.1:8008)\n");
+		       "http://${API_HOST}:${API_PORT})\n");
 		return RAMCTRL_EXIT_FAILURE;
 	}
 

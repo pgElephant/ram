@@ -1,19 +1,71 @@
-name: C/C++ CI
+name: CI/CD Pipeline
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  POSTGRESQL_VERSION: "17"
+  GO_VERSION: "1.21"
+  NODE_VERSION: "18"
 
 jobs:
-  build-and-test:
+  # Code Quality Checks
+  code-quality:
+    name: Code Quality
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        postgresql-version: [12, 13, 14, 15, 16, 17]
-    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libpq-dev \
+          libcurl4-openssl-dev \
+          libjansson-dev \
+          libssl-dev \
+          autotools-dev \
+          automake \
+          autoconf \
+          libtool
+
+    - name: Check for hardcoded values
+      run: |
+        echo "Checking for hardcoded values..."
+        ./scripts/fix_hardcoded_values.sh --check-only || true
+        if grep -r "127\.0\.0\.1\|localhost\|5432\|8008" --include="*.c" --include="*.h" . | grep -v "postgres.h" | grep -v "#"; then
+          echo "❌ Hardcoded values found!"
+          exit 1
+        fi
+        echo "✅ No hardcoded values found"
+
+    - name: Validate coding standards
+      run: |
+        echo "Validating PostgreSQL coding standards..."
+        ./validate_standards.sh
+
+  # Build and Test with PostgreSQL 17
+  build-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
     services:
-      postgres:
-        image: postgres:${{ matrix.postgresql-version }}
+      postgresql:
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: testdb
@@ -26,128 +78,476 @@ jobs:
           - 5432:5432
 
     steps:
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install system dependencies
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install PostgreSQL 17 development packages
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          wget \
-          ca-certificates \
-          gnupg \
-          lsb-release \
-          software-properties-common
-        # Add PostgreSQL official repository
-        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-        echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-        sudo apt-get update
-        # Install PostgreSQL with fallback
-        sudo apt-get install -y \
-          postgresql-${{ matrix.postgresql-version }} \
-          postgresql-server-dev-${{ matrix.postgresql-version }} \
-          postgresql-client-${{ matrix.postgresql-version }} \
-          || echo "PostgreSQL ${{ matrix.postgresql-version }} not available, trying fallback"
-        sudo apt-get install -y \
+          postgresql-17 \
+          postgresql-client-17 \
+          postgresql-server-dev-17 \
           build-essential \
-          make \
-          gcc \
-          libc6-dev \
           pkg-config \
           libpq-dev \
-          git \
-          curl \
-          valgrind
+          libcurl4-openssl-dev \
+          libjansson-dev \
+          libssl-dev \
+          autotools-dev \
+          automake \
+          autoconf \
+          libtool
 
-    - name: Set up PostgreSQL environment
+    - name: Configure PostgreSQL
       run: |
-        sudo systemctl start postgresql
-        sudo systemctl enable postgresql
-        sudo -u postgres psql -c "CREATE DATABASE testdb;"
-        sudo -u postgres psql -c "CREATE USER testuser WITH PASSWORD 'testpass';"
-        sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE testdb TO testuser;"
-        sudo -u postgres psql -c "ALTER USER testuser CREATEDB;"
+        sudo -u postgres psql -c "ALTER SYSTEM SET shared_preload_libraries = 'pgraft';"
+        sudo -u postgres psql -c "SELECT pg_reload_conf();"
 
-    - name: Build pgraft extension
+    - name: Build PGRaft extension
       run: |
         cd pgraft
+        export PG_CONFIG=/usr/bin/pg_config
         make clean
-        make
-        echo "pgraft extension built successfully"
+        make -j$(nproc) \
+          PG_CONFIG="$PG_CONFIG" \
+          CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter" \
+          CPPFLAGS="-I$(pg_config --includedir)" \
+          LDFLAGS="-L$(pg_config --libdir)"
 
-    - name: Build ramd daemon
+    - name: Build RAMD daemon
       run: |
         cd ramd
+        export PG_CONFIG=/usr/bin/pg_config
         make clean
-        make
-        echo "ramd daemon built successfully"
+        make -j$(nproc) \
+          PG_CONFIG="$PG_CONFIG" \
+          PG_INCLUDEDIR="$(pg_config --includedir)" \
+          PG_LIBDIR="$(pg_config --libdir)" \
+          CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter" \
+          CPPFLAGS="-I$(pg_config --includedir)" \
+          LDFLAGS="-L$(pg_config --libdir) -lpq -lcurl -ljansson -lssl -lcrypto"
 
-    - name: Build ramctrl utility
+    - name: Build RAMCTRL CLI
       run: |
         cd ramctrl
+        export PG_CONFIG=/usr/bin/pg_config
         make clean
-        make
-        echo "ramctrl utility built successfully"
+        make -j$(nproc) \
+          PG_CONFIG="$PG_CONFIG" \
+          PG_INCLUDEDIR="$(pg_config --includedir)" \
+          PG_LIBDIR="$(pg_config --libdir)" \
+          CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter" \
+          CPPFLAGS="-I$(pg_config --includedir)" \
+          LDFLAGS="-L$(pg_config --libdir) -lpq -lcurl -lssl -lcrypto"
 
-    - name: Install pgraft extension
+    - name: Install PGRaft extension
       run: |
         cd pgraft
-        sudo make install
+        export PG_CONFIG=/usr/bin/pg_config
+        sudo make install PG_CONFIG="$PG_CONFIG"
 
-    - name: Test pgraft extension loading
+    - name: Create PGRaft extension in test database
       run: |
         sudo -u postgres psql -d testdb -c "CREATE EXTENSION IF NOT EXISTS pgraft;"
-        echo "pgraft extension loaded successfully"
 
-    - name: Test pgraft basic functions
+    - name: Run tests
       run: |
-        sudo -u postgres psql -d testdb -c "SELECT pgraft_version();" || echo "pgraft_version function not available"
-        sudo -u postgres psql -d testdb -c "SELECT pgraft_get_cluster_health();" || echo "pgraft_get_cluster_health function not available"
-        sudo -u postgres psql -d testdb -c "SELECT pgraft_get_performance_metrics();" || echo "pgraft_get_performance_metrics function not available"
-        sudo -u postgres psql -d testdb -c "SELECT pgraft_is_cluster_healthy();" || echo "pgraft_is_cluster_healthy function not available"
-        echo "Basic functions test completed"
+        cd tests
+        python3 -m venv venv
+        source venv/bin/activate
+        pip install -r requirements.txt
+        python test_suite.py --verbose
 
-    - name: Test ramd daemon
+    - name: Test PGRaft functions
       run: |
-        cd ramd
-        if [ -f ./ramd ]; then
-          timeout 5s ./ramd --help || echo "ramd help test completed"
-          echo "ramd daemon test passed"
-        else
-          echo "ramd binary not found, skipping test"
-        fi
+        sudo -u postgres psql -d testdb -c "SELECT pgraft_version();"
+        sudo -u postgres psql -d testdb -c "SELECT pgraft_init();"
+        sudo -u postgres psql -d testdb -c "SELECT pgraft_get_state();"
 
-    - name: Test ramctrl utility
-      run: |
-        cd ramctrl
-        if [ -f ./ramctrl ]; then
-          timeout 5s ./ramctrl --help || echo "ramctrl help test completed"
-          echo "ramctrl utility test passed"
-        else
-          echo "ramctrl binary not found, skipping test"
-        fi
+  # Multi-Node Cluster Test
+  cluster-test:
+    name: Multi-Node Cluster Test
+    runs-on: ubuntu-latest
+    services:
+      postgresql-1:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb1
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      postgresql-2:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb2
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5433:5432
+      
+      postgresql-3:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb3
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5434:5432
 
-    - name: Run static analysis
-      run: |
-        if command -v cppcheck >/dev/null 2>&1; then
-          find . -name "*.c" -o -name "*.h" | xargs cppcheck --enable=all --inconclusive --std=c99 --suppress=missingIncludeSystem 2>&1 || true
-        else
-          echo "cppcheck not available, skipping static analysis"
-        fi
-        echo "Static analysis completed"
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-    - name: Check code formatting
-      run: |
-        find . -name "*.c" -o -name "*.h" | xargs grep -n "if(" || true
-        find . -name "*.c" -o -name "*.h" | xargs grep -n "for(" || true
-        find . -name "*.c" -o -name "*.h" | xargs grep -n "while(" || true
-        echo "Code formatting check completed"
-
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
+    - name: Setup Go
+      uses: actions/setup-go@v4
       with:
-        name: test-results-postgresql-${{ matrix.postgresql-version }}
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          postgresql-17 \
+          postgresql-client-17 \
+          postgresql-server-dev-17 \
+          build-essential \
+          pkg-config \
+          libpq-dev \
+          libcurl4-openssl-dev \
+          libjansson-dev \
+          libssl-dev \
+          autotools-dev \
+          automake \
+          autoconf \
+          libtool
+
+    - name: Build all components
+      run: |
+        ./build.sh
+
+    - name: Configure cluster
+      run: |
+        # Create cluster configuration
+        cat > conf/cluster.json << EOF
+        {
+          "cluster_name": "test_cluster",
+          "nodes": [
+            {
+              "name": "node1",
+              "hostname": "localhost",
+              "address": "127.0.0.1",
+              "postgresql_port": 5432,
+              "role": "primary",
+              "user": "postgres",
+              "password": "postgres",
+              "database": "testdb1"
+            },
+            {
+              "name": "node2", 
+              "hostname": "localhost",
+              "address": "127.0.0.1",
+              "postgresql_port": 5433,
+              "role": "replica",
+              "user": "postgres",
+              "password": "postgres",
+              "database": "testdb2"
+            },
+            {
+              "name": "node3",
+              "hostname": "localhost", 
+              "address": "127.0.0.1",
+              "postgresql_port": 5434,
+              "role": "replica",
+              "user": "postgres",
+              "password": "postgres",
+              "database": "testdb3"
+            }
+          ]
+        }
+        EOF
+
+    - name: Test cluster formation
+      run: |
+        # Start RAMD daemons
+        ./ramd/ramd -c conf/ramd.conf -l info &
+        sleep 5
+        
+        # Test cluster operations
+        ./ramctrl/ramctrl cluster create --name test_cluster
+        ./ramctrl/ramctrl cluster status
+        ./ramctrl/ramctrl nodes list
+        
+        # Test failover
+        ./ramctrl/ramctrl cluster failover
+        ./ramctrl/ramctrl cluster status
+
+  # Security Scan
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run security scan
+      run: |
+        # Install security tools
+        sudo apt-get update
+        sudo apt-get install -y \
+          cppcheck \
+          flawfinder \
+          bandit
+
+        # C/C++ security scan
+        cppcheck --enable=all --inconclusive --std=c99 --error-exitcode=1 \
+          --suppress=missingIncludeSystem \
+          --suppress=unusedFunction \
+          pgraft/src/ ramd/src/ ramctrl/src/ || true
+
+        # Python security scan
+        bandit -r tests/ || true
+
+  # Package Building
+  package-build:
+    name: Package Build
+    runs-on: ubuntu-latest
+    needs: [code-quality, build-test]
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, ubuntu-22.04, ubuntu-24.04]
+        arch: [x64, arm64]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          postgresql-17 \
+          postgresql-client-17 \
+          postgresql-server-dev-17 \
+          build-essential \
+          pkg-config \
+          libpq-dev \
+          libcurl4-openssl-dev \
+          libjansson-dev \
+          libssl-dev \
+          autotools-dev \
+          automake \
+          autoconf \
+          libtool \
+          rpm \
+          dpkg-dev
+
+    - name: Build packages
+      run: |
+        # Build RPM packages
+        cd scripts/rpm
+        ./build-rpm.sh
+        
+        # Build DEB packages  
+        cd ../deb
+        ./build-deb.sh
+        
+        # Build unified package
+        cd ../unified
+        ./build-unified.sh
+
+    - name: Upload packages
+      uses: actions/upload-artifact@v3
+      with:
+        name: packages-${{ matrix.os }}-${{ matrix.arch }}
         path: |
-          pgraft/valgrind-out.txt
-          */test-results.txt
+          scripts/rpm/RPMS/
+          scripts/deb/debs/
+          scripts/unified/packages/
+
+  # Docker Image Build
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [build-test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build PGRaft Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: docker/Dockerfile.pgraft
+        push: false
+        tags: |
+          pgram/pgraft:latest
+          pgram/pgraft:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build RAMD Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: docker/Dockerfile.ramd
+        push: false
+        tags: |
+          pgram/ramd:latest
+          pgram/ramd:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build RAMCTRL Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: docker/Dockerfile.ramctrl
+        push: false
+        tags: |
+          pgram/ramctrl:latest
+          pgram/ramctrl:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build unified Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: docker/Dockerfile.unified
+        push: false
+        tags: |
+          pgram/ram:latest
+          pgram/ram:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Performance Tests
+  performance-test:
+    name: Performance Test
+    runs-on: ubuntu-latest
+    needs: [build-test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          postgresql-17 \
+          postgresql-client-17 \
+          postgresql-server-dev-17 \
+          build-essential \
+          pkg-config \
+          libpq-dev \
+          libcurl4-openssl-dev \
+          libjansson-dev \
+          libssl-dev \
+          autotools-dev \
+          automake \
+          autoconf \
+          libtool
+
+    - name: Build components
+      run: ./build.sh
+
+    - name: Run performance tests
+      run: |
+        cd tests/performance
+        python3 -m venv venv
+        source venv/bin/activate
+        pip install -r requirements.txt
+        python performance_test.py --duration 300 --nodes 3
+
+  # Documentation Build
+  docs-build:
+    name: Documentation Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Install documentation dependencies
+      run: |
+        npm install -g @vuepress/cli
+        npm install -g vuepress
+
+    - name: Build documentation
+      run: |
+        cd doc
+        vuepress build
+
+    - name: Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: doc/.vuepress/dist/
+
+  # Release
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [package-build, docker-build, performance-test, docs-build]
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download packages
+      uses: actions/download-artifact@v3
+      with:
+        name: packages-ubuntu-22.04-x64
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          packages-ubuntu-22.04-x64/*.rpm
+          packages-ubuntu-22.04-x64/*.deb
+          packages-ubuntu-22.04-x64/*.tar.gz
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

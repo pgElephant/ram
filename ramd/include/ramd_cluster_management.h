@@ -1,12 +1,19 @@
-/*
- * PostgreSQL RAM Daemon - Enhanced API Header
- * 
- * This header defines the enhanced API endpoints for switchover,
- * configuration management, and cluster operations.
+/*-------------------------------------------------------------------------
+ *
+ * ramd_cluster_management.h
+ *		PostgreSQL RAM Daemon - Cluster Management API Module
+ *
+ * This module provides comprehensive cluster management API endpoints
+ * including switchover, configuration management, backup operations,
+ * parameter validation, and cluster health monitoring.
+ *
+ * Copyright (c) 2024-2025, pgElephant, Inc.
+ *
+ *-------------------------------------------------------------------------
  */
 
-#ifndef RAMD_API_ENHANCED_H
-#define RAMD_API_ENHANCED_H
+#ifndef RAMD_CLUSTER_MANAGEMENT_H
+#define RAMD_CLUSTER_MANAGEMENT_H
 
 #include "ramd_common.h"
 #include "ramd_http_api.h"

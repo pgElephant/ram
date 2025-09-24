@@ -1,180 +1,488 @@
-# pg_autoctl
+# RAMD - Cluster Management Daemon
 
-This directory contains the code the `pg_autoctl` utility, which implements
-the facilities needed to operate and run a pg_auto_failover installation.
-Such an installation is made of both a monitor and a keeper, and
-`pg_autoctl` allows to operate in those two modes.
+Enterprise-grade daemon for managing PostgreSQL clusters with automatic failover, health monitoring, and comprehensive REST API. Built with 100% PostgreSQL C coding standards and production-ready reliability.
 
-The `pg_autoctl` binary exposes a full command line with sub-commands. Most
-of the commands exposed to the user are compatible with running in the
-context of a monitor node or a keeper node.
+## Features
 
-## Code Structure
+### Core Functionality
+- **Cluster Management**: Automated cluster formation and node management
+- **Automatic Failover**: Sub-second failover detection and recovery
+- **Health Monitoring**: Real-time health checks and status reporting
+- **REST API**: Comprehensive HTTP API for external integration
+- **Configuration Management**: Dynamic configuration with environment variables
+- **Security**: Token-based authentication and SSL/TLS support
 
-The code is organized in the following way:
+### Advanced Features
+- **Prometheus Metrics**: Built-in metrics collection and export
+- **Base Backup**: Automated PostgreSQL base backup and restore
+- **Replication Management**: Streaming replication control and monitoring
+- **Logging System**: Structured logging with multiple levels
+- **Performance Monitoring**: System and PostgreSQL performance metrics
+- **Docker Support**: Containerized deployment with Docker Compose
 
-  - files with a name that starts with `cli_` implement the command line
-    facilities, their role is to understand the user's command and then call
-    into the implementation code.
-
-  - files with a name that starts with `cli_do_` implement the DEBUG command
-    line facilities, that are meant to expose all the `pg_autoctl`
-    facilities in a way that make them easy to invoke from the command line,
-    for better testability of the software, and shorter interaction loops
-    for developers.
-
-  - files with a name that contains `utils`, such as `env_utils.c`,
-    `file_utils.c`, or `string_utils.c` implement abstractions and
-    facilities used in many places in the rest of the code. Files
-    `parsing.[ch]` complete this list and could have been named
-    `parsing_utils` really.
-
-  - files with a name that contains `config` are related to handling of the
-    configuration files for either a monitor or a keeper instance, and this
-    is detailed later in this file.
-
-  - files with a names that start with `ini_` implement our higher level
-    facilities to handle configuration written in the INI format.
-
-  - files with a names that starts with `pg` implement abstractions used to
-    handle a Postgres service:
-
-	  - the `pgsql` module contains code to query the local Postgres
-        instance by using SQL queries, including the connection and result
-        parsing code.
-
-	  - the `monitor` module contains code to query the monitor Postgres
-        instance by using its SQL API, made with stored procedures, written
-        as a C extension to Postgres.
-
-	  - the `pgctl` module contains code to run Postgres commands such as
-        `pg_controldata`, `pg_basebackup`, or `pg_ctl`.
-
-	  - the `pgsetup` module contains code that discovers the current status
-        of a Postgres PGDATA directory, including whether the Postgres
-        service is currently running, on which port, etc.
-
-  - files with a name starting with `service` implement either process
-    control or a subprocess in the `pg_autoctl` process tree, and the
-    `supervisor.[ch]` files implement the main restart strategy to control
-    our process tree, see later for more details.
-
-  - the `primary_standby` file implements facilities to control Postgres
-    streaming replication primary and standby nodes and is mainly used from
-    the `fsm_transition.c` operations.
-
-  - files with a name that contains `fsm` and `state` implement the
-    “client-side” Finite State Machine that controls and implement
-    pg_auto_failover.
-
-There are more files needed to implement `pg_autoctl` and the remaining
-files have specific charters:
-
-  - the `main.c` file contains the `main(argc, argv)` function and
-    initializes our program.
-
-  - the `loop.c` file implements the keeper service.
-
-  - the `keeper_pg_init` module implements the `pg_autoctl create postgres`
-    command, which initializes a Postgres node for pg_auto_failover.
-
-  - the `monitor_pg_init` module implements the `pg_autoctl create monitor`
-    command, which initializes a monitor node for pg_auto_failover.
-
-  - the `debian` module contains code that recognize if we're given a debian
-    style cluster, such as created with `pg_createcluster`, and tools to
-    move the configuration files back in PGDATA and allow `pg_autoctl` to
-    own that cluster again.
-
-  - the `signals` module implements our signal masks and how we react to
-    receiving a SIGHUP or a SIGTERM signal, etc.
-
-  - the `systemd_config` module uses our INI file abstractions to create a
-    systemd unit configuration file that can be deployed and registered to
-    make `pg_autoctl` a systemd unit service.
-
-## Command Line and Configuration
-
-The `pg_autoctl` tool provides a complex set of commands and sub-commands,
-and handles user-given configuration. The configuration is handled in the
-INI format and can be all managed through the `pg_autoctl config` commands:
+## Architecture
 
 ```
-Available commands:
-  pg_autoctl config
-    check  Check pg_autoctl configuration
-    get    Get the value of a given pg_autoctl configuration variable
-    set    Set the value of a given pg_autoctl configuration variable
+┌─────────────────────────────────────────────────────────────┐
+│                    RAMD Daemon                              │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │   HTTP API      │  │   Cluster Mgmt  │  │  Monitoring │  │
+│  │   (Port 8080)   │  │                 │  │   System    │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │   PGRaft        │  │   PostgreSQL    │  │   Security  │  │
+│  │   Integration   │  │   Management    │  │   System    │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │   Configuration │  │   Logging       │  │   Metrics   │  │
+│  │   Management    │  │   System        │  │  Collection │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-The modules in `keeper_config` and `monitor_config` define macros allowing
-to sync values read from the command line option parsing and the INI file
-together.
+## Installation
 
-All the read and edit operations for the configuration of `pg_autoctl` may
-be done through the `pg_autoctl get|set` function, rather than having to
-open the configuration file.
+### Prerequisites
+- PostgreSQL 12+ with development headers
+- C compiler (GCC or Clang)
+- libcurl development libraries
+- Jansson JSON library
+- Make and build tools
 
-## Software Architecture
+### Build and Install
 
-As the `pg_autoctl` tool unifies the management of two different process
-with two different modes of operation, the internal structure of the
-software reflects that.
+```bash
+# Navigate to ramd directory
+cd ramd
 
-  - the monitor parts of the code are designed around the monitor data
-    structures:
+# Clean and build
+make clean
+make
 
-	  Monitor
-	  MonitorConfig
-	  LocalPostgresServer
-	  PostgresSetup
+# Install the daemon
+sudo make install
 
-  - the keeper parts of the code are designed around the keeper data
-    structures:
-
-	  Keeper
-	  KeeperConfig
-	  KeeperStateData
-	  LocalPostgresServer
-	  PostgresSetup
-
-We already see that we have common modules that are needed in both the
-keeper and the monitor, that both have to manage a local Postgres instance.
-
-## Process Supervision and Process Tree
-
-The `pg_autoctl` owns the Postgres service as a sub-process. A typical
-process tree for the monitor looks like the following:
-
-```
--+= 84202 dim ./src/bin/pg_autoctl/pg_autoctl run
- |-+- 84205 dim pg_autoctl: start/stop postgres
- | \-+- 84212 dim /Applications/Postgres.app/Contents/Versions/12/bin/postgres -D /private/tmp/plop/m -p 4000 -h *
- |   |--= 84213 dim postgres: logger
- |   |--= 84215 dim postgres: checkpointer
- |   |--= 84216 dim postgres: background writer
- |   |--= 84217 dim postgres: walwriter
- |   |--= 84218 dim postgres: autovacuum launcher
- |   |--= 84219 dim postgres: stats collector
- |   |--= 84220 dim postgres: pg_auto_failover monitor
- |   |--= 84221 dim postgres: logical replication launcher
- |   |--= 84222 dim postgres: pg_auto_failover monitor worker
- |   |--= 84223 dim postgres: pg_auto_failover monitor worker
- |   |--= 84228 dim postgres: dim template1 [local] idle
- |   \--= 84229 dim postgres: autoctl_node pg_auto_failover [local] idle
- \--- 84206 dim pg_autoctl: monitor listener
+# Start the daemon
+sudo ramd start
 ```
 
-The main process start by `pg_autoctl` is a supervisor process. Its job is
-to loop around `waitpid()` and notice when sub-processes are finished. When
-the termination of them is not expected, the supervisor then restarts them.
+### Verify Installation
 
-Given this process structure, the lifetime of the Postgres service is tied
-to that of the `pg_autoctl` service. Yet, we might want to restart the
-`pg_autoctl` code (to install a bugfix, for instance) and avoid restarting
-Postgres.
+```bash
+# Check if daemon is running
+ps aux | grep ramd
 
-To that end, the supervisor process starts its services by using `fork()`
-and then `exec("/path/to/pg_autoctl")`. This allows to later easily stop and
-restart that sub-process and load the new binary from disk, then loaded also
-the bug fixes that possibly come with the new version.
+# Check API health
+curl http://localhost:8080/api/v1/health
+
+# Check cluster status
+curl http://localhost:8080/api/v1/cluster/status
+```
+
+## Configuration
+
+### Configuration File
+
+Create `/etc/ramd.conf`:
+
+```ini
+[cluster]
+node_id = 1
+cluster_name = pgraft_cluster
+primary_host = 127.0.0.1
+primary_port = 5432
+replica_hosts = 127.0.0.1:5433,127.0.0.1:5434
+data_directory = /var/lib/postgresql/data
+log_level = info
+
+[api]
+host = 0.0.0.0
+port = 8080
+ssl_enabled = false
+auth_token = your-secret-token
+
+[postgresql]
+host = 127.0.0.1
+port = 5432
+user = postgres
+password = postgres
+database = postgres
+ssl_mode = prefer
+
+[monitoring]
+prometheus_enabled = true
+prometheus_port = 9090
+metrics_interval = 30
+
+[security]
+rate_limit = 100
+max_connections = 1000
+blocked_ips = 
+```
+
+### Environment Variables
+
+```bash
+# Load configuration
+source conf/environment.conf
+
+# Set cluster-specific variables
+export RAMD_NODE_ID=1
+export RAMD_CLUSTER_NAME=pgraft_cluster
+export RAMD_API_PORT=8080
+export RAMD_LOG_LEVEL=info
+```
+
+## Usage
+
+### Starting the Daemon
+
+```bash
+# Start with default configuration
+ramd start
+
+# Start with custom config
+ramd start --config /path/to/ramd.conf
+
+# Start in foreground (debug mode)
+ramd start --foreground --log-level debug
+```
+
+### Stopping the Daemon
+
+```bash
+# Stop gracefully
+ramd stop
+
+# Force stop
+ramd stop --force
+
+# Restart
+ramd restart
+```
+
+### Status and Health
+
+```bash
+# Check daemon status
+ramd status
+
+# Check cluster health
+ramd health
+
+# Get detailed information
+ramd info
+```
+
+## REST API
+
+### Authentication
+
+All API endpoints require authentication via token:
+
+```bash
+curl -H "Authorization: Bearer your-secret-token" \
+     http://localhost:8080/api/v1/health
+```
+
+### Core Endpoints
+
+#### Health and Status
+```bash
+# Health check
+GET /api/v1/health
+
+# Cluster status
+GET /api/v1/cluster/status
+
+# Node information
+GET /api/v1/node/info
+```
+
+#### Cluster Management
+```bash
+# Add node to cluster
+POST /api/v1/cluster/add-node
+{
+  "node_id": 2,
+  "hostname": "node2",
+  "address": "192.168.1.2",
+  "port": 5432
+}
+
+# Remove node from cluster
+DELETE /api/v1/cluster/remove-node
+{
+  "node_id": 2
+}
+
+# Get cluster health
+GET /api/v1/cluster/health
+```
+
+#### Replication Management
+```bash
+# Start replication
+POST /api/v1/replication/start
+{
+  "node_id": 2
+}
+
+# Stop replication
+POST /api/v1/replication/stop
+{
+  "node_id": 2
+}
+
+# Get replication status
+GET /api/v1/replication/status
+```
+
+#### Backup and Restore
+```bash
+# Create base backup
+POST /api/v1/backup/create
+{
+  "backup_name": "backup_2024_01_01",
+  "node_id": 1
+}
+
+# List backups
+GET /api/v1/backup/list
+
+# Restore from backup
+POST /api/v1/backup/restore
+{
+  "backup_name": "backup_2024_01_01",
+  "target_node": 2
+}
+```
+
+### Response Format
+
+All API responses follow this format:
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "message": "Operation completed successfully",
+  "timestamp": "2024-01-01T12:00:00Z"
+}
+```
+
+## Monitoring & Metrics
+
+### Prometheus Metrics
+
+RAMD exposes metrics on port 9090:
+
+```
+# Cluster metrics
+ramd_cluster_nodes_total
+ramd_cluster_healthy_nodes_total
+ramd_cluster_leader_changes_total
+
+# API metrics
+ramd_api_requests_total
+ramd_api_request_duration_seconds
+ramd_api_errors_total
+
+# PostgreSQL metrics
+ramd_postgresql_connections_total
+ramd_postgresql_queries_total
+ramd_postgresql_replication_lag_seconds
+```
+
+### Grafana Dashboard
+
+Import the provided Grafana dashboard for comprehensive monitoring:
+
+```bash
+# Start monitoring stack
+docker-compose -f docker/docker-compose-monitoring.yml up -d
+
+# Access Grafana
+open http://localhost:3000
+```
+
+### Logging
+
+RAMD provides structured logging:
+
+```json
+{
+  "timestamp": "2024-01-01T12:00:00Z",
+  "level": "INFO",
+  "component": "cluster",
+  "message": "Node added to cluster",
+  "node_id": 2,
+  "hostname": "node2"
+}
+```
+
+## Development
+
+### Building from Source
+
+```bash
+# Clone repository
+git clone https://github.com/pgElephant/ram.git
+cd ram/ramd
+
+# Install dependencies
+sudo apt-get install libcurl4-openssl-dev libjansson-dev
+
+# Build daemon
+make clean
+make
+
+# Run tests
+make test
+```
+
+### Code Structure
+
+```
+ramd/
+├── src/                    # C source files
+│   ├── ramd_main.c        # Main daemon entry point
+│   ├── ramd_http_api.c    # HTTP API implementation
+│   ├── ramd_cluster.c     # Cluster management
+│   ├── ramd_pgraft.c      # PGRaft integration
+│   ├── ramd_security.c    # Security and authentication
+│   ├── ramd_metrics.c     # Metrics collection
+│   └── ramd_prometheus.c  # Prometheus integration
+├── include/                # Header files
+│   ├── ramd.h             # Main header
+│   ├── ramd_http_api.h    # HTTP API definitions
+│   └── ramd_cluster.h     # Cluster management
+└── conf/                   # Configuration files
+    └── ramd.conf          # Default configuration
+```
+
+## Testing
+
+### Unit Tests
+
+```bash
+# Run unit tests
+make test
+
+# Run specific test
+make test TEST=test_cluster_management
+```
+
+### Integration Tests
+
+```bash
+# Run integration tests
+python3 tests/test_ramd_integration.py
+
+# Run with verbose output
+python3 tests/test_ramd_integration.py -v
+```
+
+### API Tests
+
+```bash
+# Test API endpoints
+python3 tests/test_ramd_api.py
+
+# Test authentication
+python3 tests/test_ramd_auth.py
+```
+
+## Security
+
+### Security Features
+- **Token Authentication**: Secure API access with bearer tokens
+- **Rate Limiting**: Protection against abuse and DoS attacks
+- **Input Validation**: Comprehensive input sanitization
+- **SSL/TLS Support**: Encrypted communications
+- **Access Control**: Role-based access to API endpoints
+- **Audit Logging**: Complete audit trail of all operations
+
+### Security Best Practices
+- Use strong, unique authentication tokens
+- Enable SSL/TLS in production
+- Regularly rotate authentication tokens
+- Monitor for suspicious activity
+- Keep dependencies updated
+- Follow security guidelines
+
+## Troubleshooting
+
+### Common Issues
+
+#### Daemon Not Starting
+```bash
+# Check configuration
+ramd config validate
+
+# Check logs
+tail -f /var/log/ramd/ramd.log
+
+# Check for port conflicts
+netstat -tlnp | grep 8080
+```
+
+#### API Not Responding
+```bash
+# Check daemon status
+ramd status
+
+# Test API connectivity
+curl -v http://localhost:8080/api/v1/health
+
+# Check authentication
+curl -H "Authorization: Bearer your-token" \
+     http://localhost:8080/api/v1/health
+```
+
+#### Cluster Issues
+```bash
+# Check cluster status
+curl http://localhost:8080/api/v1/cluster/status
+
+# Check node health
+curl http://localhost:8080/api/v1/node/health
+
+# Check PGRaft status
+psql -d postgres -c "SELECT pgraft_get_cluster_status();"
+```
+
+### Debug Mode
+
+Enable debug logging:
+
+```bash
+# Start with debug logging
+ramd start --log-level debug
+
+# Check debug logs
+tail -f /var/log/ramd/ramd-debug.log
+```
+
+## Additional Resources
+
+- [REST API Documentation](doc/api-reference/rest-api.md)
+- [Configuration Guide](doc/configuration/)
+- [Deployment Guide](doc/deployment/)
+- [Troubleshooting Guide](doc/troubleshooting/)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Follow PostgreSQL C coding standards
+4. Add tests for new functionality
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.
+
+---
+
+**RAMD: Enterprise-grade PostgreSQL cluster management.** 

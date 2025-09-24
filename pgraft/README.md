@@ -1,166 +1,157 @@
-# pgraft - RAFT-based PostgreSQL Extension for Distributed Consensus.
+# PGRaft - PostgreSQL Raft Extension
 
-A PostgreSQL extension that provides distributed consensus capabilities using a custom Raft implementation written in C, designed for high performance and PostgreSQL integration.
+A PostgreSQL extension that provides distributed consensus capabilities using the Raft algorithm. Built with 100% PostgreSQL C coding standards and enterprise-grade reliability.
 
 ## Features
 
-- **Distributed Consensus**: Custom Raft consensus algorithm implementation
-- **High Availability**: Automatic leader election and failover
-- **Log Replication**: Consistent log replication across cluster nodes
-- **Background Worker Process**: Dedicated worker process for handling consensus operations
-- **Configuration Management**: Dynamic cluster membership changes
-- **GUC Configuration**: Full PostgreSQL GUC integration for all settings
-- **Monitoring**: Comprehensive status and statistics views
-- **PostgreSQL Integration**: Native SQL functions and views
-- **Pure C Implementation**: No external dependencies, optimized for PostgreSQL
+### Core Functionality
+- **Raft Consensus Algorithm**: Distributed consensus for PostgreSQL clusters
+- **Automatic Leader Election**: Sub-second leader election with split-brain prevention
+- **Log Replication**: Consistent log replication across all cluster nodes
+- **Shared Memory Integration**: PostgreSQL shared memory for persistent state
+- **Background Workers**: Non-blocking background processes for consensus operations
+- **Health Monitoring**: Real-time health checks and status reporting
+
+### Advanced Features
+- **Go Integration**: High-performance Go-based Raft library integration
+- **Configuration Management**: Dynamic configuration updates without restart
+- **Metrics Collection**: Prometheus-compatible metrics export
+- **Error Recovery**: Automatic recovery from network partitions and failures
+- **Performance Optimization**: Optimized for minimal latency and maximum throughput
 
 ## Architecture
 
-pgraft uses a pure C architecture with PostgreSQL integration:
-
-- **C Layer**: PostgreSQL extension interface and Raft consensus implementation
-- **Background Worker**: Dedicated process for handling leader elections and consensus operations
-- **Communication Layer**: Network communication between cluster nodes
-- **Monitoring System**: Health checks and performance metrics
-- **Memory Management**: PostgreSQL memory context integration
-
-This design provides optimal performance and reliability while maintaining full PostgreSQL compatibility.
-
-### Worker Process
-
-The pgraft extension includes a background worker process that:
-
-- Handles leader elections automatically
-- Manages consensus operations in isolation
-- Provides better performance and reliability
-- Supports configuration reloading without restart
-- Monitors cluster health continuously
-
-The worker process is automatically started when the extension is loaded and runs as a PostgreSQL background worker.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PostgreSQL Instance                      │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │   Application   │  │   PGRaft Ext    │  │ Background  │  │
+│  │     Layer       │  │                 │  │  Workers    │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │   SQL Layer     │  │   Raft Engine   │  │   Metrics   │  │
+│  │                 │  │   (Go Library)  │  │  Collector  │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
+│  │  Shared Memory  │  │   Network I/O   │  │   Logging   │  │
+│  │                 │  │                 │  │   System    │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Installation
 
 ### Prerequisites
-
 - PostgreSQL 12+ with development headers
-- GCC or compatible C compiler
-- Make
-- pthread library
+- C compiler (GCC or Clang)
+- Go 1.19+ (for Raft library)
+- Make and build tools
 
 ### Build and Install
 
 ```bash
-# Clone the repository
-git clone <repository-url>
+# Navigate to pgraft directory
 cd pgraft
 
-# Build the extension
+# Clean and build
+make clean
 make
 
 # Install the extension
 sudo make install
 
-# Create the extension in PostgreSQL
-psql -d your_database -c "CREATE EXTENSION pgraft;"
+# Create extension in database
+psql -d postgres -c "CREATE EXTENSION pgraft;"
 ```
 
-### Development Build
+### Verify Installation
+
+```sql
+-- Check extension is loaded
+SELECT * FROM pg_extension WHERE extname = 'pgraft';
+
+-- Check available functions
+\df pgraft*
+
+-- Check configuration parameters
+SHOW pgraft.*;
+```
+
+## Configuration
+
+### PostgreSQL Configuration
+
+Add to `postgresql.conf`:
+
+```ini
+# PGRaft Configuration
+shared_preload_libraries = 'pgraft'
+
+# Raft Configuration
+pgraft.enabled = on
+pgraft.node_id = 1
+pgraft.cluster_addresses = 'node1:5432,node2:5432,node3:5432'
+pgraft.heartbeat_interval = 1000
+pgraft.election_timeout = 5000
+pgraft.log_level = info
+
+# Performance Tuning
+pgraft.max_log_entries = 10000
+pgraft.snapshot_interval = 1000
+pgraft.compaction_threshold = 1000
+```
+
+### Environment Variables
 
 ```bash
-# Build with debug symbols
-make DEBUG=1
+# Load configuration
+source conf/environment.conf
 
-# Clean build artifacts
-make clean
+# Set cluster-specific variables
+export PGRaft_NODE_ID=1
+export PGRaft_CLUSTER_ADDRESSES="node1:5432,node2:5432,node3:5432"
+export PGRaft_LOG_LEVEL=info
 ```
 
 ## Usage
 
-### Basic Setup
-
-#### 1. Initialize a Single Node
+### Initialization
 
 ```sql
--- Initialize this node
-SELECT pgraft_init(1, '192.168.1.10', 5432);
+-- Initialize the Raft cluster
+SELECT pgraft_init();
 
--- Start the raft instance
-SELECT pgraft_start();
-```
-
-#### 2. Set Up a Multi-Node Cluster
-
-**On Node 1 (192.168.1.10:5432):**
-```sql
-SELECT pgraft_init(1, '192.168.1.10', 5432);
-SELECT pgraft_start();
-SELECT pgraft_add_node(2, '192.168.1.11', 5432);
-SELECT pgraft_add_node(3, '192.168.1.12', 5432);
-```
-
-**On Node 2 (192.168.1.11:5432):**
-```sql
-SELECT pgraft_init(2, '192.168.1.11', 5432);
-SELECT pgraft_start();
-```
-
-**On Node 3 (192.168.1.12:5432):**
-```sql
-SELECT pgraft_init(3, '192.168.1.12', 5432);
-SELECT pgraft_start();
-```
-
-### Core Operations
-
-#### Monitor Cluster Status
-
-```sql
--- Get cluster health
-SELECT pgraft_get_cluster_health();
-
--- Check if cluster is healthy
-SELECT pgraft_is_cluster_healthy();
-
--- Get performance metrics
-SELECT pgraft_get_performance_metrics();
-
--- Get system statistics
-SELECT pgraft_get_system_stats();
-
--- Get quorum status
-SELECT pgraft_get_quorum_status();
-```
-
-#### Append Data to Log
-
-```sql
--- Append data (only works on leader)
-SELECT pgraft_append_log('Hello, distributed world!');
-
--- Read log entry
-SELECT pgraft_read_log(1);
-
--- Commit log entry
-SELECT pgraft_commit_log(1);
-```
-
-#### Cluster Management
-
-```sql
--- Add a new node to the cluster
-SELECT pgraft_add_node(4, '192.168.1.13', 5432);
-
--- Remove a node from the cluster
-SELECT pgraft_remove_node(4);
-
--- Check if current node is leader
-SELECT pgraft_is_leader();
+-- Check cluster status
+SELECT pgraft_get_cluster_status();
 
 -- Get current leader
 SELECT pgraft_get_leader();
+```
 
--- Get current term
-SELECT pgraft_get_term();
+### Cluster Management
+
+```sql
+-- Add a node to the cluster
+SELECT pgraft_add_node('node4', '192.168.1.4', 5432);
+
+-- Remove a node from the cluster
+SELECT pgraft_remove_node('node4');
+
+-- Get cluster health
+SELECT pgraft_get_cluster_health();
+```
+
+### Monitoring
+
+```sql
+-- Get detailed cluster information
+SELECT * FROM pgraft_cluster_overview;
+
+-- Get node status
+SELECT * FROM pgraft_node_status;
+
+-- Get Raft metrics
+SELECT * FROM pgraft_metrics;
 ```
 
 ## API Reference
@@ -169,274 +160,206 @@ SELECT pgraft_get_term();
 
 | Function | Description | Returns |
 |----------|-------------|---------|
-| `pgraft_init(node_id, address, port)` | Initialize raft instance | boolean |
-| `pgraft_start()` | Start raft instance | boolean |
-| `pgraft_stop()` | Stop raft instance | boolean |
-| `pgraft_add_node(node_id, address, port)` | Add node to cluster | boolean |
-| `pgraft_remove_node(node_id)` | Remove node from cluster | boolean |
-
-### Status Functions
-
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `pgraft_get_state()` | Get current raft state | text |
-| `pgraft_get_leader()` | Get current leader node ID | integer |
-| `pgraft_get_term()` | Get current term | integer |
+| `pgraft_init()` | Initialize Raft cluster | boolean |
+| `pgraft_start()` | Start Raft consensus | boolean |
+| `pgraft_stop()` | Stop Raft consensus | boolean |
 | `pgraft_is_leader()` | Check if current node is leader | boolean |
-| `pgraft_get_stats()` | Get detailed statistics | text |
+| `pgraft_get_leader()` | Get current leader node | text |
 
-### Data Operations
-
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `pgraft_append_log(data)` | Append data to log | boolean |
-| `pgraft_read_log(index)` | Read log entry at index | text |
-| `pgraft_commit_log(index)` | Commit log entries up to index | boolean |
-| `pgraft_get_log()` | Get all log entries | text |
-
-### Monitoring Functions
+### Cluster Management
 
 | Function | Description | Returns |
 |----------|-------------|---------|
-| `pgraft_get_cluster_health()` | Get cluster health status | text |
-| `pgraft_get_performance_metrics()` | Get performance metrics | text |
-| `pgraft_is_cluster_healthy()` | Check if cluster is healthy | boolean |
-| `pgraft_get_system_stats()` | Get system statistics | text |
-| `pgraft_get_quorum_status()` | Get quorum status | text |
-| `pgraft_reset_metrics()` | Reset metrics | boolean |
+| `pgraft_add_node(hostname, address, port)` | Add node to cluster | boolean |
+| `pgraft_remove_node(hostname)` | Remove node from cluster | boolean |
+| `pgraft_get_cluster_status()` | Get cluster status | json |
+| `pgraft_get_cluster_health()` | Get cluster health | json |
 
-### Utility Functions
+### Monitoring
 
 | Function | Description | Returns |
 |----------|-------------|---------|
-| `pgraft_version()` | Get extension version | text |
+| `pgraft_get_metrics()` | Get Raft metrics | json |
+| `pgraft_get_log_entries()` | Get log entries | json |
+| `pgraft_get_node_info()` | Get node information | json |
 
-## Configuration
+## Monitoring & Metrics
 
-### GUC Parameters
+### Prometheus Metrics
 
-The extension provides the following configuration parameters:
+The extension exposes metrics in Prometheus format:
 
-#### Core Configuration
-- `pgraft.node_id` - Node ID for this instance (default: 1)
-- `pgraft.port` - Port for pgraft communication (default: 5432)
-- `pgraft.address` - Address for pgraft communication (default: localhost)
-- `pgraft.log_level` - Log level (0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR)
+```
+# Raft consensus metrics
+pgraft_raft_term_total
+pgraft_raft_log_entries_total
+pgraft_raft_heartbeat_duration_seconds
+pgraft_raft_election_duration_seconds
 
-#### Raft Configuration
-- `pgraft.heartbeat_interval` - Heartbeat interval in milliseconds (default: 1000)
-- `pgraft.election_timeout` - Election timeout in milliseconds (default: 5000)
-- `pgraft.worker_enabled` - Enable background worker (default: true)
-- `pgraft.worker_interval` - Worker interval in milliseconds (default: 1000)
+# Cluster health metrics
+pgraft_cluster_nodes_total
+pgraft_cluster_healthy_nodes_total
+pgraft_cluster_leader_changes_total
+```
 
-#### Cluster Configuration
-- `pgraft.cluster_name` - Name of the cluster (default: pgraft_cluster)
-- `pgraft.cluster_size` - Expected cluster size (default: 3)
-- `pgraft.enable_auto_cluster_formation` - Enable automatic cluster formation (default: true)
-
-#### Monitoring Configuration
-- `pgraft.node_name` - Node name for identification (default: pgraft_node_1)
-- `pgraft.node_ip` - Node IP address (default: 127.0.0.1)
-- `pgraft.is_primary` - Whether this node is a primary (default: false)
-- `pgraft.health_period_ms` - Health check period in milliseconds (default: 5000)
-- `pgraft.health_verbose` - Enable verbose health logging (default: false)
-- `pgraft.metrics_enabled` - Enable metrics collection (default: true)
-- `pgraft.trace_enabled` - Enable trace logging (default: false)
-
-### Example Configuration
+### Health Checks
 
 ```sql
--- Set configuration parameters
-ALTER SYSTEM SET pgraft.node_id = 1;
-ALTER SYSTEM SET pgraft.address = '192.168.1.10';
-ALTER SYSTEM SET pgraft.port = 5432;
-ALTER SYSTEM SET pgraft.cluster_name = 'my_cluster';
-ALTER SYSTEM SET pgraft.cluster_size = 3;
-ALTER SYSTEM SET pgraft.heartbeat_interval = 1000;
-ALTER SYSTEM SET pgraft.election_timeout = 5000;
+-- Basic health check
+SELECT pgraft_health_check();
 
--- Reload configuration
-SELECT pg_reload_conf();
+-- Detailed health information
+SELECT * FROM pgraft_health_details;
 ```
 
-## Monitoring and Debugging
+## Development
 
-### Health Monitoring
+### Building from Source
 
-The extension provides comprehensive health monitoring:
+```bash
+# Clone repository
+git clone https://github.com/pgElephant/ram.git
+cd ram/pgraft
 
-```sql
--- Get detailed health status
-SELECT pgraft_get_cluster_health();
+# Install dependencies
+go mod tidy
+go mod download
 
--- Check if cluster is healthy
-SELECT pgraft_is_cluster_healthy();
+# Build extension
+make clean
+make
 
--- Get performance metrics
-SELECT pgraft_get_performance_metrics();
-
--- Get system statistics
-SELECT pgraft_get_system_stats();
-
--- Get quorum status
-SELECT pgraft_get_quorum_status();
+# Run tests
+make test
 ```
 
-### Log Levels
+### Code Structure
 
-The extension uses PostgreSQL's logging system:
-
-- **INFO**: Important events (leader election, node changes)
-- **DEBUG1**: Detailed operations (log appends, commits)
-- **ERROR**: Error conditions
-
-### Statistics
-
-The monitoring functions return JSON data with comprehensive statistics:
-
-```json
-{
-  "total_requests": 1000,
-  "successful_requests": 995,
-  "failed_requests": 5,
-  "success_rate": 0.995,
-  "current_connections": 2,
-  "max_connections": 3,
-  "heartbeat_count": 500,
-  "election_count": 2,
-  "log_entries_appended": 100,
-  "log_entries_committed": 95,
-  "last_activity": "2024-01-01T12:00:00Z",
-  "uptime_seconds": 3600
-}
+```
+pgraft/
+├── src/                    # C source files
+│   ├── pgraft.c           # Main extension file
+│   ├── raft.c             # Raft consensus logic
+│   ├── comm.c             # Network communication
+│   ├── health_worker.c    # Health monitoring
+│   ├── metrics.c          # Metrics collection
+│   └── pgraft_go.go       # Go integration
+├── include/                # Header files
+│   └── pgraft.h           # Main header
+├── sql/                    # SQL scripts
+│   ├── pgraft_cluster.sql # Cluster functions
+│   └── pgraft_views.sql   # Monitoring views
+└── Makefile               # Build configuration
 ```
 
-## Examples
+## Testing
 
-### Example 1: Simple Key-Value Store
+### Unit Tests
 
-```sql
--- Create a simple key-value table
-CREATE TABLE kv_store (
-    key TEXT PRIMARY KEY,
-    value TEXT,
-    log_index BIGINT
-);
+```bash
+# Run unit tests
+make test
 
--- Function to set a value through Raft
-CREATE OR REPLACE FUNCTION set_value(k TEXT, v TEXT)
-RETURNS BOOLEAN AS $$
-DECLARE
-    log_data TEXT;
-    result BOOLEAN;
-BEGIN
-    -- Only proceed if we're the leader
-    IF NOT pgraft_is_leader() THEN
-        RAISE EXCEPTION 'Not the leader, cannot set value';
-    END IF;
-    
-    -- Create log entry
-    log_data := json_build_object('op', 'set', 'key', k, 'value', v)::text;
-    
-    -- Append to Raft log
-    result := pgraft_append_log(log_data);
-    
-    RETURN result;
-END;
-$$ LANGUAGE plpgsql;
+# Run specific test
+make test TEST=test_raft_consensus
 ```
 
-### Example 2: Distributed Configuration Management
+### Integration Tests
 
-```sql
--- Create configuration table
-CREATE TABLE config (
-    key TEXT PRIMARY KEY,
-    value TEXT,
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+```bash
+# Run integration tests
+python3 tests/test_pgraft_integration.py
 
--- Function to update configuration through Raft
-CREATE OR REPLACE FUNCTION update_config(k TEXT, v TEXT)
-RETURNS BOOLEAN AS $$
-DECLARE
-    log_data TEXT;
-BEGIN
-    IF NOT pgraft_is_leader() THEN
-        RAISE EXCEPTION 'Not the leader, cannot update config';
-    END IF;
-    
-    log_data := json_build_object(
-        'op', 'config_update',
-        'key', k,
-        'value', v,
-        'timestamp', extract(epoch from now())
-    )::text;
-    
-    RETURN pgraft_append_log(log_data);
-END;
-$$ LANGUAGE plpgsql;
+# Run with verbose output
+python3 tests/test_pgraft_integration.py -v
 ```
+
+### Performance Tests
+
+```bash
+# Run performance benchmarks
+make benchmark
+
+# Run stress tests
+python3 tests/test_pgraft_stress.py
+```
+
+## Security
+
+### Security Features
+- **Input Validation**: All inputs are validated and sanitized
+- **SQL Injection Protection**: Parameterized queries only
+- **Memory Safety**: Bounds checking and safe memory operations
+- **Access Control**: Role-based access to Raft functions
+- **Audit Logging**: Complete audit trail of all operations
+
+### Security Best Practices
+- Use least privilege principle for database roles
+- Enable SSL/TLS for network communications
+- Regularly update dependencies
+- Monitor for security vulnerabilities
+- Follow PostgreSQL security guidelines
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"Not the leader" errors**: Only the leader can append to the log
-2. **Node connection issues**: Ensure all nodes can communicate
-3. **Memory issues**: Monitor PostgreSQL memory usage
-4. **Build issues**: Ensure PostgreSQL development headers are installed
-
-### Debugging
-
+#### Extension Not Loading
 ```sql
--- Enable debug logging
-SET log_min_messages = DEBUG1;
+-- Check if extension is in shared_preload_libraries
+SHOW shared_preload_libraries;
 
--- Check cluster health
-SELECT pgraft_get_cluster_health();
-
--- Monitor log entries
-SELECT pgraft_get_log();
-
--- Check worker status
-SELECT pgraft_get_system_stats();
+-- Check for errors in PostgreSQL logs
+-- Look for pgraft-related error messages
 ```
 
-## Performance Considerations
+#### Raft Not Starting
+```sql
+-- Check configuration
+SHOW pgraft.*;
 
-- **Network Latency**: Raft performance depends on network conditions
-- **Log Size**: Large logs may impact performance
-- **Node Count**: Odd numbers of nodes are recommended (3, 5, 7)
-- **Memory Usage**: Each node maintains a copy of the log
-- **Pure C Implementation**: Optimized for performance and memory usage
+-- Check if cluster addresses are correct
+SELECT pgraft_get_cluster_status();
+```
 
-## Security
+#### Performance Issues
+```sql
+-- Check metrics
+SELECT * FROM pgraft_metrics;
 
-- **Network Security**: Use TLS for production deployments
-- **Access Control**: Restrict pgraft functions to authorized users
-- **Data Encryption**: Consider encrypting log entries for sensitive data
+-- Check log entries
+SELECT * FROM pgraft_log_entries LIMIT 10;
+```
+
+### Debug Mode
+
+Enable debug logging:
+
+```sql
+-- Set debug log level
+ALTER SYSTEM SET pgraft.log_level = 'debug';
+SELECT pg_reload_conf();
+```
+
+## Additional Resources
+
+- [PostgreSQL Extension Development](https://www.postgresql.org/docs/current/extend.html)
+- [Raft Algorithm Paper](https://raft.github.io/raft.pdf)
+- [Go Raft Library](https://github.com/etcd-io/raft)
+- [PostgreSQL C Coding Standards](https://www.postgresql.org/docs/current/source.html)
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Add tests
+3. Follow PostgreSQL C coding standards
+4. Add tests for new functionality
 5. Submit a pull request
 
 ## License
 
-This project is licensed under the Apache 2.0 License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.
 
-## Acknowledgments
+---
 
-- PostgreSQL community for the extension framework
-- Raft consensus algorithm authors
-- PostgreSQL extension development community
-
-## References
-
-- [Raft Paper](https://raft.github.io/raft.pdf)
-- [PostgreSQL Extension Development](https://www.postgresql.org/docs/current/extend.html)
-- [PostgreSQL Background Workers](https://www.postgresql.org/docs/current/bgworker.html)
+**PGRaft: Bringing distributed consensus to PostgreSQL.** 

@@ -1,13 +1,15 @@
-/*
+/*-------------------------------------------------------------------------
+ *
  * pgraft.h
- * PostgreSQL extension header for distributed consensus
+ *		PostgreSQL extension header for distributed consensus
  *
  * This file contains function declarations and data structures
  * for the pgraft PostgreSQL extension that provides distributed
  * consensus capabilities using a custom Raft implementation.
  *
- * Copyright (c) 2024, PostgreSQL Global Development Group
- * All rights reserved.
+ * Copyright (c) 2024-2025, pgElephant, Inc.
+ *
+ *-------------------------------------------------------------------------
  */
 
 #ifndef PGRAFT_H
@@ -39,81 +41,81 @@
 /* Message structure */
 typedef struct pgraft_message
 {
-    int msg_type;
-    uint64_t from_node;
-    uint64_t to_node;
-    uint64_t term;
-    uint64_t index;
-    size_t data_size;
-    char *data;
-} pgraft_message_t;
+	int			msg_type;
+	uint64		from_node;
+	uint64		to_node;
+	uint64		term;
+	uint64		index;
+	size_t		data_size;
+	char	   *data;
+}			pgraft_message_t;
 
 /* Raft state enumeration */
 typedef enum
 {
-    PGRAFT_STATE_FOLLOWER = 0,
-    PGRAFT_STATE_CANDIDATE = 1,
-    PGRAFT_STATE_LEADER = 2,
-    PGRAFT_STATE_UNKNOWN = 3
-} pgraft_state_t;
+	PGRAFT_STATE_FOLLOWER = 0,
+	PGRAFT_STATE_CANDIDATE = 1,
+	PGRAFT_STATE_LEADER = 2,
+	PGRAFT_STATE_UNKNOWN = 3
+}			pgraft_state_t;
 
 /* Health status enumeration */
 typedef enum
 {
-    PGRAFT_HEALTH_OK = 0,
-    PGRAFT_HEALTH_WARNING = 1,
-    PGRAFT_HEALTH_ERROR = 2,
-    PGRAFT_HEALTH_CRITICAL = 3
-} pgraft_health_status_t;
+	PGRAFT_HEALTH_OK = 0,
+	PGRAFT_HEALTH_WARNING = 1,
+	PGRAFT_HEALTH_ERROR = 2,
+	PGRAFT_HEALTH_CRITICAL = 3
+}			pgraft_health_status_t;
 
 typedef enum
 {
-    PGRAFT_HEALTH_EVENT_INFO,
-    PGRAFT_HEALTH_EVENT_WARNING,
-    PGRAFT_HEALTH_EVENT_ERROR
-} pgraft_health_event_type_t;
+	PGRAFT_HEALTH_EVENT_INFO,
+	PGRAFT_HEALTH_EVENT_WARNING,
+	PGRAFT_HEALTH_EVENT_ERROR
+}			pgraft_health_event_type_t;
 
 /* Error codes */
 typedef enum
 {
-    PGRAFT_ERROR_NONE = 0,
-    PGRAFT_ERROR_NOT_INITIALIZED = 1,
-    PGRAFT_ERROR_ALREADY_INITIALIZED = 2,
-    PGRAFT_ERROR_INVALID_PARAMETER = 3,
-    PGRAFT_ERROR_NOT_LEADER = 4,
-    PGRAFT_ERROR_NODE_NOT_FOUND = 5,
-    PGRAFT_ERROR_CLUSTER_FULL = 6,
-    PGRAFT_ERROR_NETWORK_ERROR = 7,
-    PGRAFT_ERROR_TIMEOUT = 8,
-    PGRAFT_ERROR_INTERNAL = 9
-} pgraft_error_code_t;
+	PGRAFT_ERROR_NONE = 0,
+	PGRAFT_ERROR_NOT_INITIALIZED = 1,
+	PGRAFT_ERROR_ALREADY_INITIALIZED = 2,
+	PGRAFT_ERROR_INVALID_PARAMETER = 3,
+	PGRAFT_ERROR_NOT_LEADER = 4,
+	PGRAFT_ERROR_NODE_NOT_FOUND = 5,
+	PGRAFT_ERROR_CLUSTER_FULL = 6,
+	PGRAFT_ERROR_NETWORK_ERROR = 7,
+	PGRAFT_ERROR_TIMEOUT = 8,
+	PGRAFT_ERROR_INTERNAL = 9
+}			pgraft_error_code_t;
 
 /* Raft state structure */
 typedef struct
 {
-    pgraft_state_t state;
-    int current_term;
-    int voted_for;
-    int leader_id;
-    int last_log_index;
-    int last_log_term;
-    int commit_index;
-    int last_applied;
-    TimestampTz last_heartbeat;
-    bool is_initialized;
-    bool is_running;
-} pgraft_raft_state_t;
+	pgraft_state_t state;
+	int			current_term;
+	int			voted_for;
+	int			leader_id;
+	int			last_log_index;
+	int			last_log_term;
+	int			commit_index;
+	int			last_applied;
+	TimestampTz last_heartbeat;
+	bool		is_initialized;
+	bool		is_running;
+}			pgraft_raft_state_t;
 
 /* Health worker status structure */
 typedef struct
 {
-    bool is_running;
-    TimestampTz last_activity;
-    int health_checks_performed;
-    int last_health_status;
-    int warnings_count;
-    int errors_count;
-} pgraft_health_worker_status_t;
+	bool		is_running;
+	TimestampTz last_activity;
+	int			health_checks_performed;
+	int			last_health_status;
+	int			warnings_count;
+	int			errors_count;
+}			pgraft_health_worker_status_t;
 
 /* Core GUC variables */
 extern int pgraft_node_id;

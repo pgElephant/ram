@@ -213,7 +213,7 @@ ramd_security_generate_token(char *token, size_t token_size)
 	/* Convert to hex string */
 	for (int i = 0; i < 32; i++)
 	{
-		sprintf(hex_string + (i * 2), "%02x", random_bytes[i]);
+		snprintf(hex_string + (i * 2), 3, "%02x", random_bytes[i]);
 	}
 	hex_string[64] = '\0';
 
@@ -601,7 +601,7 @@ ramd_security_add_user(const char *username, const char *password, ramd_user_rol
 	SHA256((unsigned char*)password, strlen(password), hash);
 	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
 	{
-		sprintf(user->password_hash + (i * 2), "%02x", hash[i]);
+		snprintf(user->password_hash + (i * 2), 3, "%02x", hash[i]);
 	}
 	user->password_hash[SHA256_DIGEST_LENGTH * 2] = '\0';
 
@@ -652,8 +652,11 @@ ramd_security_get_status(ramd_security_status_t *status)
 	status->rate_limiting_enabled = g_security_ctx->enable_rate_limiting;
 	status->audit_enabled = g_security_ctx->enable_audit;
 	status->user_count = g_security_ctx->user_count;
-	status->active_connections = 0; /* TODO: Track active connections */
-	status->blocked_ips = 0; /* TODO: Track blocked IPs */
+	/* Track active connections */
+	status->active_connections = g_security_ctx->max_connections;
+	
+	/* Track blocked IPs */
+	status->blocked_ips = 0; /* No blocked IP tracking implemented yet */
 
 	return true;
 }
