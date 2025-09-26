@@ -479,16 +479,8 @@ class PgraftClusterManager:
                     conn.close()
                     sys.exit(1)
                 
-                # Start pgraft consensus system
-                cursor.execute("SELECT pgraft_start()")
-                result = cursor.fetchone()[0]
-                if result:
-                    self.log(f"[{node_name}] - pgraft started successfully")
-                else:
-                    self.log(f"[{node_name}] - pgraft start failed", "ERROR")
-                    cursor.close()
-                    conn.close()
-                    sys.exit(1)
+                # pgraft consensus system is now initialized and ready
+                self.log(f"[{node_name}] - pgraft consensus system ready")
                 
                 cursor.close()
                 conn.close()

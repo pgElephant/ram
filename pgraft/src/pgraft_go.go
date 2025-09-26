@@ -22,9 +22,13 @@ import "C"
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,6 +37,16 @@ import (
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 )
+
+// ClusterState represents the current state of the cluster
+type ClusterState struct {
+	LeaderID    uint64            `json:"leader_id"`
+	CurrentTerm uint64            `json:"current_term"`
+	State       string            `json:"state"`
+	Nodes       map[uint64]string `json:"nodes"`
+	LastIndex   uint64            `json:"last_index"`
+	CommitIndex uint64            `json:"commit_index"`
+}
 
 // Global state following etcd-io/raft patterns
 var (
@@ -51,7 +65,81 @@ var (
 
 	// Debug logging control
 	debugEnabled bool = false
+
+	// Additional required global variables
+	initialized         int32
+	running             int32
+	committedIndex      uint64
+	appliedIndex        uint64
+	lastIndex           uint64
+	messagesProcessed   int64
+	logEntriesCommitted int64
+	heartbeatsSent      int64
+	electionsTriggered  int64
+
+	// Node and connection management
+	nodes       map[uint64]string
+	nodesMutex  sync.RWMutex
+	connections map[uint64]net.Conn
+	connMutex   sync.RWMutex
+	stopChan    chan struct{}
+
+	// Cluster state
+	clusterState ClusterState
+
+	// Error tracking
+	errorCount int64
+	lastError  time.Time
+
+	// Shutdown control
+	shutdownRequested int32
+
+	// Additional state variables
+	currentTerm uint64
+	votedFor    uint64
+	commitIndex uint64
+	lastApplied uint64
+	raftState   string
+	leaderID    uint64
+
+	// Health and monitoring
+	startupTime  time.Time
+	healthStatus string
 )
+
+// Error recording function
+func recordError(err error) {
+	atomic.AddInt64(&errorCount, 1)
+	lastError = time.Now()
+	log.Printf("pgraft: ERROR - %v", err)
+}
+
+// Network utility functions
+func readUint32(conn net.Conn, value *uint32) error {
+	buf := make([]byte, 4)
+	if _, err := conn.Read(buf); err != nil {
+		return err
+	}
+	*value = uint32(buf[0])<<24 | uint32(buf[1])<<16 | uint32(buf[2])<<8 | uint32(buf[3])
+	return nil
+}
+
+func writeUint32(conn net.Conn, value uint32) error {
+	buf := []byte{
+		byte(value >> 24),
+		byte(value >> 16),
+		byte(value >> 8),
+		byte(value),
+	}
+	_, err := conn.Write(buf)
+	return err
+}
+
+func getNetworkLatency() float64 {
+	// Simple network latency measurement
+	// In a real implementation, this would measure actual network latency
+	return 1.0 // milliseconds
+}
 
 // Debug logging function that respects log level
 func debugLog(format string, args ...interface{}) {
@@ -67,6 +155,110 @@ func pgraft_go_set_debug(enabled C.int) {
 	debugEnabled = (enabled != 0)
 }
 
+//export pgraft_go_start
+func pgraft_go_start() C.int {
+	raftMutex.Lock()
+	defer raftMutex.Unlock()
+
+	if atomic.LoadInt32(&running) == 1 {
+		log.Printf("pgraft: WARNING - Already running")
+		return 0
+	}
+
+	if atomic.LoadInt32(&initialized) == 0 {
+		log.Printf("pgraft: ERROR - Not initialized")
+		return -1
+	}
+
+	// Start background processing
+	raftTicker = time.NewTicker(100 * time.Millisecond)
+	go raftProcessingLoop()
+	go tickerLoop()
+	go messageReceiver()
+
+	atomic.StoreInt32(&running, 1)
+	log.Printf("pgraft: INFO - Started successfully")
+
+	return 0
+}
+
+//export pgraft_go_stop
+func pgraft_go_stop() C.int {
+	raftMutex.Lock()
+	defer raftMutex.Unlock()
+
+	if atomic.LoadInt32(&running) == 0 {
+		log.Printf("pgraft: WARNING - Already stopped")
+		return 0
+	}
+
+	// Signal shutdown
+	close(stopChan)
+
+	// Stop ticker
+	if raftTicker != nil {
+		raftTicker.Stop()
+	}
+
+	// Cancel context
+	if raftCancel != nil {
+		raftCancel()
+	}
+
+	// Close all connections
+	connMutex.Lock()
+	for nodeID, conn := range connections {
+		conn.Close()
+		delete(connections, nodeID)
+	}
+	connMutex.Unlock()
+
+	atomic.StoreInt32(&running, 0)
+	log.Printf("pgraft: INFO - Stopped successfully")
+
+	return 0
+}
+
+//export pgraft_go_get_nodes
+func pgraft_go_get_nodes() *C.char {
+	raftMutex.RLock()
+	defer raftMutex.RUnlock()
+
+	if atomic.LoadInt32(&running) == 0 {
+		return C.CString("[]")
+	}
+
+	nodesMutex.RLock()
+	defer nodesMutex.RUnlock()
+
+	nodesList := make([]map[string]interface{}, 0)
+	for nodeID, address := range nodes {
+		nodeInfo := map[string]interface{}{
+			"id":      nodeID,
+			"address": address,
+		}
+		nodesList = append(nodesList, nodeInfo)
+	}
+
+	jsonData, err := json.Marshal(nodesList)
+	if err != nil {
+		return C.CString("{\"error\": \"failed to marshal nodes\"}")
+	}
+
+	return C.CString(string(jsonData))
+}
+
+//export pgraft_go_version
+func pgraft_go_version() *C.char {
+	return C.CString("1.0.0")
+}
+
+//export pgraft_go_test
+func pgraft_go_test() C.int {
+	log.Printf("pgraft: INFO - Test function called")
+	return 0
+}
+
 // Replication state
 var (
 	replicationState struct {
@@ -75,76 +267,23 @@ var (
 		replicationLag    time.Duration
 		replicationMutex  sync.RWMutex
 	}
-
-	// Simplified state machine variables
-	currentTerm uint64
-	votedFor    uint64
-	commitIndex uint64
-	lastApplied uint64
-	lastIndex   uint64
-	raftState   string
-	leaderID    uint64
-	stopChan    chan struct{}
-
-	// State machine
-	appliedIndex   uint64
-	committedIndex uint64
-
-	// Node management
-	nodes      map[uint64]string // nodeID -> address:port
-	nodesMutex sync.RWMutex
-
-	// Network connections
-	connections map[uint64]net.Conn
-	connMutex   sync.RWMutex
-
-	// Performance metrics
-	messagesProcessed   int64
-	logEntriesCommitted int64
-	heartbeatsSent      int64
-	electionsTriggered  int64
-
-	// Cluster state
-	clusterState ClusterState
-	clusterMutex sync.RWMutex
-
-	// Error handling
-	errorCount       int64
-	lastError        time.Time
-	recoveryAttempts int64
-	healthStatus     string
-	startupTime      time.Time
-
-	// Production state
-	initialized       int32
-	running           int32
-	shutdownRequested int32
 )
-
-// ClusterState represents the current state of the cluster
-type ClusterState struct {
-	LeaderID    uint64            `json:"leader_id"`
-	CurrentTerm uint64            `json:"current_term"`
-	State       string            `json:"state"`
-	Nodes       map[uint64]string `json:"nodes"`
-	LastIndex   uint64            `json:"last_index"`
-	CommitIndex uint64            `json:"commit_index"`
-}
 
 //export pgraft_go_init
 func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
-	debugLog("init: nodeID=%d, address=%s, port=%d", nodeID, C.GoString(address), int(port))
+	log.Printf("pgraft: INFO - Initializing node %d at %s:%d", nodeID, C.GoString(address), int(port))
 
 	raftMutex.Lock()
 	defer raftMutex.Unlock()
 
 	if atomic.LoadInt32(&initialized) == 1 {
-		debugLog("init: already initialized, skipping")
+		log.Printf("pgraft: WARNING - Node already initialized, skipping")
 		return 0 // Already initialized
 	}
 
 	// Initialize storage
 	raftStorage = raft.NewMemoryStorage()
+	log.Printf("pgraft: DEBUG - Memory storage initialized")
 
 	// Create configuration following etcd-io/raft patterns
 	raftConfig = &raft.Config{
@@ -157,16 +296,23 @@ func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
 		Logger:          nil,   // Use default logger
 		PreVote:         false, // Disable pre-vote for single node
 	}
+	log.Printf("pgraft: DEBUG - Raft configuration created")
 
 	// Initialize channels
 	raftReady = make(chan raft.Ready, 1)
 	raftDone = make(chan struct{})
 	messageChan = make(chan raftpb.Message, 100)
 	stopChan = make(chan struct{})
+	log.Printf("pgraft: DEBUG - Communication channels initialized")
 
 	// Initialize node management
-	nodes = make(map[uint64]string)
+	nodesMutex.Lock()
+	if nodes == nil {
+		nodes = make(map[uint64]string)
+	}
 	nodes[uint64(nodeID)] = fmt.Sprintf("%s:%d", C.GoString(address), int(port))
+	nodesMutex.Unlock()
+	log.Printf("pgraft: INFO - Self node registered: %d -> %s:%d", nodeID, C.GoString(address), int(port))
 
 	// Initialize connections
 	connections = make(map[uint64]net.Conn)
@@ -181,23 +327,31 @@ func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
 		CommitIndex: 0,
 	}
 
-	// Create initial peer configuration for single-node cluster
-	// In a real cluster, this would be populated with actual peers
+	// Create initial peer configuration for this node
+	// Additional peers will be added via pgraft_add_node calls
 	peers := []raft.Peer{
 		{ID: uint64(nodeID)},
 	}
 
 	// Create the actual Raft node with peers
 	raftNode = raft.StartNode(raftConfig, peers)
-	debugLog("init: Raft node created with %d peers", len(peers))
+	log.Printf("pgraft: INFO - Raft node created with %d initial peers", len(peers))
 
 	// Initialize context but don't start background processing yet
 	raftCtx, raftCancel = context.WithCancel(context.Background())
-	debugLog("init: context initialized, background processing deferred to PostgreSQL workers")
+	log.Printf("pgraft: DEBUG - Context initialized, background processing deferred to PostgreSQL workers")
 
 	// Initialize applied and committed indices
 	appliedIndex = 0
 	committedIndex = 0
+
+	// Start network server for incoming connections
+	go startNetworkServer(C.GoString(address), int(port))
+	log.Printf("pgraft: INFO - Network server started on %s:%d", C.GoString(address), int(port))
+
+	// Load and connect to configured peers
+	go loadAndConnectToPeers()
+	log.Printf("pgraft: INFO - Peer discovery and connection process started")
 
 	// Initialize metrics
 	atomic.StoreInt64(&messagesProcessed, 0)
@@ -218,7 +372,7 @@ func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
 
 //export pgraft_go_start_background
 func pgraft_go_start_background() C.int {
-	debugLog("start_background: called")
+	debugLog("start_background: starting Raft background processing")
 
 	raftMutex.Lock()
 	defer raftMutex.Unlock()
@@ -232,118 +386,7 @@ func pgraft_go_start_background() C.int {
 	go processRaftTicker()
 	debugLog("start_background: Raft ticker started")
 
-	// Force an immediate election attempt for single-node cluster
-	go func() {
-		time.Sleep(1 * time.Second) // Wait a bit for everything to initialize
-		if raftNode != nil {
-			debugLog("start_background: attempting immediate election for single-node cluster")
-			raftNode.Campaign(raftCtx)
-		}
-	}()
-
 	debugLog("start_background: all background processing started")
-	return 0
-}
-
-//export pgraft_go_start
-func pgraft_go_start() C.int {
-	debugLog("start: called")
-
-	raftMutex.Lock()
-	defer raftMutex.Unlock()
-
-	if atomic.LoadInt32(&running) == 1 {
-		debugLog("start: already running, skipping")
-		return 0
-	}
-
-	// Start the Raft node if it exists
-	if raftNode != nil {
-		debugLog("start: starting Raft node")
-
-		// Force an immediate election for any cluster size
-		debugLog("start: forcing immediate election")
-		go func() {
-			time.Sleep(500 * time.Millisecond) // Wait a bit
-			debugLog("start: calling Campaign for immediate election")
-			raftNode.Campaign(raftCtx)
-		}()
-
-		debugLog("start: Raft node ready for leader election")
-	} else {
-		debugLog("start: ERROR - Raft node is nil, cannot start")
-	}
-
-	// Set running state
-	atomic.StoreInt32(&running, 1)
-	debugLog("start: set running state to 1")
-
-	debugLog("start: completed successfully")
-	return 0
-}
-
-//export pgraft_go_version
-func pgraft_go_version() *C.char {
-	log.Printf("pgraft: pgraft_go_version called")
-	return C.CString("1.0.0")
-}
-
-//export pgraft_go_test
-func pgraft_go_test() C.int {
-	log.Printf("pgraft: pgraft_go_test called")
-	return C.int(42)
-}
-
-//export pgraft_go_stop
-func pgraft_go_stop() C.int {
-	raftMutex.Lock()
-	defer raftMutex.Unlock()
-
-	if atomic.LoadInt32(&running) == 0 {
-		return 0 // Not running
-	}
-
-	atomic.StoreInt32(&shutdownRequested, 1)
-
-	// Stop the ticker
-	if raftTicker != nil {
-		raftTicker.Stop()
-	}
-
-	// Cancel context
-	if raftCancel != nil {
-		raftCancel()
-	}
-
-	// Stop the node
-	if raftNode != nil {
-		raftNode.Stop()
-	}
-
-	// Close all connections
-	connMutex.Lock()
-	for _, conn := range connections {
-		conn.Close()
-	}
-	connections = make(map[uint64]net.Conn)
-	connMutex.Unlock()
-
-	// Signal stop
-	close(stopChan)
-
-	// Wait for processing loop to finish
-	select {
-	case <-raftDone:
-	case <-time.After(5 * time.Second):
-		log.Printf("pgraft: timeout waiting for raft processing loop to stop")
-	}
-
-	atomic.StoreInt32(&running, 0)
-	atomic.StoreInt32(&shutdownRequested, 0)
-	healthStatus = "stopped"
-
-	log.Printf("pgraft: Go Raft system stopped")
-
 	return 0
 }
 
@@ -364,9 +407,16 @@ func pgraft_go_add_peer(nodeID C.int, address *C.char, port C.int) C.int {
 	// Just add the peer and return success
 	log.Printf("pgraft: adding peer node %d at %s:%d", nodeID, C.GoString(address), int(port))
 
-	// Add to our node map
+	// Add to our node map with proper mutex protection
 	nodeAddr := fmt.Sprintf("%s:%d", C.GoString(address), int(port))
+	nodesMutex.Lock()
+	// Always ensure the map is initialized
+	if nodes == nil {
+		nodes = make(map[uint64]string)
+		log.Printf("pgraft: Initialized nodes map in pgraft_go_add_peer")
+	}
 	nodes[uint64(nodeID)] = nodeAddr
+	nodesMutex.Unlock()
 	log.Printf("pgraft: added node to map: %d -> %s", nodeID, nodeAddr)
 
 	// Add peer to Raft cluster configuration
@@ -421,8 +471,10 @@ func pgraft_go_remove_peer(nodeID C.int) C.int {
 	}
 	connMutex.Unlock()
 
-	// Remove from our node map
+	// Remove from our node map with proper mutex protection
+	nodesMutex.Lock()
 	delete(nodes, uint64(nodeID))
+	nodesMutex.Unlock()
 
 	// Propose configuration change
 	cc := raftpb.ConfChange{
@@ -461,7 +513,7 @@ func pgraft_go_get_state() *C.char {
 }
 
 //export pgraft_go_get_leader
-func pgraft_go_get_leader() C.int {
+func pgraft_go_get_leader() C.int64_t {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("pgraft: PANIC in pgraft_go_get_leader: %v", r)
@@ -485,11 +537,11 @@ func pgraft_go_get_leader() C.int {
 
 	status := raftNode.Status()
 	log.Printf("pgraft: get_leader - status.Lead=%d", status.Lead)
-	return C.int(status.Lead)
+	return C.int64_t(status.Lead)
 }
 
 //export pgraft_go_get_term
-func pgraft_go_get_term() C.long {
+func pgraft_go_get_term() C.int32_t {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("pgraft: PANIC in pgraft_go_get_term: %v", r)
@@ -513,7 +565,7 @@ func pgraft_go_get_term() C.long {
 
 	status := raftNode.Status()
 	log.Printf("pgraft: get_term - returning term: %d", status.Term)
-	return C.long(status.Term)
+	return C.int32_t(status.Term)
 }
 
 //export pgraft_go_is_leader
@@ -594,29 +646,6 @@ func pgraft_go_get_stats() *C.char {
 		return C.CString("{\"error\": \"failed to marshal stats\"}")
 	}
 
-	return C.CString(string(jsonData))
-}
-
-//export pgraft_go_get_nodes
-func pgraft_go_get_nodes() *C.char {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("pgraft: PANIC in pgraft_go_get_nodes: %v", r)
-		}
-	}()
-
-	log.Printf("pgraft: pgraft_go_get_nodes called")
-
-	raftMutex.RLock()
-	defer raftMutex.RUnlock()
-
-	jsonData, err := json.Marshal(nodes)
-	if err != nil {
-		log.Printf("pgraft: error marshaling nodes: %v", err)
-		return C.CString("{\"error\": \"failed to marshal nodes\"}")
-	}
-
-	log.Printf("pgraft: returning nodes JSON: %s", string(jsonData))
 	return C.CString(string(jsonData))
 }
 
@@ -942,8 +971,70 @@ func processCommittedEntry(entry raftpb.Entry) {
 		entry.Index, entry.Term, entry.Type.String())
 }
 
-// Establish connection to a node
-func establishConnection(nodeID uint64, address string) {
+// Start network server to accept incoming connections
+func startNetworkServer(address string, port int) {
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", address, port))
+	if err != nil {
+		log.Printf("pgraft: ERROR - Failed to start network server on %s:%d: %v", address, port, err)
+		return
+	}
+	defer listener.Close()
+
+	log.Printf("pgraft: INFO - Network server listening on %s:%d", address, port)
+
+	for {
+		select {
+		case <-raftCtx.Done():
+			log.Printf("pgraft: INFO - Network server shutting down")
+			return
+		case <-stopChan:
+			log.Printf("pgraft: INFO - Network server stopping")
+			return
+		default:
+			// Set a timeout for accepting connections
+			listener.(*net.TCPListener).SetDeadline(time.Now().Add(1 * time.Second))
+			conn, err := listener.Accept()
+			if err != nil {
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					continue // Timeout is expected, continue listening
+				}
+				log.Printf("pgraft: WARNING - Failed to accept connection: %v", err)
+				continue
+			}
+
+			// Handle incoming connection in a goroutine
+			go handleIncomingConnection(conn)
+		}
+	}
+}
+
+// Handle incoming connection from a peer
+func handleIncomingConnection(conn net.Conn) {
+	defer conn.Close()
+
+	remoteAddr := conn.RemoteAddr().String()
+	log.Printf("pgraft: INFO - Incoming connection from %s", remoteAddr)
+
+	// Read node ID from connection (first 4 bytes)
+	var nodeID uint32
+	if err := readUint32(conn, &nodeID); err != nil {
+		log.Printf("pgraft: WARNING - Failed to read node ID from %s: %v", remoteAddr, err)
+		return
+	}
+
+	log.Printf("pgraft: INFO - Connection from node %d at %s", nodeID, remoteAddr)
+
+	// Store connection
+	connMutex.Lock()
+	connections[uint64(nodeID)] = conn
+	connMutex.Unlock()
+
+	// Keep connection alive and handle messages
+	handleConnectionMessages(uint64(nodeID), conn)
+}
+
+// Handle messages from a connection
+func handleConnectionMessages(nodeID uint64, conn net.Conn) {
 	for {
 		select {
 		case <-raftCtx.Done():
@@ -951,94 +1042,215 @@ func establishConnection(nodeID uint64, address string) {
 		case <-stopChan:
 			return
 		default:
-			conn, err := net.DialTimeout("tcp", address, 5*time.Second)
-			if err != nil {
-				log.Printf("pgraft: failed to connect to node %d at %s: %v", nodeID, address, err)
-				time.Sleep(5 * time.Second)
+			// Set read timeout
+			conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
+			// Read message length
+			var msgLen uint32
+			if err := readUint32(conn, &msgLen); err != nil {
+				log.Printf("pgraft: WARNING - Failed to read message length from node %d: %v", nodeID, err)
+				return
+			}
+
+			// Read message data
+			data := make([]byte, msgLen)
+			if _, err := conn.Read(data); err != nil {
+				log.Printf("pgraft: WARNING - Failed to read message data from node %d: %v", nodeID, err)
+				return
+			}
+
+			// Process message
+			var msg raftpb.Message
+			if err := msg.Unmarshal(data); err != nil {
+				log.Printf("pgraft: WARNING - Failed to unmarshal message from node %d: %v", nodeID, err)
 				continue
 			}
 
-			connMutex.Lock()
-			connections[nodeID] = conn
-			connMutex.Unlock()
+			log.Printf("pgraft: DEBUG - Received message from node %d: type=%s, term=%d", nodeID, msg.Type.String(), msg.Term)
 
-			log.Printf("pgraft: connected to node %d at %s", nodeID, address)
-			return
+			// Send message to Raft node
+			select {
+			case messageChan <- msg:
+			default:
+				log.Printf("pgraft: WARNING - Message channel full, dropping message from node %d", nodeID)
+			}
 		}
 	}
 }
 
-// Helper functions for network I/O
-func readUint32(conn net.Conn, value *uint32) error {
-	buf := make([]byte, 4)
-	if _, err := conn.Read(buf); err != nil {
-		return err
+// Load and connect to configured peers
+func loadAndConnectToPeers() {
+	log.Printf("pgraft: INFO - Starting peer discovery process")
+
+	// Load configuration from file
+	config, err := loadConfiguration()
+	if err != nil {
+		log.Printf("pgraft: WARNING - Failed to load configuration: %v", err)
+		return
 	}
-	*value = uint32(buf[0])<<24 | uint32(buf[1])<<16 | uint32(buf[2])<<8 | uint32(buf[3])
+
+	// Parse peer addresses
+	peerAddresses := parsePeerAddresses(config.PeerAddresses)
+	log.Printf("pgraft: INFO - Found %d configured peer addresses", len(peerAddresses))
+
+	// Connect to each peer
+	for i, peerAddr := range peerAddresses {
+		nodeID := uint64(i + 2) // Start from 2, assuming current node is 1
+		go establishConnectionWithRetry(nodeID, peerAddr)
+	}
+
+	// Also try to connect to predefined cluster nodes
+	predefinedPeers := []string{
+		"localhost:7401",
+		"localhost:7402",
+		"localhost:7403",
+	}
+
+	for i, peerAddr := range predefinedPeers {
+		nodeID := uint64(i + 2)
+		go establishConnectionWithRetry(nodeID, peerAddr)
+	}
+}
+
+// Establish connection with retry logic
+func establishConnectionWithRetry(nodeID uint64, peerAddr string) {
+	maxRetries := 5
+	retryDelay := 2 * time.Second
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := connectToPeer(nodeID, peerAddr)
+		if err == nil {
+			log.Printf("pgraft: INFO - Successfully connected to peer %s (node %d)", peerAddr, nodeID)
+			return
+		}
+
+		log.Printf("pgraft: WARNING - Failed to connect to peer %s (node %d, attempt %d/%d): %v",
+			peerAddr, nodeID, attempt+1, maxRetries, err)
+
+		if attempt < maxRetries-1 {
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // Exponential backoff
+		}
+	}
+
+	log.Printf("pgraft: ERROR - Failed to connect to peer %s (node %d) after %d attempts",
+		peerAddr, nodeID, maxRetries)
+}
+
+// Connect to a specific peer
+func connectToPeer(nodeID uint64, peerAddr string) error {
+	conn, err := net.DialTimeout("tcp", peerAddr, 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to dial %s: %v", peerAddr, err)
+	}
+
+	// Send node ID first
+	if err := writeUint32(conn, uint32(nodeID)); err != nil {
+		conn.Close()
+		return fmt.Errorf("failed to send node ID: %v", err)
+	}
+
+	// Store connection
+	connMutex.Lock()
+	connections[nodeID] = conn
+	connMutex.Unlock()
+
+	log.Printf("pgraft: INFO - Connected to peer %s (node %d)", peerAddr, nodeID)
+
+	// Start message handling for this connection
+	go handleConnectionMessages(nodeID, conn)
+
 	return nil
 }
 
-func writeUint32(conn net.Conn, value uint32) error {
-	buf := []byte{
-		byte(value >> 24),
-		byte(value >> 16),
-		byte(value >> 8),
-		byte(value),
-	}
-	_, err := conn.Write(buf)
-	return err
+// Configuration structure
+type PGRaftConfig struct {
+	PeerAddresses string
+	LogLevel      string
+	Port          int
 }
 
-// Get network latency (real implementation)
-func getNetworkLatency() float64 {
-	// Measure actual network latency by pinging cluster nodes
-	if len(connections) == 0 {
-		return 0.0 // No connections available
+// Load configuration from file
+func loadConfiguration() (*PGRaftConfig, error) {
+	config := &PGRaftConfig{
+		PeerAddresses: "",
+		LogLevel:      "info",
+		Port:          7400,
 	}
 
-	var totalLatency float64
-	var validMeasurements int
+	// Try to read from common configuration locations
+	configPaths := []string{
+		"/Users/ibrarahmed/pgelephant/pge/ram/conf/pgraft.conf",
+		"/etc/pgraft/pgraft.conf",
+		"./pgraft.conf",
+	}
 
-	for _, conn := range connections {
-		if conn == nil {
-			continue
-		}
-
-		start := time.Now()
-
-		// Send ping and wait for response (with timeout)
-		select {
-		case <-time.After(100 * time.Millisecond):
-			// Timeout - consider node unreachable
-			continue
-		case <-func() chan bool {
-			ch := make(chan bool, 1)
-			go func() {
-				// Simulate network round-trip
-				time.Sleep(1 * time.Millisecond) // Minimal processing time
-				ch <- true
-			}()
-			return ch
-		}():
-			// Measure actual round-trip time
-			latency := float64(time.Since(start).Nanoseconds()) / 1000000.0 // Convert to milliseconds
-			totalLatency += latency
-			validMeasurements++
+	for _, path := range configPaths {
+		if data, err := os.ReadFile(path); err == nil {
+			log.Printf("pgraft: INFO - Loading configuration from %s", path)
+			return parseConfigurationFile(string(data)), nil
 		}
 	}
 
-	if validMeasurements == 0 {
-		return 0.0 // No valid measurements
-	}
-
-	return totalLatency / float64(validMeasurements)
+	log.Printf("pgraft: WARNING - No configuration file found, using defaults")
+	return config, nil
 }
 
-// Helper function to record errors
-func recordError(message string) {
-	atomic.AddInt64(&errorCount, 1)
-	lastError = time.Now()
-	log.Printf("pgraft error: %s", message)
+// Parse configuration file content
+func parseConfigurationFile(content string) *PGRaftConfig {
+	config := &PGRaftConfig{
+		PeerAddresses: "",
+		LogLevel:      "info",
+		Port:          7400,
+	}
+
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "raft_peer_addresses":
+			config.PeerAddresses = value
+		case "raft_log_level":
+			config.LogLevel = value
+		case "raft_port":
+			if port, err := strconv.Atoi(value); err == nil {
+				config.Port = port
+			}
+		}
+	}
+
+	return config
+}
+
+// Parse peer addresses from configuration string
+func parsePeerAddresses(peerAddressesStr string) []string {
+	if peerAddressesStr == "" {
+		return []string{}
+	}
+
+	addresses := strings.Split(peerAddressesStr, ",")
+	var result []string
+
+	for _, addr := range addresses {
+		addr = strings.TrimSpace(addr)
+		if addr != "" {
+			result = append(result, addr)
+		}
+	}
+
+	return result
 }
 
 // ============================================================================
@@ -1063,7 +1275,7 @@ func pgraft_go_replicate_log_entry(data *C.char, dataLen C.int) C.int {
 
 	err := raftNode.Propose(ctx, goData)
 	if err != nil {
-		recordError(fmt.Sprintf("failed to propose log entry: %v", err))
+		recordError(errors.New(fmt.Sprintf("failed to propose log entry: %v", err)))
 		return C.int(0)
 	}
 
@@ -1090,7 +1302,7 @@ func pgraft_go_get_replication_status() *C.char {
 
 	jsonData, err := json.Marshal(status)
 	if err != nil {
-		recordError(fmt.Sprintf("failed to marshal replication status: %v", err))
+		recordError(errors.New(fmt.Sprintf("failed to marshal replication status: %v", err)))
 		return C.CString("{}")
 	}
 
@@ -1112,7 +1324,7 @@ func pgraft_go_create_snapshot() *C.char {
 	}, []byte("pgraft_snapshot_data"))
 
 	if err != nil {
-		recordError(fmt.Sprintf("failed to create snapshot: %v", err))
+		recordError(errors.New(fmt.Sprintf("failed to create snapshot: %v", err)))
 		return C.CString("")
 	}
 
@@ -1130,7 +1342,7 @@ func pgraft_go_create_snapshot() *C.char {
 	})
 
 	if err != nil {
-		recordError(fmt.Sprintf("failed to marshal snapshot: %v", err))
+		recordError(errors.New(fmt.Sprintf("failed to marshal snapshot: %v", err)))
 		return C.CString("")
 	}
 
@@ -1151,7 +1363,7 @@ func pgraft_go_apply_snapshot(snapshotData *C.char) C.int {
 	var snapshotInfo map[string]interface{}
 	err := json.Unmarshal([]byte(C.GoString(snapshotData)), &snapshotInfo)
 	if err != nil {
-		recordError(fmt.Sprintf("failed to parse snapshot data: %v", err))
+		recordError(errors.New(fmt.Sprintf("failed to parse snapshot data: %v", err)))
 		return C.int(0)
 	}
 
@@ -1167,7 +1379,7 @@ func pgraft_go_apply_snapshot(snapshotData *C.char) C.int {
 	// Apply snapshot to storage
 	err = raftStorage.ApplySnapshot(snapshot)
 	if err != nil {
-		recordError(fmt.Sprintf("failed to apply snapshot: %v", err))
+		recordError(errors.New(fmt.Sprintf("failed to apply snapshot: %v", err)))
 		return C.int(0)
 	}
 
@@ -1217,7 +1429,7 @@ func pgraft_go_replicate_to_node(nodeID C.uint64_t, data *C.char, dataLen C.int)
 		log.Printf("pgraft_go: sent replication message to node %d", nodeID)
 		return C.int(1)
 	default:
-		recordError("message channel full, cannot replicate to node")
+		recordError(errors.New("message channel full, cannot replicate to node"))
 		return C.int(0)
 	}
 }

@@ -2,7 +2,7 @@
 # PostgreSQL extension using etcd-io/raft for distributed consensus
 
 MODULE_big = pgraft
-OBJS = src/pgraft.o src/guc.o src/comm.o src/raft.o src/monitor.o src/worker_manager.o src/health_worker.o src/utils.o src/metrics.o
+OBJS = src/pgraft.o src/pgraft_core.o src/pgraft_go.o src/pgraft_state.o src/pgraft_log.o src/pgraft_sql.o src/pgraft_guc.o
 
 EXTENSION = pgraft
 DATA = pgraft--1.0.sql
@@ -16,6 +16,9 @@ include $(PGXS)
 # Compiler flags
 CFLAGS += -std=c99 -Wall -Wextra -Werror
 CFLAGS += -I./include
+
+# Override the default CFLAGS to ensure our include path is used
+override CFLAGS += -I./include
 
 # Extension-specific linker flags
 SHLIB_LINK += -lpthread -lm -ldl -L/usr/local/pgsql.17/lib

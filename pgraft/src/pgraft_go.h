@@ -94,21 +94,21 @@ extern "C" {
 // Set debug logging level
 //
 extern void pgraft_go_set_debug(int enabled);
-extern int pgraft_go_init(int nodeID, char* address, int port);
-extern int pgraft_go_start_background(void);
 extern int pgraft_go_start(void);
+extern int pgraft_go_stop(void);
+extern char* pgraft_go_get_nodes(void);
 extern char* pgraft_go_version(void);
 extern int pgraft_go_test(void);
-extern int pgraft_go_stop(void);
+extern int pgraft_go_init(int nodeID, char* address, int port);
+extern int pgraft_go_start_background(void);
 extern int pgraft_go_add_peer(int nodeID, char* address, int port);
 extern int pgraft_go_remove_peer(int nodeID);
 extern char* pgraft_go_get_state(void);
-extern int pgraft_go_get_leader(void);
-extern long pgraft_go_get_term(void);
+extern int64_t pgraft_go_get_leader(void);
+extern int32_t pgraft_go_get_term(void);
 extern int pgraft_go_is_leader(void);
 extern int pgraft_go_append_log(char* data, int length);
 extern char* pgraft_go_get_stats(void);
-extern char* pgraft_go_get_nodes(void);
 extern char* pgraft_go_get_logs(void);
 extern int pgraft_go_commit_log(long index);
 extern int pgraft_go_step_message(char* data, int length);
