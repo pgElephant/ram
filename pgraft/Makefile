@@ -18,7 +18,7 @@ CFLAGS += -std=c99 -Wall -Wextra -Werror
 CFLAGS += -I./include
 
 # Extension-specific linker flags
-SHLIB_LINK += -lpthread -lm -ldl
+SHLIB_LINK += -lpthread -lm -ldl -L/usr/local/pgsql.17/lib
 
 # Go Raft library
 GO_RAFT_LIB = src/pgraft_go.dylib

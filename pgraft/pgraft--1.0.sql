@@ -16,7 +16,7 @@ CREATE SCHEMA pgraft;
 -- ============================================================================
 
 -- Initialize pgraft with node configuration
-CREATE OR REPLACE FUNCTION pgraft_init(node_id integer, address text, port integer)
+CREATE OR REPLACE FUNCTION pgraft_init()
 RETURNS boolean
 LANGUAGE C
 AS 'pgraft', 'pgraft_init';

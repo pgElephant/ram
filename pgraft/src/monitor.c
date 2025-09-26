@@ -71,7 +71,7 @@ pgraft_monitor_init(void)
 	monitor_state.warnings_count = 0;
 	monitor_state.errors_count = 0;
 
-	elog(INFO, "pgraft monitoring system initialized");
+	elog(INFO, "pgraft: monitoring system initialized");
 }
 
 /*
@@ -81,7 +81,7 @@ void
 pgraft_monitor_shutdown(void)
 {
 	monitor_state.enabled = false;
-	elog(INFO, "pgraft monitoring system shutdown");
+	elog(INFO, "pgraft: monitoring system shutdown");
 }
 
 /*
@@ -138,7 +138,7 @@ pgraft_monitor_tick(void)
 	/* Log monitoring activity */
 	if (monitor_state.total_checks % 100 == 0)
 	{
-		elog(DEBUG1, "pgraft_monitor_tick: completed %d checks, %d failed checks",
+		elog(DEBUG1, "pgraft: completed %d checks, %d failed checks",
 			 monitor_state.total_checks, monitor_state.failed_checks);
 	}
 }
@@ -479,21 +479,21 @@ pgraft_log_health_event(pgraft_health_event_type_t event_type, const char *messa
 	{
 		case PGRAFT_HEALTH_EVENT_INFO:
 			monitor_state.info_events++;
-			elog(INFO, "pgraft_health_event: %s", message);
+			elog(INFO, "pgraft: health event: %s", message);
 			break;
 
 		case PGRAFT_HEALTH_EVENT_WARNING:
 			monitor_state.warning_events++;
-			elog(WARNING, "pgraft_health_event: %s", message);
+			elog(WARNING, "pgraft: health event: %s", message);
 			break;
 
 		case PGRAFT_HEALTH_EVENT_ERROR:
 			monitor_state.error_events++;
-			elog(ERROR, "pgraft_health_event: %s", message);
+			elog(ERROR, "pgraft: health event: %s", message);
 			break;
 
 		default:
-			elog(DEBUG1, "pgraft_health_event: %s", message);
+			elog(DEBUG1, "pgraft: health event: %s", message);
 			break;
 	}
 

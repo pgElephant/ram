@@ -95,6 +95,7 @@ extern "C" {
 //
 extern void pgraft_go_set_debug(int enabled);
 extern int pgraft_go_init(int nodeID, char* address, int port);
+extern int pgraft_go_start_background(void);
 extern int pgraft_go_start(void);
 extern char* pgraft_go_version(void);
 extern int pgraft_go_test(void);

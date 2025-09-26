@@ -191,24 +191,9 @@ func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
 	raftNode = raft.StartNode(raftConfig, peers)
 	debugLog("init: Raft node created with %d peers", len(peers))
 
-	// Start the background processing loop
+	// Initialize context but don't start background processing yet
 	raftCtx, raftCancel = context.WithCancel(context.Background())
-	go processRaftReady()
-	debugLog("init: background processing started")
-
-	// Start the ticker for Raft operations
-	raftTicker = time.NewTicker(100 * time.Millisecond)
-	go processRaftTicker()
-	debugLog("init: Raft ticker started")
-
-	// Force an immediate election attempt for single-node cluster
-	go func() {
-		time.Sleep(1 * time.Second) // Wait a bit for everything to initialize
-		if raftNode != nil {
-			debugLog("init: attempting immediate election for single-node cluster")
-			raftNode.Campaign(raftCtx)
-		}
-	}()
+	debugLog("init: context initialized, background processing deferred to PostgreSQL workers")
 
 	// Initialize applied and committed indices
 	appliedIndex = 0
@@ -228,6 +213,35 @@ func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
 	debugLog("init: completed successfully for node %d at %s:%d", nodeID, C.GoString(address), int(port))
 
 	debugLog("init: returning success")
+	return 0
+}
+
+//export pgraft_go_start_background
+func pgraft_go_start_background() C.int {
+	debugLog("start_background: called")
+
+	raftMutex.Lock()
+	defer raftMutex.Unlock()
+
+	// Start the background processing loop
+	go processRaftReady()
+	debugLog("start_background: background processing started")
+
+	// Start the ticker for Raft operations
+	raftTicker = time.NewTicker(100 * time.Millisecond)
+	go processRaftTicker()
+	debugLog("start_background: Raft ticker started")
+
+	// Force an immediate election attempt for single-node cluster
+	go func() {
+		time.Sleep(1 * time.Second) // Wait a bit for everything to initialize
+		if raftNode != nil {
+			debugLog("start_background: attempting immediate election for single-node cluster")
+			raftNode.Campaign(raftCtx)
+		}
+	}()
+
+	debugLog("start_background: all background processing started")
 	return 0
 }
 

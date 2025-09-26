@@ -30,6 +30,7 @@ PG_FUNCTION_INFO_V1(pgraft_is_cluster_healthy);
 PG_FUNCTION_INFO_V1(pgraft_get_system_stats);
 PG_FUNCTION_INFO_V1(pgraft_get_quorum_status);
 
+
 /* Metrics storage structure */
 typedef struct
 {

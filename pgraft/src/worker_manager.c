@@ -39,7 +39,7 @@ static pgraft_worker_def_t worker_defs[] = {
     {
         .name = "pgraft_consensus_worker",
         .function = "pgraft_consensus_worker_main",
-        .bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION,
+        .bgw_flags = BGWORKER_SHMEM_ACCESS,
         .bgw_restart_time = 5,
         .bgw_library_name = "pgraft",
         .bgw_function_name = "pgraft_consensus_worker_main",
@@ -50,7 +50,7 @@ static pgraft_worker_def_t worker_defs[] = {
     {
         .name = "pgraft_health_worker",
         .function = "pgraft_health_worker_main",
-        .bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION,
+        .bgw_flags = BGWORKER_SHMEM_ACCESS,
         .bgw_restart_time = 10,
         .bgw_library_name = "pgraft",
         .bgw_function_name = "pgraft_health_worker_main",
@@ -90,7 +90,7 @@ register_worker(const pgraft_worker_def_t *worker_def, pgraft_worker_t *worker)
     worker->pid = 0;
     worker->start_time = 0;
     
-    elog(INFO, "pgraft_worker_manager: registered worker '%s'", worker_def->name);
+    elog(INFO, "pgraft: registered worker '%s'", worker_def->name);
     return true;
 }
 
@@ -101,7 +101,7 @@ pgraft_worker_manager_init(void)
     
     if (workers_initialized)
     {
-        elog(WARNING, "pgraft_worker_manager_init: worker manager already initialized");
+        elog(WARNING, "pgraft: worker manager already initialized");
         return;
     }
     
@@ -111,14 +111,14 @@ pgraft_worker_manager_init(void)
     {
         if (!register_worker(&worker_defs[i], &workers[i]))
         {
-            elog(ERROR, "pgraft_worker_manager_init: failed to register worker '%s'", 
+            elog(ERROR, "pgraft: failed to register worker '%s'", 
                  worker_defs[i].name);
             return;
         }
     }
     
     workers_initialized = true;
-    elog(INFO, "pgraft_worker_manager_init: worker manager initialized with %lu workers", (unsigned long)NUM_WORKERS);
+    elog(INFO, "pgraft: worker manager initialized with %lu workers", (unsigned long)NUM_WORKERS);
 }
 
 void
@@ -138,7 +138,7 @@ pgraft_worker_manager_cleanup(void)
     }
     
     workers_initialized = false;
-    elog(INFO, "pgraft_worker_manager_cleanup: worker manager cleaned up");
+    elog(INFO, "pgraft: worker manager cleaned up");
 }
 
 bool

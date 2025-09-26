@@ -1,365 +1,216 @@
-# PGRaft - PostgreSQL Raft Extension
+# PostgreSQL pgraft Cluster Example
 
-A PostgreSQL extension that provides distributed consensus capabilities using the Raft algorithm. Built with 100% PostgreSQL C coding standards and enterprise-grade reliability.
+This directory contains a complete example of setting up and managing a three-node PostgreSQL cluster with pgraft consensus.
 
-## Features
+## Files
 
-### Core Functionality
-- **Raft Consensus Algorithm**: Distributed consensus for PostgreSQL clusters
-- **Automatic Leader Election**: Sub-second leader election with split-brain prevention
-- **Log Replication**: Consistent log replication across all cluster nodes
-- **Shared Memory Integration**: PostgreSQL shared memory for persistent state
-- **Background Workers**: Non-blocking background processes for consensus operations
-- **Health Monitoring**: Real-time health checks and status reporting
+- `primary.conf` - PostgreSQL configuration for the primary node
+- `replica1.conf` - PostgreSQL configuration for replica1 node  
+- `replica2.conf` - PostgreSQL configuration for replica2 node
+- `pgraft_cluster.py` - Modular cluster management script
+- `README.md` - This documentation
 
-### Advanced Features
-- **Go Integration**: High-performance Go-based Raft library integration
-- **Configuration Management**: Dynamic configuration updates without restart
-- **Metrics Collection**: Prometheus-compatible metrics export
-- **Error Recovery**: Automatic recovery from network partitions and failures
-- **Performance Optimization**: Optimized for minimal latency and maximum throughput
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PostgreSQL Instance                      │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
-│  │   Application   │  │   PGRaft Ext    │  │ Background  │  │
-│  │     Layer       │  │                 │  │  Workers    │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
-│  │   SQL Layer     │  │   Raft Engine   │  │   Metrics   │  │
-│  │                 │  │   (Go Library)  │  │  Collector  │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │
-│  │  Shared Memory  │  │   Network I/O   │  │   Logging   │  │
-│  │                 │  │                 │  │   System    │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Installation
+## Quick Start
 
 ### Prerequisites
-- PostgreSQL 12+ with development headers
-- C compiler (GCC or Clang)
-- Go 1.19+ (for Raft library)
-- Make and build tools
 
-### Build and Install
+- PostgreSQL 15+ with pgraft extension installed
+- Python 3.7+ with psycopg2
+- Sufficient disk space in `/tmp/pgraft` (or custom directory)
 
-```bash
-# Navigate to pgraft directory
-cd pgraft
-
-# Clean and build
-make clean
-make
-
-# Install the extension
-sudo make install
-
-# Create extension in database
-psql -d postgres -c "CREATE EXTENSION pgraft;"
-```
-
-### Verify Installation
-
-```sql
--- Check extension is loaded
-SELECT * FROM pg_extension WHERE extname = 'pgraft';
-
--- Check available functions
-\df pgraft*
-
--- Check configuration parameters
-SHOW pgraft.*;
-```
-
-## Configuration
-
-### PostgreSQL Configuration
-
-Add to `postgresql.conf`:
-
-```ini
-# PGRaft Configuration
-shared_preload_libraries = 'pgraft'
-
-# Raft Configuration
-pgraft.enabled = on
-pgraft.node_id = 1
-pgraft.cluster_addresses = 'node1:5432,node2:5432,node3:5432'
-pgraft.heartbeat_interval = 1000
-pgraft.election_timeout = 5000
-pgraft.log_level = info
-
-# Performance Tuning
-pgraft.max_log_entries = 10000
-pgraft.snapshot_interval = 1000
-pgraft.compaction_threshold = 1000
-```
-
-### Environment Variables
+### Initialize Cluster
 
 ```bash
-# Load configuration
-source conf/environment.conf
+# Make the script executable
+chmod +x pgraft_cluster.py
 
-# Set cluster-specific variables
-export PGRaft_NODE_ID=1
-export PGRaft_CLUSTER_ADDRESSES="node1:5432,node2:5432,node3:5432"
-export PGRaft_LOG_LEVEL=info
+# Initialize the three-node cluster
+python pgraft_cluster.py --init
 ```
 
-## Usage
-
-### Initialization
-
-```sql
--- Initialize the Raft cluster
-SELECT pgraft_init();
-
--- Check cluster status
-SELECT pgraft_get_cluster_status();
-
--- Get current leader
-SELECT pgraft_get_leader();
-```
-
-### Cluster Management
-
-```sql
--- Add a node to the cluster
-SELECT pgraft_add_node('node4', '192.168.1.4', 5432);
-
--- Remove a node from the cluster
-SELECT pgraft_remove_node('node4');
-
--- Get cluster health
-SELECT pgraft_get_cluster_health();
-```
-
-### Monitoring
-
-```sql
--- Get detailed cluster information
-SELECT * FROM pgraft_cluster_overview;
-
--- Get node status
-SELECT * FROM pgraft_node_status;
-
--- Get Raft metrics
-SELECT * FROM pgraft_metrics;
-```
-
-## API Reference
-
-### Core Functions
-
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `pgraft_init()` | Initialize Raft cluster | boolean |
-| `pgraft_start()` | Start Raft consensus | boolean |
-| `pgraft_stop()` | Stop Raft consensus | boolean |
-| `pgraft_is_leader()` | Check if current node is leader | boolean |
-| `pgraft_get_leader()` | Get current leader node | text |
-
-### Cluster Management
-
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `pgraft_add_node(hostname, address, port)` | Add node to cluster | boolean |
-| `pgraft_remove_node(hostname)` | Remove node from cluster | boolean |
-| `pgraft_get_cluster_status()` | Get cluster status | json |
-| `pgraft_get_cluster_health()` | Get cluster health | json |
-
-### Monitoring
-
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `pgraft_get_metrics()` | Get Raft metrics | json |
-| `pgraft_get_log_entries()` | Get log entries | json |
-| `pgraft_get_node_info()` | Get node information | json |
-
-## Monitoring & Metrics
-
-### Prometheus Metrics
-
-The extension exposes metrics in Prometheus format:
-
-```
-# Raft consensus metrics
-pgraft_raft_term_total
-pgraft_raft_log_entries_total
-pgraft_raft_heartbeat_duration_seconds
-pgraft_raft_election_duration_seconds
-
-# Cluster health metrics
-pgraft_cluster_nodes_total
-pgraft_cluster_healthy_nodes_total
-pgraft_cluster_leader_changes_total
-```
-
-### Health Checks
-
-```sql
--- Basic health check
-SELECT pgraft_health_check();
-
--- Detailed health information
-SELECT * FROM pgraft_health_details;
-```
-
-## Development
-
-### Building from Source
+### Check Status
 
 ```bash
-# Clone repository
-git clone https://github.com/pgElephant/ram.git
-cd ram/pgraft
-
-# Install dependencies
-go mod tidy
-go mod download
-
-# Build extension
-make clean
-make
-
-# Run tests
-make test
+# Show cluster status
+python pgraft_cluster.py --status
 ```
 
-### Code Structure
-
-```
-pgraft/
-├── src/                    # C source files
-│   ├── pgraft.c           # Main extension file
-│   ├── raft.c             # Raft consensus logic
-│   ├── comm.c             # Network communication
-│   ├── health_worker.c    # Health monitoring
-│   ├── metrics.c          # Metrics collection
-│   └── pgraft_go.go       # Go integration
-├── include/                # Header files
-│   └── pgraft.h           # Main header
-├── sql/                    # SQL scripts
-│   ├── pgraft_cluster.sql # Cluster functions
-│   └── pgraft_views.sql   # Monitoring views
-└── Makefile               # Build configuration
-```
-
-## Testing
-
-### Unit Tests
+### Verify Health
 
 ```bash
-# Run unit tests
-make test
-
-# Run specific test
-make test TEST=test_raft_consensus
+# Verify cluster health and connectivity
+python pgraft_cluster.py --verify
 ```
 
-### Integration Tests
+### Destroy Cluster
 
 ```bash
-# Run integration tests
-python3 tests/test_pgraft_integration.py
-
-# Run with verbose output
-python3 tests/test_pgraft_integration.py -v
+# Clean up and destroy cluster
+python pgraft_cluster.py --destroy
 ```
 
-### Performance Tests
+## Cluster Architecture
+
+The example creates a three-node cluster:
+
+- **Primary Node**: Port 5432, pgraft port 7001, metrics port 9091
+- **Replica1**: Port 5433, pgraft port 7002, metrics port 9092  
+- **Replica2**: Port 5434, pgraft port 7003, metrics port 9093
+
+## Configuration Details
+
+### pgraft Settings
+
+Each node is configured with:
+
+- **Node ID**: Unique identifier for the node
+- **Cluster ID**: Shared cluster identifier
+- **Listen Address/Port**: Network configuration for pgraft consensus
+- **Peers**: List of all cluster members
+- **Consensus Parameters**: Election timeout, heartbeat interval, etc.
+- **Performance Settings**: Batch size, compaction threshold
+- **Monitoring**: Metrics and logging configuration
+
+### PostgreSQL Settings
+
+- **Streaming Replication**: Configured between primary and replicas
+- **WAL Settings**: Optimized for replication
+- **Connection Settings**: Tuned for cluster operation
+- **Logging**: Comprehensive logging for debugging
+
+## Script Features
+
+The `pgraft_cluster.py` script provides:
+
+### Modular Design
+
+- **NodeConfig**: Configuration management for each node
+- **PgraftClusterManager**: Main cluster management class
+- **Error Handling**: Comprehensive error handling and logging
+- **Signal Handling**: Graceful shutdown on interrupts
+
+### Operations
+
+- **--init**: Create and start the entire cluster
+- **--verify**: Check cluster health and connectivity
+- **--status**: Display detailed cluster status
+- **--destroy**: Clean up all cluster resources
+
+### Status Information
+
+The status command shows:
+
+- Cluster health (healthy/degraded/down)
+- Node status (running/error)
+- pgraft consensus state
+- Replication lag for replicas
+- Connection information
+
+## Usage Examples
+
+### Basic Operations
 
 ```bash
-# Run performance benchmarks
-make benchmark
+# Initialize cluster
+python pgraft_cluster.py --init
 
-# Run stress tests
-python3 tests/test_pgraft_stress.py
+# Check if everything is working
+python pgraft_cluster.py --verify
+
+# Monitor cluster status
+python pgraft_cluster.py --status
+
+# Clean up when done
+python pgraft_cluster.py --destroy
 ```
 
-## Security
+### Custom Base Directory
 
-### Security Features
-- **Input Validation**: All inputs are validated and sanitized
-- **SQL Injection Protection**: Parameterized queries only
-- **Memory Safety**: Bounds checking and safe memory operations
-- **Access Control**: Role-based access to Raft functions
-- **Audit Logging**: Complete audit trail of all operations
+```bash
+# Use custom directory for cluster data
+python pgraft_cluster.py --init --base-dir /opt/pgraft-cluster
+```
 
-### Security Best Practices
-- Use least privilege principle for database roles
-- Enable SSL/TLS for network communications
-- Regularly update dependencies
-- Monitor for security vulnerabilities
-- Follow PostgreSQL security guidelines
+### Testing Failover
+
+```bash
+# Start cluster
+python pgraft_cluster.py --init
+
+# Stop primary node (simulate failure)
+pg_ctl -D /tmp/pgraft/primary stop
+
+# Check status - should show degraded
+python pgraft_cluster.py --status
+
+# Restart primary
+pg_ctl -D /tmp/pgraft/primary start
+
+# Verify recovery
+python pgraft_cluster.py --verify
+```
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### Extension Not Loading
-```sql
--- Check if extension is in shared_preload_libraries
-SHOW shared_preload_libraries;
+1. **Port Conflicts**: Ensure ports 5432-5434 and 7001-7003 are available
+2. **Permission Issues**: Ensure write access to the base directory
+3. **pgraft Extension**: Verify pgraft is installed and available
+4. **Python Dependencies**: Install psycopg2: `pip install psycopg2-binary`
 
--- Check for errors in PostgreSQL logs
--- Look for pgraft-related error messages
-```
+### Logs
 
-#### Raft Not Starting
-```sql
--- Check configuration
-SHOW pgraft.*;
-
--- Check if cluster addresses are correct
-SELECT pgraft_get_cluster_status();
-```
-
-#### Performance Issues
-```sql
--- Check metrics
-SELECT * FROM pgraft_metrics;
-
--- Check log entries
-SELECT * FROM pgraft_log_entries LIMIT 10;
-```
+Check logs in:
+- `/tmp/pgraft/{node}/postgresql.log` - PostgreSQL logs
+- `/tmp/pgraft/{node}/pgraft.log` - pgraft consensus logs
 
 ### Debug Mode
 
-Enable debug logging:
-
-```sql
--- Set debug log level
-ALTER SYSTEM SET pgraft.log_level = 'debug';
-SELECT pg_reload_conf();
+For detailed debugging, modify the configuration files to set:
+```
+log_min_messages = debug1
+pgraft.log_level = debug
 ```
 
-## Additional Resources
+## Advanced Configuration
 
-- [PostgreSQL Extension Development](https://www.postgresql.org/docs/current/extend.html)
-- [Raft Algorithm Paper](https://raft.github.io/raft.pdf)
-- [Go Raft Library](https://github.com/etcd-io/raft)
-- [PostgreSQL C Coding Standards](https://www.postgresql.org/docs/current/source.html)
+### Custom pgraft Parameters
 
-## Contributing
+Edit the configuration files to adjust:
 
-1. Fork the repository
-2. Create a feature branch
-3. Follow PostgreSQL C coding standards
-4. Add tests for new functionality
-5. Submit a pull request
+- `pgraft.election_timeout`: Leader election timeout (ms)
+- `pgraft.heartbeat_interval`: Heartbeat frequency (ms)
+- `pgraft.snapshot_interval`: Snapshot frequency (entries)
+- `pgraft.batch_size`: Batch size for log entries
 
-## License
+### Performance Tuning
 
-This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.
+- Adjust `shared_buffers` and `work_mem` in PostgreSQL config
+- Modify `pgraft.batch_size` and `pgraft.max_batch_delay`
+- Tune `checkpoint_timeout` and WAL settings
 
----
+### Security
 
-**PGRaft: Bringing distributed consensus to PostgreSQL.** 
+Enable authentication by setting:
+```
+pgraft.auth_enabled = true
+pgraft.tls_enabled = true
+```
+
+## Integration with ramd
+
+This example can be integrated with the ramd daemon for production use:
+
+1. Use the configuration files as templates
+2. Adjust paths and ports for production
+3. Configure ramd to manage the cluster
+4. Use ramctrl for cluster operations
+
+## Support
+
+For issues and questions:
+- Check the logs for error messages
+- Verify all prerequisites are met
+- Ensure sufficient system resources
+- Review the pgraft documentation

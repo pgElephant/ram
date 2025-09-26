@@ -25,6 +25,7 @@ int			pgraft_worker_interval = 1000;
 char	   *pgraft_cluster_name = NULL;
 int			pgraft_cluster_size = 3;
 bool		pgraft_enable_auto_cluster_formation = true;
+char	   *pgraft_peers = NULL;
 
 /* Additional GUCs for cluster management */
 char	   *pgraft_node_name = NULL;
@@ -168,6 +169,17 @@ pgraft_register_guc_variables(void)
                            NULL,
                            NULL,
                            NULL);
+
+    DefineCustomStringVariable("pgraft.peers",
+                              "Comma-separated list of cluster peers in format 'id:address:port'",
+                              NULL,
+                              &pgraft_peers,
+                              "",
+                              PGC_SUSET,
+                              0,
+                              NULL,
+                              NULL,
+                              NULL);
 
     DefineCustomBoolVariable("pgraft.enable_auto_cluster_formation",
                             "Enable automatic cluster formation on startup",

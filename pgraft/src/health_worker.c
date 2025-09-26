@@ -9,7 +9,11 @@
  */
 
 #include "postgres.h"
+#include "miscadmin.h"
 #include "../include/pgraft.h"
+
+#include "storage/latch.h"
+#include "storage/proc.h"
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <unistd.h>
@@ -32,7 +36,7 @@ pgraft_health_worker_init(void)
     
     g_health_initialized = true;
     
-    elog(INFO, "pgraft_health_worker_init: health worker initialized");
+    elog(INFO, "pgraft: health worker initialized");
 }
 
 void
@@ -40,14 +44,14 @@ pgraft_health_worker_start(void)
 {
     if (g_health_status.is_running)
     {
-        elog(WARNING, "pgraft_health_worker_start: health worker already running");
+        elog(WARNING, "pgraft: health worker already running");
         return;
     }
     
     g_health_status.is_running = true;
     g_health_status.last_activity = GetCurrentTimestamp();
     
-    elog(INFO, "pgraft_health_worker_start: health worker started");
+    elog(INFO, "pgraft: health worker started");
 }
 
 void
@@ -55,14 +59,14 @@ pgraft_health_worker_stop(void)
 {
     if (!g_health_status.is_running)
     {
-        elog(WARNING, "pgraft_health_worker_stop: health worker not running");
+        elog(WARNING, "pgraft: health worker not running");
         return;
     }
     
     g_health_status.is_running = false;
     g_health_status.last_activity = GetCurrentTimestamp();
     
-    elog(INFO, "pgraft_health_worker_stop: health worker stopped");
+    elog(INFO, "pgraft: health worker stopped");
 }
 
 void
@@ -71,7 +75,7 @@ pgraft_health_worker_cleanup(void)
     pgraft_health_worker_stop();
     g_health_initialized = false;
     
-    elog(INFO, "pgraft_health_worker_cleanup: health worker cleaned up");
+    elog(INFO, "pgraft: health worker cleaned up");
 }
 
 bool
@@ -133,26 +137,49 @@ pgraft_health_worker_check(void)
     g_health_status.last_activity = GetCurrentTimestamp();
     g_health_status.health_checks_performed++;
     
-    elog(DEBUG1, "pgraft_health_worker_check: health check completed, status: %s", 
+    elog(DEBUG1, "pgraft: health check completed, status: %s", 
          is_healthy ? "HEALTHY" : "UNHEALTHY");
     
     return is_healthy;
 }
 
-void
+void __attribute__((visibility("default")))
 pgraft_health_worker_main(Datum main_arg __attribute__((unused)))
 {
-    elog(INFO, "pgraft_health_worker_main: health worker main function started");
+    /* Unblock signals so we can handle shutdown requests */
+    BackgroundWorkerUnblockSignals();
+    
+    /* Clear any existing latch state */
+    if (MyLatch)
+        ResetLatch(MyLatch);
+    
+    elog(INFO, "pgraft: health worker main function started");
     
     pgraft_health_worker_init();
     pgraft_health_worker_start();
     
-    while (g_health_status.is_running)
+    for (;;)
     {
-        pgraft_health_worker_check();
+        /* Check for shutdown signal */
+        if (MyLatch && MyLatch->is_set)
+        {
+            elog(INFO, "pgraft: health worker received shutdown signal");
+            break;
+        }
+        
+        /* Check for process exit */
+        if (proc_exit_inprogress)
+        {
+            elog(INFO, "pgraft: health worker received process exit signal");
+            break;
+        }
+       
+        elog(DEBUG1, "pgraft: health worker main function running");
         pg_usleep(30000000);
+     
+        pgraft_health_worker_check();
     }
     
     pgraft_health_worker_cleanup();
-    elog(INFO, "pgraft_health_worker_main: health worker main function exiting");
+    elog(INFO, "pgraft: health worker main function exiting");
 }
