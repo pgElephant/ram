@@ -121,6 +121,7 @@ extern int pgraft_go_apply_snapshot(char* snapshotData);
 extern int pgraft_go_replicate_to_node(uint64_t nodeID, char* data, int dataLen);
 extern double pgraft_go_get_replication_lag(void);
 extern int pgraft_go_sync_replication(void);
+extern int pgraft_go_update_cluster_state(long long leaderID, long long currentTerm, char* state);
 
 #ifdef __cplusplus
 }

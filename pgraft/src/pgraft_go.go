@@ -271,6 +271,12 @@ var (
 
 //export pgraft_go_init
 func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("pgraft: PANIC in pgraft_go_init: %v", r)
+		}
+	}()
+
 	log.Printf("pgraft: INFO - Initializing node %d at %s:%d", nodeID, C.GoString(address), int(port))
 
 	raftMutex.Lock()
@@ -346,12 +352,31 @@ func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
 	committedIndex = 0
 
 	// Start network server for incoming connections
+	log.Printf("pgraft: DEBUG - About to start network server goroutine")
 	go startNetworkServer(C.GoString(address), int(port))
 	log.Printf("pgraft: INFO - Network server started on %s:%d", C.GoString(address), int(port))
 
 	// Load and connect to configured peers
 	go loadAndConnectToPeers()
 	log.Printf("pgraft: INFO - Peer discovery and connection process started")
+
+	// Start background processing automatically
+	log.Printf("pgraft: DEBUG - About to start Raft Ready processing goroutine")
+	go processRaftReady()
+	log.Printf("pgraft: INFO - Raft Ready processing started")
+
+	// Start the ticker for Raft operations
+	log.Printf("pgraft: DEBUG - About to start Raft ticker")
+	raftTicker = time.NewTicker(100 * time.Millisecond)
+	go processRaftTicker()
+	log.Printf("pgraft: INFO - Raft ticker started")
+
+	// Start message processing
+	log.Printf("pgraft: DEBUG - About to start message processing")
+	go processIncomingMessages()
+	log.Printf("pgraft: INFO - Message processing started")
+
+	log.Printf("pgraft: DEBUG - All Raft processing goroutines started successfully")
 
 	// Initialize metrics
 	atomic.StoreInt64(&messagesProcessed, 0)
@@ -364,9 +389,9 @@ func pgraft_go_init(nodeID C.int, address *C.char, port C.int) C.int {
 	healthStatus = "initializing"
 
 	atomic.StoreInt32(&initialized, 1)
-	debugLog("init: completed successfully for node %d at %s:%d", nodeID, C.GoString(address), int(port))
+	log.Printf("pgraft: INFO - Initialization completed successfully for node %d at %s:%d", nodeID, C.GoString(address), int(port))
 
-	debugLog("init: returning success")
+	log.Printf("pgraft: INFO - Returning success from initialization")
 	return 0
 }
 
@@ -1082,64 +1107,109 @@ func handleConnectionMessages(nodeID uint64, conn net.Conn) {
 func loadAndConnectToPeers() {
 	log.Printf("pgraft: INFO - Starting peer discovery process")
 
-	// Load configuration from file
-	config, err := loadConfiguration()
-	if err != nil {
-		log.Printf("pgraft: WARNING - Failed to load configuration: %v", err)
-		return
-	}
+	// Start peer discovery in a separate goroutine to avoid blocking
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("pgraft: PANIC in loadAndConnectToPeers goroutine: %v", r)
+			}
+		}()
 
-	// Parse peer addresses
-	peerAddresses := parsePeerAddresses(config.PeerAddresses)
-	log.Printf("pgraft: INFO - Found %d configured peer addresses", len(peerAddresses))
+		// Add timeout to ensure function completes
+		done := make(chan bool, 1)
+		go func() {
+			// Load configuration from file
+			config, err := loadConfiguration()
+			if err != nil {
+				log.Printf("pgraft: WARNING - Failed to load configuration: %v", err)
+				done <- true
+				return
+			}
 
-	// Connect to each peer
-	for i, peerAddr := range peerAddresses {
-		nodeID := uint64(i + 2) // Start from 2, assuming current node is 1
-		go establishConnectionWithRetry(nodeID, peerAddr)
-	}
+			// Parse peer addresses
+			peerAddresses := parsePeerAddresses(config.PeerAddresses)
+			log.Printf("pgraft: INFO - Found %d configured peer addresses", len(peerAddresses))
 
-	// Also try to connect to predefined cluster nodes
-	predefinedPeers := []string{
-		"localhost:7401",
-		"localhost:7402",
-		"localhost:7403",
-	}
+			// Connect to each peer
+			for i, peerAddr := range peerAddresses {
+				nodeID := uint64(i + 1) // Node IDs: 1, 2, 3
 
-	for i, peerAddr := range predefinedPeers {
-		nodeID := uint64(i + 2)
-		go establishConnectionWithRetry(nodeID, peerAddr)
-	}
+				// Skip self-connection (current node is 1)
+				if nodeID == 1 {
+					log.Printf("pgraft: INFO - Skipping self-connection to node %d (%s)", nodeID, peerAddr)
+					continue
+				}
+
+				// Check if connection already exists
+				connMutex.Lock()
+				_, exists := connections[nodeID]
+				connMutex.Unlock()
+
+				if exists {
+					log.Printf("pgraft: INFO - Connection to node %d already exists, skipping", nodeID)
+					continue
+				}
+
+				// Start connection in a separate goroutine to avoid blocking
+				go establishConnectionWithRetry(nodeID, peerAddr)
+			}
+			log.Printf("pgraft: INFO - Peer discovery process completed")
+			done <- true
+		}()
+
+		// Wait for completion or timeout
+		select {
+		case <-done:
+			log.Printf("pgraft: INFO - Peer discovery completed successfully")
+		case <-time.After(5 * time.Second):
+			log.Printf("pgraft: WARNING - Peer discovery timed out after 5 seconds")
+		}
+	}()
+
+	log.Printf("pgraft: INFO - Peer discovery goroutine started")
 }
 
 // Establish connection with retry logic
 func establishConnectionWithRetry(nodeID uint64, peerAddr string) {
-	maxRetries := 5
-	retryDelay := 2 * time.Second
+	// Check if connection already exists before attempting
+	connMutex.Lock()
+	_, exists := connections[nodeID]
+	connMutex.Unlock()
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		err := connectToPeer(nodeID, peerAddr)
-		if err == nil {
-			log.Printf("pgraft: INFO - Successfully connected to peer %s (node %d)", peerAddr, nodeID)
-			return
-		}
-
-		log.Printf("pgraft: WARNING - Failed to connect to peer %s (node %d, attempt %d/%d): %v",
-			peerAddr, nodeID, attempt+1, maxRetries, err)
-
-		if attempt < maxRetries-1 {
-			time.Sleep(retryDelay)
-			retryDelay *= 2 // Exponential backoff
-		}
+	if exists {
+		log.Printf("pgraft: INFO - Connection to node %d already exists, skipping retry", nodeID)
+		return
 	}
 
-	log.Printf("pgraft: ERROR - Failed to connect to peer %s (node %d) after %d attempts",
-		peerAddr, nodeID, maxRetries)
+	// Start retry logic in a separate goroutine to avoid blocking
+	go func() {
+		maxRetries := 5
+		retryDelay := 2 * time.Second
+
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			err := connectToPeer(nodeID, peerAddr)
+			if err == nil {
+				log.Printf("pgraft: INFO - Successfully connected to peer %s (node %d)", peerAddr, nodeID)
+				return
+			}
+
+			log.Printf("pgraft: WARNING - Failed to connect to peer %s (node %d, attempt %d/%d): %v",
+				peerAddr, nodeID, attempt+1, maxRetries, err)
+
+			if attempt < maxRetries-1 {
+				time.Sleep(retryDelay)
+				retryDelay *= 2 // Exponential backoff
+			}
+		}
+
+		log.Printf("pgraft: ERROR - Failed to connect to peer %s (node %d) after %d attempts",
+			peerAddr, nodeID, maxRetries)
+	}()
 }
 
 // Connect to a specific peer
 func connectToPeer(nodeID uint64, peerAddr string) error {
-	conn, err := net.DialTimeout("tcp", peerAddr, 5*time.Second)
+	conn, err := net.DialTimeout("tcp", peerAddr, 1*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to dial %s: %v", peerAddr, err)
 	}
@@ -1512,8 +1582,34 @@ func processRaftReady() {
 		case <-raftCtx.Done():
 			log.Printf("pgraft: processRaftReady stopping")
 			return
-		case rd := <-raftReady:
-			log.Printf("pgraft: processing ready message")
+		case rd := <-raftNode.Ready():
+			log.Printf("pgraft: DEBUG - Processing Raft Ready message")
+
+			// Save to storage
+			if !raft.IsEmptyHardState(rd.HardState) {
+				log.Printf("pgraft: DEBUG - Saving hard state: term=%d, commit=%d", rd.HardState.Term, rd.HardState.Commit)
+				raftStorage.SetHardState(rd.HardState)
+
+				// Update cluster state
+				clusterState.CurrentTerm = rd.HardState.Term
+				clusterState.CommitIndex = rd.HardState.Commit
+
+				// Update leader information from hard state
+				if rd.HardState.Vote != 0 {
+					clusterState.LeaderID = rd.HardState.Vote
+					log.Printf("pgraft: INFO - Leader elected: %d", rd.HardState.Vote)
+
+					// Update shared memory cluster state
+					updateSharedMemoryClusterState(int64(rd.HardState.Vote), int64(rd.HardState.Term), "leader")
+				}
+			}
+
+			// Save entries
+			if len(rd.Entries) > 0 {
+				log.Printf("pgraft: DEBUG - Saving %d entries", len(rd.Entries))
+				raftStorage.Append(rd.Entries)
+				clusterState.LastIndex = rd.Entries[len(rd.Entries)-1].Index
+			}
 
 			// Process committed entries
 			for _, entry := range rd.CommittedEntries {
@@ -1538,12 +1634,10 @@ func processRaftReady() {
 				}
 			}
 
-			// Process messages
+			// Send messages to peers
 			for _, msg := range rd.Messages {
-				log.Printf("pgraft: sending message type %s from %d to %d", msg.Type, msg.From, msg.To)
-				// In a real implementation, we would send these over the network
-				// For now, we'll just log them
-				atomic.StoreInt64(&messagesProcessed, atomic.LoadInt64(&messagesProcessed)+1)
+				log.Printf("pgraft: DEBUG - Sending message type %s from %d to %d", msg.Type, msg.From, msg.To)
+				sendMessage(msg)
 			}
 
 			// Process state changes
@@ -1558,6 +1652,10 @@ func processRaftReady() {
 				clusterState.LeaderID = rd.SoftState.Lead
 				clusterState.State = raft.StateType(rd.SoftState.RaftState).String()
 				raftMutex.Unlock()
+
+				// Update shared memory cluster state
+				stateStr := raft.StateType(rd.SoftState.RaftState).String()
+				updateSharedMemoryClusterState(int64(rd.SoftState.Lead), int64(hs.Term), stateStr)
 
 				if rd.SoftState.Lead != 0 {
 					log.Printf("pgraft: leader elected: %d", rd.SoftState.Lead)
@@ -1604,6 +1702,115 @@ func getCurrentTerm() uint64 {
 	// Get current term from storage
 	hs, _, _ := raftStorage.InitialState()
 	return hs.Term
+}
+
+// sendMessage sends a Raft message to a peer
+func sendMessage(msg raftpb.Message) {
+	log.Printf("pgraft: DEBUG - Sending message to node %d: type=%s", msg.To, msg.Type)
+
+	// Get connection to peer
+	connMutex.Lock()
+	conn, exists := connections[msg.To]
+	connMutex.Unlock()
+
+	if !exists {
+		log.Printf("pgraft: WARNING - No connection to peer %d", msg.To)
+		return
+	}
+
+	// Serialize message
+	data, err := msg.Marshal()
+	if err != nil {
+		log.Printf("pgraft: ERROR - Failed to marshal message: %v", err)
+		return
+	}
+
+	// Send message length first
+	if err := writeUint32(conn, uint32(len(data))); err != nil {
+		log.Printf("pgraft: ERROR - Failed to send message length: %v", err)
+		return
+	}
+
+	// Send message data
+	if _, err := conn.Write(data); err != nil {
+		log.Printf("pgraft: ERROR - Failed to send message data: %v", err)
+		return
+	}
+
+	log.Printf("pgraft: DEBUG - Message sent successfully to node %d", msg.To)
+	atomic.AddInt64(&messagesProcessed, 1)
+}
+
+// processIncomingMessages processes messages from the message channel
+func processIncomingMessages() {
+	log.Printf("pgraft: INFO - Starting message processing loop")
+
+	for {
+		select {
+		case <-raftDone:
+			log.Printf("pgraft: INFO - Message processing loop stopped")
+			return
+		case <-raftCtx.Done():
+			log.Printf("pgraft: INFO - Message processing loop stopped (context cancelled)")
+			return
+		case msg := <-messageChan:
+			if raftNode == nil {
+				log.Printf("pgraft: WARNING - Received message but Raft node is nil")
+				continue
+			}
+
+			log.Printf("pgraft: DEBUG - Processing incoming message: type=%s, from=%d, to=%d, term=%d",
+				msg.Type.String(), msg.From, msg.To, msg.Term)
+
+			// Send message to Raft node
+			raftNode.Step(raftCtx, msg)
+
+			// Update cluster state based on message type
+			switch msg.Type {
+			case raftpb.MsgVote, raftpb.MsgVoteResp:
+				// Update term if this is a higher term
+				if msg.Term > clusterState.CurrentTerm {
+					clusterState.CurrentTerm = msg.Term
+					log.Printf("pgraft: INFO - Updated term to %d", msg.Term)
+				}
+
+			case raftpb.MsgHeartbeat, raftpb.MsgHeartbeatResp:
+				// Update leader information
+				if msg.Type == raftpb.MsgHeartbeat && msg.From != 0 {
+					clusterState.LeaderID = msg.From
+					clusterState.State = "follower"
+					log.Printf("pgraft: INFO - Received heartbeat from leader %d", msg.From)
+				}
+			}
+
+			atomic.AddInt64(&messagesProcessed, 1)
+		}
+	}
+}
+
+// updateSharedMemoryClusterState updates the shared memory cluster state from Go
+func updateSharedMemoryClusterState(leaderID int64, currentTerm int64, state string) {
+	log.Printf("pgraft: INFO - Cluster state update: leader=%d, term=%d, state=%s", leaderID, currentTerm, state)
+
+	// Store the cluster state in a global variable that can be accessed by C functions
+	raftMutex.Lock()
+	clusterState.LeaderID = uint64(leaderID)
+	clusterState.CurrentTerm = uint64(currentTerm)
+	clusterState.State = state
+	raftMutex.Unlock()
+
+	log.Printf("pgraft: INFO - Updated internal cluster state: leader=%d, term=%d, state=%s", leaderID, currentTerm, state)
+}
+
+//export pgraft_go_update_cluster_state
+func pgraft_go_update_cluster_state(leaderID C.longlong, currentTerm C.longlong, state *C.char) C.int {
+	// This function will be called from C to update the cluster state
+	log.Printf("pgraft: DEBUG - pgraft_go_update_cluster_state called: leader=%d, term=%d, state=%s", int64(leaderID), int64(currentTerm), C.GoString(state))
+
+	// Update the internal cluster state
+	updateSharedMemoryClusterState(int64(leaderID), int64(currentTerm), C.GoString(state))
+
+	return 0
 }
 
 func main() {

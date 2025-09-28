@@ -15,23 +15,12 @@ CREATE SCHEMA pgraft;
 -- Core Raft Functions
 -- ============================================================================
 
--- Initialize pgraft with node configuration
-CREATE OR REPLACE FUNCTION pgraft_init(node_id integer, address text, port integer)
+-- Initialize pgraft using GUC variables
+CREATE OR REPLACE FUNCTION pgraft_init()
 RETURNS boolean
 LANGUAGE C
 AS 'pgraft', 'pgraft_init';
 
--- Initialize pgraft with configuration from GUC variables
-CREATE OR REPLACE FUNCTION pgraft_init()
-RETURNS boolean
-LANGUAGE C
-AS 'pgraft', 'pgraft_init_guc';
-
--- Start pgraft consensus process
-CREATE OR REPLACE FUNCTION pgraft_start()
-RETURNS boolean
-LANGUAGE C
-AS 'pgraft', 'pgraft_start';
 
 -- Add a node to the cluster
 CREATE OR REPLACE FUNCTION pgraft_add_node(node_id integer, address text, port integer)
@@ -45,11 +34,20 @@ RETURNS boolean
 LANGUAGE C
 AS 'pgraft', 'pgraft_remove_node';
 
--- Get cluster status
+-- Get cluster status as table with individual columns
 CREATE OR REPLACE FUNCTION pgraft_get_cluster_status()
-RETURNS text
+RETURNS TABLE(
+    node_id integer,
+    current_term bigint,
+    leader_id bigint,
+    state text,
+    num_nodes integer,
+    messages_processed bigint,
+    heartbeats_sent bigint,
+    elections_triggered bigint
+)
 LANGUAGE C
-AS 'pgraft', 'pgraft_get_cluster_status';
+AS 'pgraft', 'pgraft_get_cluster_status_table';
 
 -- Get current leader ID
 CREATE OR REPLACE FUNCTION pgraft_get_leader()
@@ -69,11 +67,22 @@ RETURNS boolean
 LANGUAGE C
 AS 'pgraft', 'pgraft_is_leader';
 
--- Get cluster nodes information
-CREATE OR REPLACE FUNCTION pgraft_get_nodes()
+-- Get background worker state
+CREATE OR REPLACE FUNCTION pgraft_get_worker_state()
 RETURNS text
 LANGUAGE C
-AS 'pgraft', 'pgraft_get_nodes';
+AS 'pgraft', 'pgraft_get_worker_state';
+
+-- Get cluster nodes as table with individual columns
+CREATE OR REPLACE FUNCTION pgraft_get_nodes()
+RETURNS TABLE(
+    node_id integer,
+    address text,
+    port integer,
+    is_leader boolean
+)
+LANGUAGE C
+AS 'pgraft', 'pgraft_get_nodes_table';
 
 -- Get version information
 CREATE OR REPLACE FUNCTION pgraft_get_version()
@@ -121,17 +130,35 @@ RETURNS text
 LANGUAGE C
 AS 'pgraft', 'pgraft_log_get_entry_sql';
 
--- Get log statistics
+-- Get log statistics as table with individual columns
 CREATE OR REPLACE FUNCTION pgraft_log_get_stats()
-RETURNS text
+RETURNS TABLE(
+    log_size bigint,
+    last_index bigint,
+    commit_index bigint,
+    last_applied bigint,
+    replicated bigint,
+    committed bigint,
+    applied bigint,
+    errors bigint
+)
 LANGUAGE C
-AS 'pgraft', 'pgraft_log_get_stats';
+AS 'pgraft', 'pgraft_log_get_stats_table';
 
--- Get replication status
+-- Get replication status as table with individual columns
 CREATE OR REPLACE FUNCTION pgraft_log_get_replication_status()
-RETURNS text
+RETURNS TABLE(
+    log_size bigint,
+    last_index bigint,
+    commit_index bigint,
+    last_applied bigint,
+    replicated bigint,
+    committed bigint,
+    applied bigint,
+    errors bigint
+)
 LANGUAGE C
-AS 'pgraft', 'pgraft_log_get_replication_status_sql';
+AS 'pgraft', 'pgraft_log_get_replication_status_table';
 
 -- Sync with leader
 CREATE OR REPLACE FUNCTION pgraft_log_sync_with_leader()
@@ -139,11 +166,21 @@ RETURNS boolean
 LANGUAGE C
 AS 'pgraft', 'pgraft_log_sync_with_leader_sql';
 
--- Get cluster state (alias for pgraft_get_cluster_status)
-CREATE OR REPLACE FUNCTION pgraft_get_state()
-RETURNS text
+-- Command queue inspection function
+CREATE OR REPLACE FUNCTION pgraft_get_queue_status()
+RETURNS TABLE(
+    cmd_position integer,
+    command_type integer,
+    node_id integer,
+    address text,
+    port integer,
+    log_data text
+)
 LANGUAGE C
-AS 'pgraft', 'pgraft_get_cluster_status';
+AS 'pgraft', 'pgraft_get_queue_status';
+
+-- Background worker functions - removed as they are now handled automatically
+
 
 -- Reset search path
 SET search_path = public;

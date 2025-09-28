@@ -12,6 +12,12 @@
 #include "fmgr.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
+#include "access/htup_details.h"
+#include "access/tupdesc.h"
+#include "funcapi.h"
+#include "utils/typcache.h"
+#include "utils/tuplestore.h"
+#include "utils/guc.h"
 
 #include "../include/pgraft_sql.h"
 #include "../include/pgraft_core.h"
@@ -19,18 +25,20 @@
 #include "../include/pgraft_state.h"
 #include "../include/pgraft_log.h"
 #include "../include/pgraft_guc.h"
+#include "../include/pgraft_worker.h"
 
 /* Function info macros for core functions */
 PG_FUNCTION_INFO_V1(pgraft_init);
 PG_FUNCTION_INFO_V1(pgraft_init_guc);
-PG_FUNCTION_INFO_V1(pgraft_start);
 PG_FUNCTION_INFO_V1(pgraft_add_node);
 PG_FUNCTION_INFO_V1(pgraft_remove_node);
-PG_FUNCTION_INFO_V1(pgraft_get_cluster_status);
+PG_FUNCTION_INFO_V1(pgraft_get_cluster_status_table);
 PG_FUNCTION_INFO_V1(pgraft_get_leader);
 PG_FUNCTION_INFO_V1(pgraft_get_term);
 PG_FUNCTION_INFO_V1(pgraft_is_leader);
-PG_FUNCTION_INFO_V1(pgraft_get_nodes);
+PG_FUNCTION_INFO_V1(pgraft_get_worker_state);
+PG_FUNCTION_INFO_V1(pgraft_get_queue_status);
+PG_FUNCTION_INFO_V1(pgraft_get_nodes_table);
 PG_FUNCTION_INFO_V1(pgraft_get_version);
 PG_FUNCTION_INFO_V1(pgraft_test);
 PG_FUNCTION_INFO_V1(pgraft_set_debug);
@@ -40,21 +48,24 @@ PG_FUNCTION_INFO_V1(pgraft_log_append);
 PG_FUNCTION_INFO_V1(pgraft_log_commit);
 PG_FUNCTION_INFO_V1(pgraft_log_apply);
 PG_FUNCTION_INFO_V1(pgraft_log_get_entry_sql);
-PG_FUNCTION_INFO_V1(pgraft_log_get_stats);
-PG_FUNCTION_INFO_V1(pgraft_log_get_replication_status_sql);
+PG_FUNCTION_INFO_V1(pgraft_log_get_stats_table);
+PG_FUNCTION_INFO_V1(pgraft_log_get_replication_status_table);
+
+/* Background worker functions - removed as they are now handled automatically */
 PG_FUNCTION_INFO_V1(pgraft_log_sync_with_leader_sql);
 
+
+
 /*
- * Initialize pgraft node
+ * Initialize pgraft node with GUC variables
  */
 Datum
-pgraft_init_guc(PG_FUNCTION_ARGS)
+pgraft_init(PG_FUNCTION_ARGS)
 {
 	int32_t		node_id;
 	int32_t		port;
 	char	   *address;
 	char	   *cluster_id;
-	pgraft_go_init_func init_func;
 	
 	/* Get configuration from GUC variables */
 	node_id = pgraft_node_id;
@@ -62,128 +73,19 @@ pgraft_init_guc(PG_FUNCTION_ARGS)
 	address = pgraft_address;
 	cluster_id = pgraft_cluster_name;
 	
-	elog(INFO, "pgraft: Initializing node %d at %s:%d (cluster: %s)", 
+	elog(INFO, "pgraft: Queuing INIT command for node %d at %s:%d (cluster: %s)", 
 		 node_id, address, port, cluster_id);
 	
-	/* Initialize core system */
-	if (pgraft_core_init(node_id, address, port) != 0)
-	{
-		elog(ERROR, "pgraft: Failed to initialize core system");
+	/* Queue INIT command for worker to process */
+	if (!pgraft_queue_command(COMMAND_INIT, node_id, address, port, cluster_id)) {
+		elog(ERROR, "pgraft: Failed to queue INIT command");
 		PG_RETURN_BOOL(false);
 	}
 	
-	/* Load and initialize Go library */
-	if (pgraft_go_load_library() != 0)
-	{
-		elog(ERROR, "pgraft: Failed to load Go library");
-		PG_RETURN_BOOL(false);
-	}
-	
-	init_func = pgraft_go_get_init_func();
-	if (!init_func)
-	{
-		elog(ERROR, "pgraft: Failed to get Go init function");
-		PG_RETURN_BOOL(false);
-	}
-	
-	/* Initialize Go Raft library */
-	if (init_func(node_id, address, port) != 0)
-	{
-		elog(ERROR, "pgraft: Failed to initialize Go Raft library");
-		PG_RETURN_BOOL(false);
-	}
-	
-	elog(INFO, "pgraft: Node %d initialized successfully", node_id);
-	PG_RETURN_BOOL(true);
+	elog(INFO, "pgraft: INIT command queued successfully - background worker will process it");
+    PG_RETURN_BOOL(true);
 }
 
-/*
- * Start pgraft consensus process
- */
-Datum
-pgraft_start(PG_FUNCTION_ARGS)
-{
-	pgraft_go_start_func start_func;
-	
-	elog(INFO, "pgraft: Starting consensus process");
-	
-	/* Check if Go library is loaded */
-	if (!pgraft_go_is_loaded())
-	{
-		elog(ERROR, "pgraft: Go library not loaded - call pgraft_init() first");
-		PG_RETURN_BOOL(false);
-	}
-	
-	/* Get start function */
-	start_func = pgraft_go_get_start_func();
-	if (!start_func)
-	{
-		elog(ERROR, "pgraft: Failed to get Go start function");
-		PG_RETURN_BOOL(false);
-	}
-	
-	/* Start the Raft consensus process */
-	if (start_func() != 0)
-	{
-		elog(ERROR, "pgraft: Failed to start Raft consensus process");
-		PG_RETURN_BOOL(false);
-	}
-	
-	elog(INFO, "pgraft: Consensus process started successfully");
-	PG_RETURN_BOOL(true);
-}
-
-Datum
-pgraft_init(PG_FUNCTION_ARGS)
-{
-	int32_t		node_id;
-	text	   *address_text;
-	int32_t		port;
-	char	   *address;
-	pgraft_go_init_func init_func;
-	
-	node_id = PG_GETARG_INT32(0);
-	address_text = PG_GETARG_TEXT_PP(1);
-	port = PG_GETARG_INT32(2);
-	
-	address = text_to_cstring(address_text);
-	
-	elog(INFO, "pgraft: Initializing node %d at %s:%d", node_id, address, port);
-	
-	/* Initialize core system */
-	if (pgraft_core_init(node_id, address, port) != 0)
-	{
-		elog(ERROR, "pgraft: Failed to initialize core system");
-		PG_RETURN_BOOL(false);
-	}
-	elog(INFO, "pgraft: Core system initialized successfully");
-	
-	/* Load Go library dynamically (not in _PG_init) */
-	if (pgraft_go_load_library() != 0)
-	{
-		elog(ERROR, "pgraft: Failed to load Go library");
-		PG_RETURN_BOOL(false);
-	}
-	elog(INFO, "pgraft: Go library loaded successfully");
-	
-	/* Initialize Go library */
-	init_func = pgraft_go_get_init_func();
-	if (init_func && init_func(node_id, address, port) != 0)
-	{
-		elog(ERROR, "pgraft: Failed to initialize Go library");
-		PG_RETURN_BOOL(false);
-	}
-	elog(INFO, "pgraft: Go library initialized successfully");
-	
-	/* Save state to shared memory */
-	pgraft_state_save_node_config(node_id, address, port);
-	pgraft_state_save_go_library_state();
-	pgraft_state_set_go_initialized(true);
-	elog(INFO, "pgraft: State saved to shared memory");
-	
-	elog(INFO, "pgraft: Node initialization completed successfully");
-	PG_RETURN_BOOL(true);
-}
 
 /*
  * Add node to cluster
@@ -195,7 +97,6 @@ pgraft_add_node(PG_FUNCTION_ARGS)
 	text	   *address_text;
 	int32_t		port;
 	char	   *address;
-	pgraft_go_add_peer_func add_peer_func;
 	
 	node_id = PG_GETARG_INT32(0);
 	address_text = PG_GETARG_TEXT_PP(1);
@@ -203,34 +104,16 @@ pgraft_add_node(PG_FUNCTION_ARGS)
 	
 	address = text_to_cstring(address_text);
 	
-	elog(INFO, "pgraft: Adding node %d at %s:%d", node_id, address, port);
+	elog(INFO, "pgraft: Queuing ADD_NODE command for node %d at %s:%d", node_id, address, port);
 	
-	/* Add to core system */
-	if (pgraft_core_add_node(node_id, address, port) != 0)
-	{
-		elog(ERROR, "pgraft: Failed to add node %d to core system - core system not initialized or cluster not available", node_id);
+	/* Queue ADD_NODE command for worker to process */
+	if (!pgraft_queue_command(COMMAND_ADD_NODE, node_id, address, port, NULL)) {
+		elog(ERROR, "pgraft: Failed to queue ADD_NODE command");
 		PG_RETURN_BOOL(false);
 	}
-	elog(INFO, "pgraft: Node added to core system successfully");
 	
-	/* Add to Go library if loaded */
-	if (pgraft_go_is_loaded())
-	{
-		add_peer_func = pgraft_go_get_add_peer_func();
-		if (add_peer_func && add_peer_func(node_id, address, port) != 0)
-		{
-			elog(ERROR, "pgraft: Failed to add node to Go library");
-			PG_RETURN_BOOL(false);
-		}
-		elog(INFO, "pgraft: Node added to Go library successfully");
-	}
-	else
-	{
-		elog(WARNING, "pgraft: Go library not loaded, skipping Go library addition");
-	}
-	
-	elog(INFO, "pgraft: Node %d added successfully to cluster", node_id);
-	PG_RETURN_BOOL(true);
+	elog(INFO, "pgraft: ADD_NODE command queued successfully - background worker will process it");
+    PG_RETURN_BOOL(true);
 }
 
 /*
@@ -262,33 +145,44 @@ pgraft_remove_node(PG_FUNCTION_ARGS)
     PG_RETURN_BOOL(true);
 }
 
+
 /*
- * Get cluster status
+ * Get cluster status as table with individual columns
  */
 Datum
-pgraft_get_cluster_status(PG_FUNCTION_ARGS)
+pgraft_get_cluster_status_table(PG_FUNCTION_ARGS)
 {
     pgraft_cluster_t cluster;
-    StringInfoData result;
+    TupleDesc	tupdesc;
+    Datum		values[8];
+    bool		nulls[8];
+    HeapTuple	tuple;
     
     if (pgraft_core_get_cluster_state(&cluster) != 0) {
         elog(ERROR, "pgraft: Failed to get cluster state");
         PG_RETURN_NULL();
     }
     
-    /* Create result text */
-    initStringInfo(&result);
+    /* Build tuple descriptor */
+    if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+        elog(ERROR, "pgraft: Return type must be a row type");
     
-    appendStringInfo(&result, "Node ID: %d\n", cluster.node_id);
-    appendStringInfo(&result, "Current Term: %d\n", cluster.current_term);
-    appendStringInfo(&result, "Leader ID: %lld\n", cluster.leader_id);
-    appendStringInfo(&result, "State: %s\n", cluster.state);
-    appendStringInfo(&result, "Number of Nodes: %d\n", cluster.num_nodes);
-    appendStringInfo(&result, "Messages Processed: %lld\n", cluster.messages_processed);
-    appendStringInfo(&result, "Heartbeats Sent: %lld\n", cluster.heartbeats_sent);
-    appendStringInfo(&result, "Elections Triggered: %lld\n", cluster.elections_triggered);
+    /* Prepare values */
+    values[0] = Int32GetDatum(cluster.node_id);
+    values[1] = Int64GetDatum(cluster.current_term);
+    values[2] = Int64GetDatum(cluster.leader_id);
+    values[3] = CStringGetTextDatum(cluster.state);
+    values[4] = Int32GetDatum(cluster.num_nodes);
+    values[5] = Int64GetDatum(cluster.messages_processed);
+    values[6] = Int64GetDatum(cluster.heartbeats_sent);
+    values[7] = Int64GetDatum(cluster.elections_triggered);
     
-    PG_RETURN_TEXT_P(cstring_to_text(result.data));
+    /* Set nulls */
+    memset(nulls, 0, sizeof(nulls));
+    
+    /* Build and return tuple */
+    tuple = heap_form_tuple(tupdesc, values, nulls);
+    PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
 }
 
 /*
@@ -297,8 +191,31 @@ pgraft_get_cluster_status(PG_FUNCTION_ARGS)
 Datum
 pgraft_get_leader(PG_FUNCTION_ARGS)
 {
-    int64_t leader_id = pgraft_core_get_leader_id();
-    PG_RETURN_INT64(leader_id);
+	pgraft_go_get_leader_func get_leader_func;
+	int64_t leader_id = -1;
+	
+	elog(INFO, "pgraft: pgraft_get_leader() function called");
+	
+	/* Try to get leader from Go library if available */
+	if (pgraft_go_is_loaded())
+	{
+		get_leader_func = pgraft_go_get_get_leader_func();
+		if (get_leader_func)
+		{
+			leader_id = get_leader_func();
+			elog(INFO, "pgraft: Got leader ID from Go library: %lld", (long long)leader_id);
+		}
+		else
+		{
+			elog(WARNING, "pgraft: Failed to get Go leader function");
+		}
+	}
+	else
+	{
+		elog(WARNING, "pgraft: Go library not loaded");
+	}
+	
+	PG_RETURN_INT64(leader_id);
 }
 
 /*
@@ -307,8 +224,31 @@ pgraft_get_leader(PG_FUNCTION_ARGS)
 Datum
 pgraft_get_term(PG_FUNCTION_ARGS)
 {
-    int32_t term = pgraft_core_get_current_term();
-    PG_RETURN_INT32(term);
+	pgraft_go_get_term_func get_term_func;
+	int32_t term = 0;
+	
+	elog(INFO, "pgraft: pgraft_get_term() function called");
+	
+	/* Try to get term from Go library if available */
+	if (pgraft_go_is_loaded())
+	{
+		get_term_func = pgraft_go_get_get_term_func();
+		if (get_term_func)
+		{
+			term = get_term_func();
+			elog(INFO, "pgraft: Got term from Go library: %d", term);
+		}
+		else
+		{
+			elog(WARNING, "pgraft: Failed to get Go term function");
+		}
+	}
+	else
+	{
+		elog(WARNING, "pgraft: Go library not loaded");
+	}
+	
+	PG_RETURN_INT32(term);
 }
 
 /*
@@ -317,35 +257,119 @@ pgraft_get_term(PG_FUNCTION_ARGS)
 Datum
 pgraft_is_leader(PG_FUNCTION_ARGS)
 {
-    bool is_leader = pgraft_core_is_leader();
-    PG_RETURN_BOOL(is_leader);
+	pgraft_go_is_leader_func is_leader_func;
+	bool is_leader = false;
+	
+	elog(INFO, "pgraft: pgraft_is_leader() function called");
+	
+	/* Try to get leader status from Go library if available */
+	if (pgraft_go_is_loaded())
+	{
+		is_leader_func = pgraft_go_get_is_leader_func();
+		if (is_leader_func)
+		{
+			is_leader = (is_leader_func() != 0);
+			elog(INFO, "pgraft: Got leader status from Go library: %s", is_leader ? "true" : "false");
+		}
+		else
+		{
+			elog(WARNING, "pgraft: Failed to get Go is_leader function");
+		}
+	}
+	else
+	{
+		elog(WARNING, "pgraft: Go library not loaded");
+	}
+	
+	PG_RETURN_BOOL(is_leader);
 }
 
 /*
- * Get cluster nodes
+ * Get background worker state as simple text
  */
 Datum
-pgraft_get_nodes(PG_FUNCTION_ARGS)
+pgraft_get_worker_state(PG_FUNCTION_ARGS)
+{
+	pgraft_worker_state_t *state;
+	
+	elog(INFO, "pgraft: pgraft_get_worker_state() function called");
+	
+	state = pgraft_worker_get_state();
+	if (state == NULL) {
+		elog(WARNING, "pgraft: Failed to get worker state");
+		PG_RETURN_TEXT_P(cstring_to_text("ERROR"));
+	}
+	
+	switch (state->status) {
+		case WORKER_STATUS_STOPPED:
+			PG_RETURN_TEXT_P(cstring_to_text("STOPPED"));
+		case WORKER_STATUS_INITIALIZING:
+			PG_RETURN_TEXT_P(cstring_to_text("INITIALIZING"));
+		case WORKER_STATUS_RUNNING:
+			PG_RETURN_TEXT_P(cstring_to_text("RUNNING"));
+		case WORKER_STATUS_STOPPING:
+			PG_RETURN_TEXT_P(cstring_to_text("STOPPING"));
+		default:
+			PG_RETURN_TEXT_P(cstring_to_text("UNKNOWN"));
+	}
+}
+
+
+/*
+ * Get cluster nodes as table with individual columns
+ */
+Datum
+pgraft_get_nodes_table(PG_FUNCTION_ARGS)
 {
     pgraft_cluster_t cluster;
-    StringInfoData result;
+    ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+    TupleDesc	tupdesc;
+    Tuplestorestate *tupstore;
+    MemoryContext per_query_ctx;
+    MemoryContext oldcontext;
     
     if (pgraft_core_get_cluster_state(&cluster) != 0) {
         elog(ERROR, "pgraft: Failed to get cluster state");
         PG_RETURN_NULL();
     }
     
-    initStringInfo(&result);
+    /* Check if we're called in table context */
+    if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+        elog(ERROR, "pgraft: pgraft_get_nodes_table must be called in table context");
     
+    /* Build tuple descriptor */
+    if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+        elog(ERROR, "pgraft: Return type must be a row type");
+    
+    /* Initialize tuplestore */
+    per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+    oldcontext = MemoryContextSwitchTo(per_query_ctx);
+    
+    tupstore = tuplestore_begin_heap(true, false, 1024);
+    rsinfo->returnMode = SFRM_Materialize;
+    rsinfo->setResult = tupstore;
+    rsinfo->setDesc = tupdesc;
+    
+    MemoryContextSwitchTo(oldcontext);
+    
+    /* Return one row for each node */
     for (int i = 0; i < cluster.num_nodes; i++) {
-        appendStringInfo(&result, "Node %d: %s:%d%s\n", 
-                        cluster.nodes[i].id,
-                        cluster.nodes[i].address,
-                        cluster.nodes[i].port,
-                        cluster.nodes[i].is_leader ? " (leader)" : "");
+        Datum		values[4];
+        bool		nulls[4];
+        HeapTuple	tuple;
+        
+        values[0] = Int32GetDatum(cluster.nodes[i].id);
+        values[1] = CStringGetTextDatum(cluster.nodes[i].address);
+        values[2] = Int32GetDatum(cluster.nodes[i].port);
+        values[3] = BoolGetDatum(cluster.nodes[i].is_leader);
+        
+        memset(nulls, 0, sizeof(nulls));
+        
+        tuple = heap_form_tuple(tupdesc, values, nulls);
+        tuplestore_puttuple(tupstore, tuple);
     }
     
-    PG_RETURN_TEXT_P(cstring_to_text(result.data));
+    PG_RETURN_NULL();
 }
 
 /*
@@ -419,16 +443,17 @@ pgraft_log_append(PG_FUNCTION_ARGS)
 {
     int64_t term = PG_GETARG_INT64(0);
     text *data_text = PG_GETARG_TEXT_PP(1);
-    
     char *data = text_to_cstring(data_text);
-    int32_t data_size = strlen(data);
     
-    if (pgraft_log_append_entry(term, data, data_size) != 0) {
-        elog(ERROR, "pgraft: Failed to append log entry");
+    elog(INFO, "pgraft: Queuing LOG_APPEND command for term %lld", (long long)term);
+    
+    /* Queue LOG_APPEND command for worker to process */
+    if (!pgraft_queue_log_command(COMMAND_LOG_APPEND, data, (int)term)) {
+        elog(ERROR, "pgraft: Failed to queue LOG_APPEND command");
         PG_RETURN_BOOL(false);
     }
     
-    elog(DEBUG1, "pgraft: Appended log entry with term %lld", term);
+    elog(INFO, "pgraft: LOG_APPEND command queued successfully - background worker will process it");
     PG_RETURN_BOOL(true);
 }
 
@@ -440,12 +465,15 @@ pgraft_log_commit(PG_FUNCTION_ARGS)
 {
     int64_t index = PG_GETARG_INT64(0);
     
-    if (pgraft_log_commit_entry(index) != 0) {
-        elog(ERROR, "pgraft: Failed to commit log entry %lld", index);
+    elog(INFO, "pgraft: Queuing LOG_COMMIT command for index %lld", (long long)index);
+    
+    /* Queue LOG_COMMIT command for worker to process */
+    if (!pgraft_queue_log_command(COMMAND_LOG_COMMIT, NULL, (int)index)) {
+        elog(ERROR, "pgraft: Failed to queue LOG_COMMIT command");
         PG_RETURN_BOOL(false);
     }
     
-    elog(DEBUG1, "pgraft: Committed log entry %lld", index);
+    elog(INFO, "pgraft: LOG_COMMIT command queued successfully - background worker will process it");
     PG_RETURN_BOOL(true);
 }
 
@@ -457,12 +485,15 @@ pgraft_log_apply(PG_FUNCTION_ARGS)
 {
     int64_t index = PG_GETARG_INT64(0);
     
-    if (pgraft_log_apply_entry(index) != 0) {
-        elog(ERROR, "pgraft: Failed to apply log entry %lld", index);
+    elog(INFO, "pgraft: Queuing LOG_APPLY command for index %lld", (long long)index);
+    
+    /* Queue LOG_APPLY command for worker to process */
+    if (!pgraft_queue_log_command(COMMAND_LOG_APPLY, NULL, (int)index)) {
+        elog(ERROR, "pgraft: Failed to queue LOG_APPLY command");
         PG_RETURN_BOOL(false);
     }
     
-    elog(DEBUG1, "pgraft: Applied log entry %lld", index);
+    elog(INFO, "pgraft: LOG_APPLY command queued successfully - background worker will process it");
     PG_RETURN_BOOL(true);
 }
 
@@ -489,45 +520,155 @@ pgraft_log_get_entry_sql(PG_FUNCTION_ARGS)
     PG_RETURN_TEXT_P(cstring_to_text(result.data));
 }
 
+
 /*
- * Get log statistics
+ * Get log statistics as table with individual columns
  */
 Datum
-pgraft_log_get_stats(PG_FUNCTION_ARGS)
+pgraft_log_get_stats_table(PG_FUNCTION_ARGS)
 {
     pgraft_log_state_t stats;
-    StringInfoData result;
+    TupleDesc	tupdesc;
+    Datum		values[8];
+    bool		nulls[8];
+    HeapTuple	tuple;
     
     if (pgraft_log_get_statistics(&stats) != 0) {
         elog(ERROR, "pgraft: Failed to get log statistics");
         PG_RETURN_NULL();
     }
-    initStringInfo(&result);
     
-    appendStringInfo(&result, "Log Size: %d, Last Index: %lld, Commit Index: %lld, Last Applied: %lld, "
-                    "Replicated: %lld, Committed: %lld, Applied: %lld, Errors: %lld",
-                    stats.log_size, stats.last_index, stats.commit_index, stats.last_applied,
-                    stats.entries_replicated, stats.entries_committed, 
-                    stats.entries_applied, stats.replication_errors);
+    /* Build tuple descriptor */
+    if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+        elog(ERROR, "pgraft: Return type must be a row type");
     
-    PG_RETURN_TEXT_P(cstring_to_text(result.data));
+    /* Prepare values */
+    values[0] = Int64GetDatum(stats.log_size);
+    values[1] = Int64GetDatum(stats.last_index);
+    values[2] = Int64GetDatum(stats.commit_index);
+    values[3] = Int64GetDatum(stats.last_applied);
+    values[4] = Int64GetDatum(stats.entries_replicated);
+    values[5] = Int64GetDatum(stats.entries_committed);
+    values[6] = Int64GetDatum(stats.entries_applied);
+    values[7] = Int64GetDatum(stats.replication_errors);
+    
+    /* Set nulls */
+    memset(nulls, 0, sizeof(nulls));
+    
+    /* Build and return tuple */
+    tuple = heap_form_tuple(tupdesc, values, nulls);
+    PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
 }
 
+
 /*
- * Get replication status
+ * Get replication status as table with individual columns
  */
 Datum
-pgraft_log_get_replication_status_sql(PG_FUNCTION_ARGS)
+pgraft_log_get_replication_status_table(PG_FUNCTION_ARGS)
 {
-    char status[1024];
+    pgraft_log_state_t stats;
+    TupleDesc	tupdesc;
+    Datum		values[8];
+    bool		nulls[8];
+    HeapTuple	tuple;
     
-    if (pgraft_log_get_replication_status(status, sizeof(status)) != 0) {
+    if (pgraft_log_get_statistics(&stats) != 0) {
         elog(ERROR, "pgraft: Failed to get replication status");
         PG_RETURN_NULL();
     }
     
-    PG_RETURN_TEXT_P(cstring_to_text(status));
+    /* Build tuple descriptor */
+    if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+        elog(ERROR, "pgraft: Return type must be a row type");
+    
+    /* Prepare values */
+    values[0] = Int64GetDatum(stats.log_size);
+    values[1] = Int64GetDatum(stats.last_index);
+    values[2] = Int64GetDatum(stats.commit_index);
+    values[3] = Int64GetDatum(stats.last_applied);
+    values[4] = Int64GetDatum(stats.entries_replicated);
+    values[5] = Int64GetDatum(stats.entries_committed);
+    values[6] = Int64GetDatum(stats.entries_applied);
+    values[7] = Int64GetDatum(stats.replication_errors);
+    
+    /* Set nulls */
+    memset(nulls, 0, sizeof(nulls));
+    
+    /* Build and return tuple */
+    tuple = heap_form_tuple(tupdesc, values, nulls);
+    PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
 }
+
+
+/*
+ * Get command queue status
+ */
+Datum
+pgraft_get_queue_status(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_mcxt;
+	MemoryContext oldcontext;
+	pgraft_worker_state_t *state;
+
+	/* Check to ensure we were called as a set-returning function */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	/* Switch into long-lived context to construct returned data structures */
+	per_query_mcxt = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_mcxt);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	tupstore = tuplestore_begin_heap(true, false, 1024);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	/* Get worker state */
+	state = pgraft_worker_get_state();
+	if (state != NULL && state->status_count > 0)
+	{
+		int			position = 0;
+		int			i;
+
+		/* Iterate through status commands */
+		for (i = 0; i < state->status_count; i++)
+		{
+			int index = (state->status_head + i) % MAX_COMMANDS;
+			pgraft_command_t *cmd = &state->status_commands[index];
+			Datum		values[6];
+			bool		nulls[6];
+
+			memset(nulls, 0, sizeof(nulls));
+
+			values[0] = Int32GetDatum(position++);
+			values[1] = Int32GetDatum((int32) cmd->type);
+			values[2] = Int32GetDatum(cmd->node_id);
+			values[3] = CStringGetTextDatum(cmd->address);
+			values[4] = Int32GetDatum(cmd->port);
+			values[5] = CStringGetTextDatum(cmd->log_data);
+
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		}
+	}
+
+	/* Clean up and return the tuplestore */
+	/* tuplestore_donestoring not needed when using SFRM_Materialize */
+
+	return (Datum) 0;
+}
+
 
 /*
  * Sync with leader
@@ -543,3 +684,6 @@ pgraft_log_sync_with_leader_sql(PG_FUNCTION_ARGS)
     elog(INFO, "pgraft: Synced with leader successfully");
     PG_RETURN_BOOL(true);
 }
+
+
+/* Network worker functions removed - handled automatically by background worker */

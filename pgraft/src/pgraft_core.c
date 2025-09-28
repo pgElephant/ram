@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "../include/pgraft_core.h"
+#include "../include/pgraft_go.h"
 
 /* No global variables - all state is in shared memory */
 
@@ -50,10 +51,18 @@ pgraft_core_init(int32_t node_id, const char *address, int32_t port)
 	cluster->leader_id = -1;
 	strncpy(cluster->state, "follower", sizeof(cluster->state) - 1);
 	cluster->state[sizeof(cluster->state) - 1] = '\0';
-	cluster->num_nodes = 0;
+	cluster->num_nodes = 1;		/* Start with 1 (current node) */
 	cluster->messages_processed = 0;
 	cluster->heartbeats_sent = 0;
 	cluster->elections_triggered = 0;
+	
+	/* Add current node to the nodes array */
+	cluster->nodes[0].id = node_id;
+	strncpy(cluster->nodes[0].address, address, sizeof(cluster->nodes[0].address) - 1);
+	cluster->nodes[0].address[sizeof(cluster->nodes[0].address) - 1] = '\0';
+	cluster->nodes[0].port = port;
+	cluster->nodes[0].is_leader = false;
+	
 	cluster->initialized = true;
 	SpinLockRelease(&cluster->mutex);
 	
@@ -168,6 +177,8 @@ int
 pgraft_core_get_cluster_state(pgraft_cluster_t *cluster)
 {
 	pgraft_cluster_t *shm_cluster;
+	pgraft_go_get_leader_func get_leader_func;
+	pgraft_go_get_term_func get_term_func;
 	
 	if (!cluster)
 		return -1;
@@ -187,6 +198,20 @@ pgraft_core_get_cluster_state(pgraft_cluster_t *cluster)
 	
 	*cluster = *shm_cluster;
 	SpinLockRelease(&shm_cluster->mutex);
+	
+	/* Try to get updated state from Go library if available */
+	if (pgraft_go_is_loaded())
+	{
+		get_leader_func = pgraft_go_get_get_leader_func();
+		get_term_func = pgraft_go_get_get_term_func();
+		
+		if (get_leader_func && get_term_func)
+		{
+			/* Update cluster state with current Go state */
+			cluster->leader_id = get_leader_func();
+			cluster->current_term = get_term_func();
+		}
+	}
 	
 	return 0;
 }
@@ -217,6 +242,40 @@ pgraft_core_is_leader(void)
 	SpinLockRelease(&cluster->mutex);
 	
 	return is_leader;
+}
+
+/*
+ * Update cluster state (called from Go code)
+ */
+int
+pgraft_core_update_cluster_state(int64_t leader_id, int64_t current_term, const char *state)
+{
+	pgraft_cluster_t *cluster;
+	
+	/* Get shared memory */
+	cluster = pgraft_core_get_shared_memory();
+	if (!cluster)
+		return -1;
+	
+	/* Check if core system is initialized */
+	SpinLockAcquire(&cluster->mutex);
+	if (!cluster->initialized)
+	{
+		SpinLockRelease(&cluster->mutex);
+		return -1;
+	}
+	
+	/* Update cluster state */
+	cluster->leader_id = leader_id;
+	cluster->current_term = current_term;
+	if (state) {
+		strncpy(cluster->state, state, sizeof(cluster->state) - 1);
+		cluster->state[sizeof(cluster->state) - 1] = '\0';
+	}
+	
+	SpinLockRelease(&cluster->mutex);
+	
+	return 0;
 }
 
 /*

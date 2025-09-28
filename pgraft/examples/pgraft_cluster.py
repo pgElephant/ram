@@ -479,6 +479,42 @@ class PgraftClusterManager:
                     conn.close()
                     sys.exit(1)
                 
+                # Background worker will handle consensus process automatically
+                self.log(f"[{node_name}] - pgraft consensus process will start automatically")
+                self.log(f"[{node_name}] - pgraft network worker started automatically")
+                
+                # Wait for background worker to be RUNNING
+                self.log(f"[{node_name}] - Waiting for background worker to be RUNNING...")
+                max_wait_time = 30  # 30 seconds timeout
+                wait_interval = 1   # Check every 1 second
+                waited_time = 0
+                
+                while waited_time < max_wait_time:
+                    try:
+                        cursor.execute("SELECT pgraft_get_worker_state()")
+                        worker_state = cursor.fetchone()[0]
+                        self.log(f"[{node_name}] - Worker state: {worker_state}")
+                        
+                        if worker_state == "RUNNING":
+                            self.log(f"[{node_name}] - Background worker is RUNNING")
+                            break
+                        elif worker_state == "ERROR":
+                            self.log(f"[{node_name}] - Background worker error", "ERROR")
+                            break
+                            
+                        time.sleep(wait_interval)
+                        waited_time += wait_interval
+                        
+                    except Exception as e:
+                        self.log(f"[{node_name}] - Error checking worker state: {e}", "ERROR")
+                        break
+                
+                if waited_time >= max_wait_time:
+                    self.log(f"[{node_name}] - Timeout waiting for worker to be RUNNING", "ERROR")
+                    cursor.close()
+                    conn.close()
+                    sys.exit(1)
+                
                 # pgraft consensus system is now initialized and ready
                 self.log(f"[{node_name}] - pgraft consensus system ready")
                 
@@ -570,9 +606,16 @@ class PgraftClusterManager:
                 
                 # Check pgraft status
                 try:
-                    cursor.execute("SELECT pgraft_get_state()")
-                    state = cursor.fetchone()[0]
-                    self.log(f"✓ [{node_name}]: pgraft state = {state}")
+                    cursor.execute("SELECT * FROM pgraft_get_cluster_status()")
+                    result = cursor.fetchone()
+                    if result:
+                        node_id, current_term, leader_id, state, num_nodes, messages_processed, heartbeats_sent, elections_triggered = result
+                        self.log(f"✓ [{node_name}]: pgraft state = Node ID: {node_id}, Term: {current_term}, Leader: {leader_id}, State: {state}, Nodes: {num_nodes}")
+                    else:
+                        self.log(f"✗ [{node_name}]: pgraft not responding", "ERROR")
+                        cursor.close()
+                        conn.close()
+                        sys.exit(1)
                 except psycopg2.Error:
                     self.log(f"✗ [{node_name}]: pgraft not responding", "ERROR")
                     cursor.close()
@@ -622,8 +665,13 @@ class PgraftClusterManager:
                 
                 # Get pgraft state
                 try:
-                    cursor.execute("SELECT pgraft_get_state()")
-                    node_status['pgraft_state'] = cursor.fetchone()[0]
+                    cursor.execute("SELECT * FROM pgraft_get_cluster_status()")
+                    result = cursor.fetchone()
+                    if result:
+                        node_id, current_term, leader_id, state, num_nodes, messages_processed, heartbeats_sent, elections_triggered = result
+                        node_status['pgraft_state'] = f"Node ID: {node_id}\nCurrent Term: {current_term}\nLeader ID: {leader_id}\nState: {state}\nNumber of Nodes: {num_nodes}\nMessages Processed: {messages_processed}\nHeartbeats Sent: {heartbeats_sent}\nElections Triggered: {elections_triggered}"
+                    else:
+                        node_status['pgraft_state'] = "No data"
                 except psycopg2.Error:
                     node_status['pgraft_state'] = 'error'
                 

@@ -38,6 +38,7 @@ int			pgraft_core_init(int32_t node_id, const char *address, int32_t port);
 int			pgraft_core_add_node(int32_t node_id, const char *address, int32_t port);
 int			pgraft_core_remove_node(int32_t node_id);
 int			pgraft_core_get_cluster_state(pgraft_cluster_t *cluster);
+int			pgraft_core_update_cluster_state(int64_t leader_id, int64_t current_term, const char *state);
 bool		pgraft_core_is_leader(void);
 int64_t		pgraft_core_get_leader_id(void);
 int32_t		pgraft_core_get_current_term(void);

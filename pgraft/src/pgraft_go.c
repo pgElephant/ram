@@ -33,7 +33,9 @@ static pgraft_go_get_nodes_func pgraft_go_get_nodes_ptr = NULL;
 static pgraft_go_version_func pgraft_go_version_ptr = NULL;
 static pgraft_go_test_func pgraft_go_test_ptr = NULL;
 static pgraft_go_set_debug_func pgraft_go_set_debug_ptr = NULL;
+static pgraft_go_start_network_server_func pgraft_go_start_network_server_ptr = NULL;
 static pgraft_go_free_string_func pgraft_go_free_string_ptr = NULL;
+static pgraft_go_update_cluster_state_func pgraft_go_update_cluster_state_ptr = NULL;
 
 /*
  * Load Go Raft library dynamically
@@ -54,6 +56,13 @@ pgraft_go_load_library(void)
 		/* Library should be loaded, but not in this process - load it */
 		elog(INFO, "pgraft: Go library marked as loaded in shared memory, loading in this process");
 	}
+	else
+	{
+		/* Library not marked as loaded in shared memory */
+		elog(INFO, "pgraft: Go library not marked as loaded in shared memory");
+	}
+	
+	/* Always proceed to load the library in this process */
 	
 	/* Get PostgreSQL library directory */
 	pg_libdir = (char *) pkglib_path;
@@ -82,7 +91,9 @@ pgraft_go_load_library(void)
 	pgraft_go_version_ptr = (pgraft_go_version_func) dlsym(go_lib_handle, "pgraft_go_version");
 	pgraft_go_test_ptr = (pgraft_go_test_func) dlsym(go_lib_handle, "pgraft_go_test");
 	pgraft_go_set_debug_ptr = (pgraft_go_set_debug_func) dlsym(go_lib_handle, "pgraft_go_set_debug");
+	pgraft_go_start_network_server_ptr = (pgraft_go_start_network_server_func) dlsym(go_lib_handle, "pgraft_go_start_network_server");
 	pgraft_go_free_string_ptr = (pgraft_go_free_string_func) dlsym(go_lib_handle, "pgraft_go_free_string");
+	pgraft_go_update_cluster_state_ptr = (pgraft_go_update_cluster_state_func) dlsym(go_lib_handle, "pgraft_go_update_cluster_state");
 	
 	/* Check if all critical functions were loaded */
 	if (!pgraft_go_init_ptr || !pgraft_go_start_ptr || !pgraft_go_stop_ptr)
@@ -158,6 +169,7 @@ pgraft_go_get_init_func(void)
 pgraft_go_start_func
 pgraft_go_get_start_func(void)
 {
+	elog(INFO, "pgraft: Returning pgraft_go_start_ptr");
 	return pgraft_go_start_ptr;
 }
 
@@ -221,8 +233,86 @@ pgraft_go_get_set_debug_func(void)
 	return pgraft_go_set_debug_ptr;
 }
 
+pgraft_go_start_network_server_func
+pgraft_go_get_start_network_server_func(void)
+{
+	return pgraft_go_start_network_server_ptr;
+}
+
 pgraft_go_free_string_func
 pgraft_go_get_free_string_func(void)
 {
 	return pgraft_go_free_string_ptr;
+}
+
+pgraft_go_update_cluster_state_func
+pgraft_go_get_update_cluster_state_func(void)
+{
+	return pgraft_go_update_cluster_state_ptr;
+}
+
+/*
+ * Initialize the Go library
+ */
+int
+pgraft_go_init(int node_id, char *address, int port)
+{
+	pgraft_go_init_func init_func;
+	
+	if (!pgraft_go_is_loaded()) {
+		elog(ERROR, "pgraft: Go library not loaded");
+		return -1;
+	}
+	
+	init_func = pgraft_go_get_init_func();
+	if (init_func == NULL) {
+		elog(ERROR, "pgraft: Failed to get init function");
+		return -1;
+	}
+	
+	return init_func(node_id, address, port);
+}
+
+/*
+ * Start the Go library
+ */
+int
+pgraft_go_start(void)
+{
+	pgraft_go_start_func start_func;
+	
+	if (!pgraft_go_is_loaded()) {
+		elog(ERROR, "pgraft: Go library not loaded");
+		return -1;
+	}
+	
+	start_func = pgraft_go_get_start_func();
+	if (start_func == NULL) {
+		elog(ERROR, "pgraft: Failed to get start function");
+		return -1;
+	}
+	
+	return start_func();
+}
+
+/*
+ * Start the Go network server
+ */
+int
+pgraft_go_start_network_server(int port)
+{
+	pgraft_go_start_network_server_func start_network_server;
+	
+	if (!pgraft_go_is_loaded()) {
+		elog(ERROR, "pgraft: Go library not loaded");
+		return -1;
+	}
+	
+	start_network_server = pgraft_go_get_start_network_server_func();
+	if (start_network_server == NULL) {
+		elog(ERROR, "pgraft: Failed to get start_network_server function");
+		return -1;
+	}
+	
+	return start_network_server(port);
 }
