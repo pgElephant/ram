@@ -25,7 +25,6 @@
 #include "../include/pgraft_state.h"
 #include "../include/pgraft_log.h"
 #include "../include/pgraft_guc.h"
-#include "../include/pgraft_worker.h"
 
 /* Function info macros for core functions */
 PG_FUNCTION_INFO_V1(pgraft_init);

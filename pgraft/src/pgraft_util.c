@@ -8,7 +8,7 @@
 #include "utils/palloc.h"
 #include "lib/ilist.h"
 #include "nodes/pg_list.h"
-#include "../include/pgraft_worker.h"
+#include "../include/pgraft_core.h"
 
 #include <time.h>
 

@@ -22,7 +22,7 @@
 #include "../include/pgraft_state.h"
 #include "../include/pgraft_log.h"
 #include "../include/pgraft_guc.h"
-#include "../include/pgraft_worker.h"
+/* Worker types and functions now in pgraft_core.h */
 
 /* Temporary function declarations to fix compilation */
 bool		pgraft_go_is_loaded(void);
