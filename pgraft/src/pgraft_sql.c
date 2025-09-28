@@ -85,6 +85,15 @@ pgraft_init(PG_FUNCTION_ARGS)
     PG_RETURN_BOOL(true);
 }
 
+/*
+ * Initialize pgraft using GUC variables (parameterless version)
+ */
+Datum
+pgraft_init_guc(PG_FUNCTION_ARGS)
+{
+	/* Same as pgraft_init but uses GUC variables */
+	return pgraft_init(fcinfo);
+}
 
 /*
  * Add node to cluster

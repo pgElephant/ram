@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * guc.c
+ * pgraft_guc.c
  *		Configuration management for pgraft extension
  *
  * Copyright (c) 2024-2025, pgElephant, Inc.
@@ -9,7 +9,6 @@
  */
 
 #include "postgres.h"
-#include "../include/pgraft.h"
 #include "../include/pgraft_guc.h"
 #include "utils/guc.h"
 #include "utils/elog.h"

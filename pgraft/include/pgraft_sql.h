@@ -7,7 +7,6 @@
 /* SQL function declarations */
 Datum		pgraft_init(PG_FUNCTION_ARGS);
 Datum		pgraft_init_guc(PG_FUNCTION_ARGS);
-Datum		pgraft_start(PG_FUNCTION_ARGS);
 Datum		pgraft_add_node(PG_FUNCTION_ARGS);
 Datum		pgraft_remove_node(PG_FUNCTION_ARGS);
 Datum		pgraft_get_cluster_status_table(PG_FUNCTION_ARGS);
@@ -29,7 +28,5 @@ Datum		pgraft_log_get_entry_sql(PG_FUNCTION_ARGS);
 Datum		pgraft_log_get_stats_table(PG_FUNCTION_ARGS);
 Datum		pgraft_log_get_replication_status_table(PG_FUNCTION_ARGS);
 Datum		pgraft_log_sync_with_leader_sql(PG_FUNCTION_ARGS);
-
-/* Background worker functions - removed as they are now handled automatically */
 
 #endif

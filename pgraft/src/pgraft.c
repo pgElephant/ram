@@ -22,12 +22,6 @@
 #include "../include/pgraft_state.h"
 #include "../include/pgraft_log.h"
 #include "../include/pgraft_guc.h"
-/* Worker types and functions now in pgraft_core.h */
-
-/* Temporary function declarations to fix compilation */
-bool		pgraft_go_is_loaded(void);
-void		pgraft_go_unload_library(void);
-
 /* Forward declarations */
 static int pgraft_init_system(int node_id, const char *address, int port);
 static int pgraft_add_node_system(int node_id, const char *address, int port);
@@ -35,10 +29,6 @@ static int pgraft_remove_node_system(int node_id);
 static int pgraft_log_append_system(const char *log_data, int log_index);
 static int pgraft_log_commit_system(int log_index);
 static int pgraft_log_apply_system(int log_index);
-
-/* Background worker function declarations */
-pgraft_worker_state_t *pgraft_worker_get_state(void);
-void pgraft_register_worker(void);
 
 
 PG_MODULE_MAGIC;
@@ -331,7 +321,7 @@ pgraft_worker_get_state(void)
 			/* Initialize worker state */
 			worker_state->node_id = 0;
 			worker_state->port = 0;
-			strcpy(worker_state->address, "127.0.0.1");
+			strlcpy(worker_state->address, "127.0.0.1", sizeof(worker_state->address));
 			worker_state->status = WORKER_STATUS_STOPPED;
 			
 			/* Initialize circular buffers */
